@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GitHub Repos — Training AI Lọc CV theo Phòng Ban</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff;
+    --bg2: #f5f5f3;
+    --bg3: #eeece8;
+    --text: #1a1a18;
+    --text2: #5a5a56;
+    --text3: #9a9a94;
+    --border: rgba(0,0,0,0.1);
+    --border2: rgba(0,0,0,0.18);
+    --info-bg: #e6f1fb;
+    --info-text: #0c447c;
+    --success-bg: #eaf3de;
+    --success-text: #3b6d11;
+    --warn-bg: #faeeda;
+    --warn-text: #633806;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1e1e1c;
+      --bg2: #272725;
+      --bg3: #2f2f2c;
+      --text: #e8e6df;
+      --text2: #a8a6a0;
+      --text3: #6a6a64;
+      --border: rgba(255,255,255,0.1);
+      --border2: rgba(255,255,255,0.18);
+      --info-bg: #042c53;
+      --info-text: #85b7eb;
+      --success-bg: #173404;
+      --success-text: #97c459;
+      --warn-bg: #412402;
+      --warn-text: #ef9f27;
+    }
+  }
+  body {
+    font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg3);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 2rem 1rem;
+  }
+  .container { max-width: 860px; margin: 0 auto; }
+  .page-header { margin-bottom: 2rem; }
+  .page-header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+    line-height: 1.3;
+  }
+  .page-header p { font-size: 13px; color: var(--text2); line-height: 1.6; }
+  .meta-strip {
+    display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
+  }
+  .meta-pill {
+    font-size: 11px; font-weight: 500; padding: 3px 10px;
+    border-radius: 999px; background: var(--bg2);
+    color: var(--text2); border: 0.5px solid var(--border2);
+  }
+  .dept-tabs {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1.25rem;
+  }
+  .tab {
+    font-size: 12px; padding: 6px 12px; border-radius: var(--radius-md);
+    border: 0.5px solid var(--border2); background: var(--bg);
+    color: var(--text2); cursor: pointer; transition: all .15s;
+    font-family: inherit;
+  }
+  .tab:hover { background: var(--bg2); }
+  .tab.active {
+    background: var(--info-bg); color: var(--info-text);
+    border-color: transparent; font-weight: 500;
+  }
+  .dept-card { display: none; animation: fadeIn .2s ease; }
+  .dept-card.show { display: block; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+  .card {
+    background: var(--bg); border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg); padding: 1.25rem 1.5rem; margin-bottom: 1rem;
+  }
+  .card-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+  .dept-icon {
+    width: 40px; height: 40px; border-radius: var(--radius-md);
+    display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
+  }
+  .card-title { font-size: 15px; font-weight: 600; color: var(--text); }
+  .card-sub { font-size: 12px; color: var(--text2); margin-top: 3px; }
+  .skills-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px; }
+  .skill-tag {
+    font-size: 11px; padding: 3px 9px; border-radius: 999px;
+    background: var(--bg2); color: var(--text2);
+    border: 0.5px solid var(--border);
+  }
+  .repos-label {
+    font-size: 11px; font-weight: 600; color: var(--text3);
+    text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px;
+  }
+  .repo-item {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 10px 12px; border-radius: var(--radius-md);
+    border: 0.5px solid var(--border); margin-bottom: 8px;
+    background: var(--bg); cursor: pointer; transition: background .12s;
+    text-decoration: none;
+  }
+  .repo-item:hover { background: var(--bg2); }
+  .repo-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0;
+  }
+  .repo-info { flex: 1; min-width: 0; }
+  .repo-name {
+    font-size: 13px; font-weight: 600; color: var(--info-text);
+    margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .repo-desc { font-size: 12px; color: var(--text2); line-height: 1.5; }
+  .repo-meta { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+  .badge { font-size: 10px; padding: 2px 7px; border-radius: 999px; font-weight: 500; }
+  .b-green { background: var(--success-bg); color: var(--success-text); }
+  .b-blue { background: var(--info-bg); color: var(--info-text); }
+  .b-amber { background: var(--warn-bg); color: var(--warn-text); }
+  .b-gray { background: var(--bg2); color: var(--text2); border: 0.5px solid var(--border); }
+  .kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+  .kpi { background: var(--bg2); border-radius: var(--radius-md); padding: 10px 12px; text-align: center; }
+  .kpi-num { font-size: 17px; font-weight: 600; color: var(--text); }
+  .kpi-label { font-size: 10px; color: var(--text3); margin-top: 2px; }
+  .note {
+    font-size: 11px; color: var(--text2); border-left: 2px solid var(--border2);
+    padding-left: 10px; margin-top: 12px; line-height: 1.6;
+  }
+  .section-divider { border: none; border-top: 0.5px solid var(--border); margin: 1.5rem 0; }
+  .strategy-section { margin-top: 1.5rem; }
+  .strategy-section h2 { font-size: 16px; font-weight: 600; margin-bottom: 1rem; }
+  .tier { margin-bottom: 1.25rem; }
+  .tier-label {
+    font-size: 12px; font-weight: 600; color: var(--text2);
+    text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px;
+  }
+  .tier-content {
+    background: var(--bg); border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg); padding: 1rem 1.25rem;
+  }
+  .tier-content p { font-size: 13px; color: var(--text2); line-height: 1.6; margin-bottom: 6px; }
+  .tier-content p:last-child { margin-bottom: 0; }
+  .tier-content strong { color: var(--text); font-weight: 600; }
+  .warn-box {
+    background: var(--warn-bg); border-radius: var(--radius-md);
+    padding: 12px 14px; margin-top: 1rem; font-size: 12px;
+    color: var(--warn-text); line-height: 1.6; border: 0.5px solid rgba(0,0,0,0.08);
+  }
+  footer {
+    margin-top: 2rem; text-align: center;
+    font-size: 11px; color: var(--text3);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="page-header">
+    <h1>Bộ GitHub Repositories — Training AI Lọc CV theo Phòng Ban</h1>
+    <p>Phân tích từ 3 tài liệu JD chuẩn Việt Nam · 10 phòng ban · Curated cho NLP/ML skill extraction</p>
+    <div class="meta-strip">
+      <span class="meta-pill">10 Phòng ban</span>
+      <span class="meta-pill">15+ Repositories</span>
+      <span class="meta-pill">ESCO · O*NET · EMSI</span>
+      <span class="meta-pill">Chuẩn thị trường VN</span>
+    </div>
+  </div>
+
+  <div class="dept-tabs">
+    <button class="tab active" onclick="show(0)">🏛 Ban GĐ</button>
+    <button class="tab" onclick="show(1)">💼 Kinh Doanh</button>
+    <button class="tab" onclick="show(2)">📢 Marketing</button>
+    <button class="tab" onclick="show(3)">🎧 CSKH</button>
+    <button class="tab" onclick="show(4)">👥 HR/Admin</button>
+    <button class="tab" onclick="show(5)">🔬 R&D</button>
+    <button class="tab" onclick="show(6)">💻 IT</button>
+    <button class="tab" onclick="show(7)">🏭 Sản Xuất</button>
+    <button class="tab" onclick="show(8)">✅ QA/QC</button>
+    <button class="tab" onclick="show(9)">💰 Tài Chính</button>
+  </div>
+
+  <!-- DEPT 0: Ban GD -->
+  <div id="dept-0" class="dept-card show">
+    <div class="card">
+      <div class="card-header">
+        <div class="dept-icon" style="background:#EEEDFE">🏛</div>
+        <div><div class="card-title">Ban Giám Đốc (C-Level: CEO, CMO, CHRO, CFO)</div><div class="card-sub">Hoạch định chiến lược · Quản trị rủi ro · Lãnh đạo chuyển đổi</div></div>
+      </div>
+      <div class="skills-row">
+        <span class="skill-tag">Strategic Planning</span><span class="skill-tag">ERP / BI Systems</span><span class="skill-tag">Financial Analysis</span><span class="skill-tag">Leadership</span><span class="skill-tag">ROI Management</span><span class="skill-tag">Stakeholder Relations</span><span class="skill-tag">MBA / QTKD</span><span class="skill-tag">Tiếng Anh</span>
+      </div>
+      <div class="repos-label">Repositories được đề xuất</div>
+      <a class="repo-item" href="https://github.com/workforce-data-initiative/skills-ml" target="_blank">
+        <div class="repo-icon" style="background:#E6F1FB">📊</div>
+        <div class="repo-info">
+          <div class="repo-name">workforce-data-initiative / skills-ml</div>
+          <div class="repo-desc">Thư viện NLP/ML mã nguồn mở để trích xuất kỹ năng & phân loại nghề nghiệp từ JD. Tích hợp sẵn ontology O*NET (32,000+ competencies). Lý tưởng để train model nhận diện skills chiến lược C-Level.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">O*NET</span><span class="badge b-gray">NLP</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/maudgrol/Data_driven_skills_taxonomy" target="_blank">
+        <div class="repo-icon" style="background:#E1F5EE">🗂</div>
+        <div class="repo-info">
+          <div class="repo-name">maudgrol / Data_driven_skills_taxonomy</div>
+          <div class="repo-desc">Xây dựng phân loại kỹ năng dựa dữ liệu từ ESCO (2,942 nghề · 13,485 kỹ năng). Dùng Word2Vec + community detection. Phù hợp mapping skills Ban GĐ với chuẩn quốc tế EU.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">ESCO</span><span class="badge b-amber">Jupyter</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/tabiya-tech/tabiya-open-dataset" target="_blank">
+        <div class="repo-icon" style="background:#EAF3DE">🌍</div>
+        <div class="repo-info">
+          <div class="repo-name">tabiya-tech / tabiya-open-dataset</div>
+          <div class="repo-desc">Dataset ESCO v1.1.1 đã transform sẵn, đa ngôn ngữ. Chứa occupation + skills mapping cho các vị trí quản lý cấp cao. Có thể adapt cho thị trường Việt Nam.</div>
+          <div class="repo-meta"><span class="badge b-blue">ESCO</span><span class="badge b-gray">CSV/SQL</span><span class="badge b-green">Multilingual</span></div>
+        </div>
+      </a>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-num">5+</div><div class="kpi-label">Năm kinh nghiệm</div></div>
+        <div class="kpi"><div class="kpi-num">ROI</div><div class="kpi-label">KPI chính</div></div>
+        <div class="kpi"><div class="kpi-num">ERP/BI</div><div class="kpi-label">Tools bắt buộc</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPT 1: Kinh Doanh -->
+  <div id="dept-1" class="dept-card">
+    <div class="card">
+      <div class="card-header">
+        <div class="dept-icon" style="background:#FAECE7">💼</div>
+        <div><div class="card-title">Phòng Kinh Doanh (Sales)</div><div class="card-sub">B2B/B2C · CRM · Đàm phán · Chốt sale</div></div>
+      </div>
+      <div class="skills-row">
+        <span class="skill-tag">CRM (HubSpot/Salesforce)</span><span class="skill-tag">B2B/B2C Sales</span><span class="skill-tag">Objection Handling</span><span class="skill-tag">Pipeline Management</span><span class="skill-tag">Telesales</span><span class="skill-tag">Proposal/Tender</span><span class="skill-tag">Conversion Rate</span><span class="skill-tag">CAC</span>
+      </div>
+      <div class="repos-label">Repositories được đề xuất</div>
+      <a class="repo-item" href="https://github.com/raghavendranhp/Resume_screening" target="_blank">
+        <div class="repo-icon" style="background:#FAECE7">🎯</div>
+        <div class="repo-info">
+          <div class="repo-name">raghavendranhp / Resume_screening</div>
+          <div class="repo-desc">Dataset CSV phân loại resume theo job category (bao gồm Sales). Dùng TF-IDF + KNN classifier. Có thể fine-tune riêng cho Sales với từ khóa CRM, B2B, revenue target.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">TF-IDF</span><span class="badge b-amber">CSV Dataset</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/duyet/skill2vec-dataset" target="_blank">
+        <div class="repo-icon" style="background:#FBEAF0">🔗</div>
+        <div class="repo-info">
+          <div class="repo-name">duyet / skill2vec-dataset</div>
+          <div class="repo-desc">Dataset kỹ năng thu thập từ hàng chục nghìn JD. Đã có nhãn Sales, Marketing, Finance. Được dùng để train Skill2Vec — embedding kỹ năng theo semantic. Rất phù hợp cho Sales skill matching.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">Word2Vec</span><span class="badge b-gray">NLP</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/AnasAito/SkillNER" target="_blank">
+        <div class="repo-icon" style="background:#E1F5EE">🔍</div>
+        <div class="repo-info">
+          <div class="repo-name">AnasAito / SkillNER</div>
+          <div class="repo-desc">NLP module tự động extract skills & certifications từ JD và CV. Dùng EMSI open skill database. Nhận diện được các kỹ năng sales như "CRM", "lead generation", "pipeline" từ văn bản tự nhiên.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">spaCy</span><span class="badge b-amber">EMSI DB</span></div>
+        </div>
+      </a>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-num">CAC</div><div class="kpi-label">KPI quan trọng</div></div>
+        <div class="kpi"><div class="kpi-num">CRM</div><div class="kpi-label">Tool bắt buộc</div></div>
+        <div class="kpi"><div class="kpi-num">1-3yr</div><div class="kpi-label">Kinh nghiệm yêu cầu</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPT 2: Marketing -->
+  <div id="dept-2" class="dept-card">
+    <div class="card">
+      <div class="card-header">
+        <div class="dept-icon" style="background:#E1F5EE">📢</div>
+        <div><div class="card-title">Phòng Marketing</div><div class="card-sub">Digital Marketing · SEO/SEM · Content · Data Analytics</div></div>
+      </div>
+      <div class="skills-row">
+        <span class="skill-tag">Google Analytics</span><span class="skill-tag">Meta Ads</span><span class="skill-tag">SEO/SEM</span><span class="skill-tag">Content Marketing</span><span class="skill-tag">AI Prompts</span><span class="skill-tag">Martech</span><span class="skill-tag">CTR/CPA/CAC</span><span class="skill-tag">Brand Awareness</span>
+      </div>
+      <div class="repos-label">Repositories được đề xuất</div>
+      <a class="repo-item" href="https://github.com/MIND-TechAI/MIND-tech-ontology" target="_blank">
+        <div class="repo-icon" style="background:#E1F5EE">🧠</div>
+        <div class="repo-info">
+          <div class="repo-name">MIND-TechAI / MIND-tech-ontology</div>
+          <div class="repo-desc">Ontology kỹ năng toàn diện với hierarchy, synonyms, implied skills. Có category Digital Marketing, SEO, Analytics. Giúp AI phân biệt "Google Analytics" vs "web analytics" hay "GA4".</div>
+          <div class="repo-meta"><span class="badge b-green">JSON</span><span class="badge b-blue">Ontology</span><span class="badge b-amber">Open Source</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/KonstantinosPetrakis/esco-skill-extractor" target="_blank">
+        <div class="repo-icon" style="background:#EEEDFE">🔬</div>
+        <div class="repo-info">
+          <div class="repo-name">KonstantinosPetrakis / esco-skill-extractor</div>
+          <div class="repo-desc">Tool trích xuất ESCO skills & ISCO occupations dùng transformer + cosine similarity. Nhận diện được Marketing Manager, Digital Marketing Specialist. Được publish trên ScienceDirect 2025.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">Transformer</span><span class="badge b-gray">ESCO</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/noran-mohamed/Resume-Classification-Dataset" target="_blank">
+        <div class="repo-icon" style="background:#FAEEDA">📂</div>
+        <div class="repo-info">
+          <div class="repo-name">noran-mohamed / Resume-Classification-Dataset</div>
+          <div class="repo-desc">Dataset resume lớn từ Google/Bing/LiveCareer. Có category "Digital-Media", "Public-Relations". Qua OCR processing. Phù hợp train model phân loại CV Marketing/PR/Content.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-amber">OCR</span><span class="badge b-blue">Multi-category</span></div>
+        </div>
+      </a>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-num">CTR</div><div class="kpi-label">KPI chính</div></div>
+        <div class="kpi"><div class="kpi-num">GA4</div><div class="kpi-label">Tool bắt buộc</div></div>
+        <div class="kpi"><div class="kpi-num">Cử nhân</div><div class="kpi-label">Học vấn tối thiểu</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPT 3: CSKH -->
+  <div id="dept-3" class="dept-card">
+    <div class="card">
+      <div class="card-header">
+        <div class="dept-icon" style="background:#FBEAF0">🎧</div>
+        <div><div class="card-title">Phòng Chăm Sóc Khách Hàng (Customer Service)</div><div class="card-sub">Call Center · CRM · CSAT · NPS · SLA</div></div>
+      </div>
+      <div class="skills-row">
+        <span class="skill-tag">Call Center Software</span><span class="skill-tag">CRM nội bộ</span><span class="skill-tag">Empathy</span><span class="skill-tag">Complaint Handling</span><span class="skill-tag">CSAT/NPS</span><span class="skill-tag">SLA Management</span><span class="skill-tag">Multi-channel</span><span class="skill-tag">Kiên nhẫn</span>
+      </div>
+      <div class="repos-label">Repositories được đề xuất</div>
+      <a class="repo-item" href="https://github.com/AdilShamim8/Resume-Screening" target="_blank">
+        <div class="repo-icon" style="background:#FBEAF0">📋</div>
+        <div class="repo-info">
+          <div class="repo-name">AdilShamim8 / Resume-Screening</div>
+          <div class="repo-desc">AI-powered resume screening với dataset phân loại theo job role. Có "BPO" category gần với Customer Service. Streamlit app dễ customize thêm category CSKH theo chuẩn Việt Nam.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">Streamlit</span><span class="badge b-amber">ML Model</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/deepakpadhi986/AI-Resume-Analyzer" target="_blank">
+        <div class="repo-icon" style="background:#E1F5EE">🤖</div>
+        <div class="repo-info">
+          <div class="repo-name">deepakpadhi986 / AI-Resume-Analyzer</div>
+          <div class="repo-desc">Parser CV dùng NLP, cluster theo sectors dựa trên keywords. Có thể thêm cluster "Customer Service" với keywords: CSAT, NPS, call center, empathy, complaint resolution.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">MySQL</span><span class="badge b-gray">NLP</span></div>
+        </div>
+      </a>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-num">CSAT</div><div class="kpi-label">KPI chính</div></div>
+        <div class="kpi"><div class="kpi-num">NPS</div><div class="kpi-label">KPI phụ</div></div>
+        <div class="kpi"><div class="kpi-num">SLA</div><div class="kpi-label">Chuẩn đo lường</div></div>
+      </div>
+      <div class="note">💡 Kỹ năng mềm (Empathy, Kiên nhẫn) khó train bằng keyword matching — cần dùng BERT sentiment analysis kết hợp với behavioral interview scoring.</div>
+    </div>
+  </div>
+
+  <!-- DEPT 4: HR/Admin -->
+  <div id="dept-4" class="dept-card">
+    <div class="card">
+      <div class="card-header">
+        <div class="dept-icon" style="background:#E6F1FB">👥</div>
+        <div><div class="card-title">Phòng Hành Chính - Nhân Sự (HR &amp; Admin)</div><div class="card-sub">Tuyển dụng · C&amp;B · HRIS · Luật lao động</div></div>
+      </div>
+      <div class="skills-row">
+        <span class="skill-tag">HRIS (MISA AMIS/1Office)</span><span class="skill-tag">Luật lao động</span><span class="skill-tag">C&amp;B / Payroll</span><span class="skill-tag">BHXH</span><span class="skill-tag">PHR/SHRM-CP</span><span class="skill-tag">Behavioral Interview</span><span class="skill-tag">Talent Acquisition</span><span class="skill-tag">Time-to-fill</span>
+      </div>
+      <div class="repos-label">Repositories được đề xuất</div>
+      <a class="repo-item" href="https://github.com/JAIJANYANI/Automated-Resume-Screening-System" target="_blank">
+        <div class="repo-icon" style="background:#E6F1FB">⚙️</div>
+        <div class="repo-info">
+          <div class="repo-name">JAIJANYANI / Automated-Resume-Screening-System</div>
+          <div class="repo-desc">Hệ thống tự động screening CV với ML. Có sẵn dataset phân loại HR category. Phù hợp để HR dept tự dùng lọc CV nhân sự/hành chính và train thêm với JD chuẩn Việt Nam.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">ML</span><span class="badge b-amber">Dataset</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/jensjorisdecorte/Skill-Extraction-benchmark" target="_blank">
+        <div class="repo-icon" style="background:#EAF3DE">📏</div>
+        <div class="repo-info">
+          <div class="repo-name">jensjorisdecorte / Skill-Extraction-benchmark</div>
+          <div class="repo-desc">Benchmark dataset đánh giá hệ thống trích xuất skill theo ESCO. Gồm TECH, HOUSE, TECHWOLF subsets với skill spans được annotate. Dùng để đánh giá độ chính xác model HR skill extraction.</div>
+          <div class="repo-meta"><span class="badge b-blue">ESCO</span><span class="badge b-green">Benchmark</span><span class="badge b-gray">LLM</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/DivyaSharma0795/OpenIntro-Resume_Data-Analysis" target="_blank">
+        <div class="repo-icon" style="background:#FAEEDA">📊</div>
+        <div class="repo-info">
+          <div class="repo-name">DivyaSharma0795 / OpenIntro-Resume_Data-Analysis</div>
+          <div class="repo-desc">Dataset CV với fields: Industry, Job Title, Education, Skills, Years of Experience, Callback result. HR có thể dùng để train logistic regression dự đoán fit score cho từng vị trí tuyển dụng.</div>
+          <div class="repo-meta"><span class="badge b-green">R/Python</span><span class="badge b-blue">Logistic Regression</span><span class="badge b-amber">Open Data</span></div>
+        </div>
+      </a>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-num">TTF</div><div class="kpi-label">Time-to-fill</div></div>
+        <div class="kpi"><div class="kpi-num">Retention</div><div class="kpi-label">KPI giữ chân</div></div>
+        <div class="kpi"><div class="kpi-num">SHRM</div><div class="kpi-label">Chứng chỉ ưu tiên</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPT 5: R&D -->
+  <div id="dept-5" class="dept-card">
+    <div class="card">
+      <div class="card-header">
+        <div class="dept-icon" style="background:#EAF3DE">🔬</div>
+        <div><div class="card-title">Phòng Nghiên Cứu &amp; Phát Triển (R&amp;D)</div><div class="card-sub">Big Data · Lab · AutoCAD/SolidWorks · Python/R/SPSS</div></div>
+      </div>
+      <div class="skills-row">
+        <span class="skill-tag">Python / R / SPSS</span><span class="skill-tag">Big Data Analytics</span><span class="skill-tag">AutoCAD / SolidWorks</span><span class="skill-tag">Lab Equipment</span><span class="skill-tag">Statistical Analysis</span><span class="skill-tag">Patent Filing</span><span class="skill-tag">Time-to-market</span><span class="skill-tag">Kỹ sư/Thạc sĩ</span>
+      </div>
+      <div class="repos-label">Repositories được đề xuất</div>
+      <a class="repo-item" href="https://github.com/MIND-TechAI/MIND-tech-ontology" target="_blank">
+        <div class="repo-icon" style="background:#EAF3DE">🧬</div>
+        <div class="repo-info">
+          <div class="repo-name">MIND-TechAI / MIND-tech-ontology</div>
+          <div class="repo-desc">Ontology kỹ năng kỹ thuật với hierarchy đầy đủ cho Data Science, Engineering, Research. Có implied skills — "SolidWorks" implies "CAD", "3D Modeling". Phù hợp cho R&amp;D engineer matching.</div>
+          <div class="repo-meta"><span class="badge b-green">JSON</span><span class="badge b-blue">Hierarchy</span><span class="badge b-amber">Open Source</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/workforce-data-initiative/skills-ml" target="_blank">
+        <div class="repo-icon" style="background:#E6F1FB">🔭</div>
+        <div class="repo-info">
+          <div class="repo-name">workforce-data-initiative / skills-ml</div>
+          <div class="repo-desc">Dùng O*NET ontology với 32,000+ competencies cho ngành R&amp;D/Engineering. Có occupation clustering cho các nhóm kỹ sư chuyên ngành. Lọc được theo ngành (Biotech, Food Tech, Mechanical).</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">O*NET</span><span class="badge b-gray">NLP</span></div>
+        </div>
+      </a>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-num">TTM</div><div class="kpi-label">Time-to-market</div></div>
+        <div class="kpi"><div class="kpi-num">Patent</div><div class="kpi-label">KPI sáng chế</div></div>
+        <div class="kpi"><div class="kpi-num">MSc+</div><div class="kpi-label">Bằng cấp yêu cầu</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPT 6: IT -->
+  <div id="dept-6" class="dept-card">
+    <div class="card">
+      <div class="card-header">
+        <div class="dept-icon" style="background:#E6F1FB">💻</div>
+        <div><div class="card-title">Phòng Kỹ Thuật / Công Nghệ (IT)</div><div class="card-sub">Developer · Network · Security · IT Helpdesk</div></div>
+      </div>
+      <div class="skills-row">
+        <span class="skill-tag">Java / Python / C++</span><span class="skill-tag">SQL / Oracle</span><span class="skill-tag">AWS / Azure</span><span class="skill-tag">CCNA / CompTIA A+</span><span class="skill-tag">Network Security</span><span class="skill-tag">Troubleshooting</span><span class="skill-tag">Uptime SLA</span><span class="skill-tag">Bug Management</span>
+      </div>
+      <div class="repos-label">Repositories được đề xuất</div>
+      <a class="repo-item" href="https://github.com/MIND-TechAI/MIND-tech-ontology" target="_blank">
+        <div class="repo-icon" style="background:#E6F1FB">🖥</div>
+        <div class="repo-info">
+          <div class="repo-name">MIND-TechAI / MIND-tech-ontology</div>
+          <div class="repo-desc">Ontology kỹ năng IT toàn diện nhất: ProgrammingLanguage, Framework, Database, Cloud, DevOps, Cybersecurity. Xử lý synonyms (React.js = React). Tốt nhất cho IT CV screening.</div>
+          <div class="repo-meta"><span class="badge b-green">JSON</span><span class="badge b-blue">IT Focus</span><span class="badge b-amber">Synonyms</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/Rishit605/Resume-Analysis-NLP" target="_blank">
+        <div class="repo-icon" style="background:#EAF3DE">⚡</div>
+        <div class="repo-info">
+          <div class="repo-name">Rishit605 / Resume-Analysis-NLP</div>
+          <div class="repo-desc">Phân loại CV thành 25+ job categories dùng deep learning. Có category "Information-Technology". FastAPI backend + retraining endpoint. Phù hợp deploy production cho IT dept screening.</div>
+          <div class="repo-meta"><span class="badge b-green">FastAPI</span><span class="badge b-blue">TensorFlow</span><span class="badge b-amber">25+ categories</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/jensjorisdecorte/Skill-Extraction-benchmark" target="_blank">
+        <div class="repo-icon" style="background:#EEEDFE">🏆</div>
+        <div class="repo-info">
+          <div class="repo-name">jensjorisdecorte / Skill-Extraction-benchmark</div>
+          <div class="repo-desc">TECH subset được annotate chi tiết với ESCO skill spans từ IT JDs. Có SkillSpan dataset với hard/soft skill extraction. Chuẩn benchmark để đánh giá model extract IT skills từ CV.</div>
+          <div class="repo-meta"><span class="badge b-blue">ESCO</span><span class="badge b-green">TECH Subset</span><span class="badge b-gray">Benchmark</span></div>
+        </div>
+      </a>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-num">Uptime</div><div class="kpi-label">SLA uptime</div></div>
+        <div class="kpi"><div class="kpi-num">Ticket</div><div class="kpi-label">Helpdesk speed</div></div>
+        <div class="kpi"><div class="kpi-num">Bugs</div><div class="kpi-label">Post-release</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPT 7: San Xuat -->
+  <div id="dept-7" class="dept-card">
+    <div class="card">
+      <div class="card-header">
+        <div class="dept-icon" style="background:#FAEEDA">🏭</div>
+        <div><div class="card-title">Phòng Sản Xuất / Vận Hành (Production &amp; Operations)</div><div class="card-sub">ERP · MES · Lean · 5S · Kaizen · Just-In-Time</div></div>
+      </div>
+      <div class="skills-row">
+        <span class="skill-tag">ERP / MES</span><span class="skill-tag">Lean Manufacturing</span><span class="skill-tag">5S / Kaizen</span><span class="skill-tag">Just-In-Time</span><span class="skill-tag">PCCC Safety</span><span class="skill-tag">Ca kíp Management</span><span class="skill-tag">OTIF</span><span class="skill-tag">Kỹ sư Cơ khí</span>
+      </div>
+      <div class="repos-label">Repositories được đề xuất</div>
+      <a class="repo-item" href="https://github.com/anukalp-mishra/Resume-Screening" target="_blank">
+        <div class="repo-icon" style="background:#FAEEDA">🔧</div>
+        <div class="repo-info">
+          <div class="repo-name">anukalp-mishra / Resume-Screening</div>
+          <div class="repo-desc">Dataset resume với nhiều CV ngành Manufacturing, Mechanical Engineering, QA/QC. Gồm resume thực tế từ nhà máy, ERP implementation. Có thể dùng làm base training data cho Production dept.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">NLP</span><span class="badge b-amber">CSV Dataset</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/tabiya-tech/tabiya-esco-datasets-and-tools" target="_blank">
+        <div class="repo-icon" style="background:#E1F5EE">🗃</div>
+        <div class="repo-info">
+          <div class="repo-name">tabiya-tech / tabiya-esco-datasets-and-tools</div>
+          <div class="repo-desc">Bộ datasets và tools cho ESCO classification. Có occupations cho Manufacturing Managers, Production Planners, Industrial Engineers. CSV/SQL format, dễ integrate với HR system.</div>
+          <div class="repo-meta"><span class="badge b-blue">ESCO</span><span class="badge b-green">CSV/SQL</span><span class="badge b-gray">Tools</span></div>
+        </div>
+      </a>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-num">OTIF</div><div class="kpi-label">On-time delivery</div></div>
+        <div class="kpi"><div class="kpi-num">Defect%</div><div class="kpi-label">Tỷ lệ lỗi</div></div>
+        <div class="kpi"><div class="kpi-num">OEE</div><div class="kpi-label">Hiệu suất máy</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPT 8: QA/QC -->
+  <div id="dept-8" class="dept-card">
+    <div class="card">
+      <div class="card-header">
+        <div class="dept-icon" style="background:#EAF3DE">✅</div>
+        <div><div class="card-title">Phòng Quản Lý Chất Lượng (QA/QC)</div><div class="card-sub">ISO 9001 · HACCP · FSSC 22000 · Minitab · Test Cases</div></div>
+      </div>
+      <div class="skills-row">
+        <span class="skill-tag">ISO 9001 / 14001</span><span class="skill-tag">HACCP / FSSC 22000</span><span class="skill-tag">Minitab / Excel</span><span class="skill-tag">Control Charts</span><span class="skill-tag">Root Cause Analysis</span><span class="skill-tag">Test Cases Design</span><span class="skill-tag">SOP Development</span><span class="skill-tag">Bug Report</span>
+      </div>
+      <div class="repos-label">Repositories được đề xuất</div>
+      <a class="repo-item" href="https://github.com/AnasAito/SkillNER" target="_blank">
+        <div class="repo-icon" style="background:#EAF3DE">🔍</div>
+        <div class="repo-info">
+          <div class="repo-name">AnasAito / SkillNER</div>
+          <div class="repo-desc">Nhận diện kỹ năng QA/QC chuyên biệt như "ISO 9001", "HACCP", "root cause analysis", "test case design" từ văn bản tự nhiên trong CV. EMSI database có sẵn nhiều quality management skills.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">spaCy/NER</span><span class="badge b-amber">EMSI</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/noran-mohamed/Resume-Classification-Dataset" target="_blank">
+        <div class="repo-icon" style="background:#FAEEDA">📁</div>
+        <div class="repo-info">
+          <div class="repo-name">noran-mohamed / Resume-Classification-Dataset</div>
+          <div class="repo-desc">Dataset lớn từ nhiều nguồn, có thể extract CV QA Engineer/QC Inspector. Cần custom thêm QA category với từ khóa ISO, testing, audit, compliance. OCR đã xử lý sẵn.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-amber">OCR</span><span class="badge b-blue">Multi-source</span></div>
+        </div>
+      </a>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-num">RCA</div><div class="kpi-label">Root cause speed</div></div>
+        <div class="kpi"><div class="kpi-num">Return%</div><div class="kpi-label">Hàng bị trả về</div></div>
+        <div class="kpi"><div class="kpi-num">0 defect</div><div class="kpi-label">Mục tiêu lý tưởng</div></div>
+      </div>
+      <div class="note">💡 Hai ngành khác nhau: QC sản xuất (HACCP, ISO 22000) vs QC phần mềm (test case, bug report, regression). Cần train 2 model riêng biệt cho 2 track này.</div>
+    </div>
+  </div>
+
+  <!-- DEPT 9: Tai Chinh -->
+  <div id="dept-9" class="dept-card">
+    <div class="card">
+      <div class="card-header">
+        <div class="dept-icon" style="background:#EEEDFE">💰</div>
+        <div><div class="card-title">Phòng Tài Chính - Kế Toán (Finance &amp; Accounting)</div><div class="card-sub">MISA ERP · CPA/ACCA · Luật thuế · Dự báo tài chính</div></div>
+      </div>
+      <div class="skills-row">
+        <span class="skill-tag">MISA / ERP</span><span class="skill-tag">Luật thuế VN</span><span class="skill-tag">CPA / ACCA / CIA</span><span class="skill-tag">Chuẩn mực kế toán</span><span class="skill-tag">Financial Forecasting</span><span class="skill-tag">Risk Management</span><span class="skill-tag">Chứng chỉ KT trưởng</span><span class="skill-tag">Internal Audit</span>
+      </div>
+      <div class="repos-label">Repositories được đề xuất</div>
+      <a class="repo-item" href="https://github.com/duyet/skill2vec-dataset" target="_blank">
+        <div class="repo-icon" style="background:#EEEDFE">📈</div>
+        <div class="repo-info">
+          <div class="repo-name">duyet / skill2vec-dataset</div>
+          <div class="repo-desc">Dataset có skills tài chính: "ICWA, Accounting Packages, MBA Finance, CA, BCOM, Tally". Có embedding semantic cho finance skills. Adapt được cho kế toán Việt Nam (MISA, VAS standards).</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">Word2Vec</span><span class="badge b-amber">Finance Labels</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/Rishit605/Resume-Analysis-NLP" target="_blank">
+        <div class="repo-icon" style="background:#FBEAF0">💹</div>
+        <div class="repo-info">
+          <div class="repo-name">Rishit605 / Resume-Analysis-NLP</div>
+          <div class="repo-desc">Có category "Finance" và "Accountant" trong 25+ categories. Deep learning classifier với retraining support. Fine-tune thêm từ khóa MISA, VAS, Chứng chỉ kế toán trưởng cho thị trường VN.</div>
+          <div class="repo-meta"><span class="badge b-green">FastAPI</span><span class="badge b-blue">TensorFlow</span><span class="badge b-amber">Finance cat.</span></div>
+        </div>
+      </a>
+      <a class="repo-item" href="https://github.com/2dubs/Job-Skills-Extraction" target="_blank">
+        <div class="repo-icon" style="background:#FAEEDA">🔎</div>
+        <div class="repo-info">
+          <div class="repo-name">2dubs / Job-Skills-Extraction</div>
+          <div class="repo-desc">NMF + TF-IDF để phát hiện nhóm kỹ năng ẩn trong JD. Phù hợp để xây custom finance skill cluster cho MISA/SAP/ERP. Ghi chú: Finance/Accounting cần data riêng để tách khỏi Tech.</div>
+          <div class="repo-meta"><span class="badge b-green">Python</span><span class="badge b-blue">NMF/TF-IDF</span><span class="badge b-gray">Customizable</span></div>
+        </div>
+      </a>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-num">CPA</div><div class="kpi-label">Chứng chỉ cao nhất</div></div>
+        <div class="kpi"><div class="kpi-num">ACCA</div><div class="kpi-label">Ưu tiên quốc tế</div></div>
+        <div class="kpi"><div class="kpi-num">MISA</div><div class="kpi-label">Software VN phổ biến</div></div>
+      </div>
+      <div class="note">💡 Kế toán Việt Nam có đặc thù riêng (VAS, MISA, luật thuế TNCN). Cần bổ sung từ khóa tiếng Việt vào training data để model nhận diện chính xác hơn so với chuẩn quốc tế.</div>
+    </div>
+  </div>
+
+  <hr class="section-divider">
+
+  <div class="strategy-section">
+    <h2>Chiến lược triển khai 3 tầng</h2>
+    <div class="tier">
+      <div class="tier-label">Tầng 1 — Nền tảng Ontology (toàn bộ 10 phòng ban)</div>
+      <div class="tier-content">
+        <p><strong>workforce-data-initiative/skills-ml</strong> — Backbone NLP/ML, tích hợp O*NET 32,000+ competencies.</p>
+        <p><strong>KonstantinosPetrakis/esco-skill-extractor</strong> — Transformer + ESCO taxonomy, peer-reviewed 2025.</p>
+        <p><strong>AnasAito/SkillNER</strong> — Extract skill từ văn bản tự nhiên dùng spaCy + EMSI. Plug-and-play.</p>
+      </div>
+    </div>
+    <div class="tier">
+      <div class="tier-label">Tầng 2 — Dataset Resume theo ngành (fine-tune)</div>
+      <div class="tier-content">
+        <p><strong>raghavendranhp/Resume_screening</strong> — CSV phân loại theo job category, TF-IDF + KNN classifier.</p>
+        <p><strong>noran-mohamed/Resume-Classification-Dataset</strong> — Dataset lớn, OCR sẵn, nhiều ngành hiếm.</p>
+        <p><strong>duyet/skill2vec-dataset</strong> — Skill embedding từ hàng chục nghìn JD thực tế, có Finance/Sales/Marketing.</p>
+      </div>
+    </div>
+    <div class="tier">
+      <div class="tier-label">Tầng 3 — Benchmark &amp; Evaluation (đo chất lượng model)</div>
+      <div class="tier-content">
+        <p><strong>jensjorisdecorte/Skill-Extraction-benchmark</strong> — Chuẩn benchmark ESCO cho skill extraction accuracy.</p>
+        <p><strong>maudgrol/Data_driven_skills_taxonomy</strong> — Visualize skill clusters để kiểm tra model hiểu đúng domain.</p>
+      </div>
+    </div>
+    <div class="warn-box">
+      ⚠️ <strong>Lưu ý thị trường Việt Nam:</strong> Tất cả repositories trên dựa trên dữ liệu quốc tế. Cần bổ sung keyword mapping tiếng Việt (MISA, BHXH, VAS, Luật lao động VN, WOWCRM...) và augment thêm CV thực tế từ thị trường VN — đây là bước quan trọng nhất để model lọc CV chính xác theo chuẩn JD Việt Nam.
+    </div>
+  </div>
+
+  <footer>
+    <p>Phân tích dựa trên: Bộ Skill · Chi tiết tiêu chuẩn JD · Xây dựng Mô tả Công việc Chuẩn mực Việt Nam</p>
+  </footer>
+</div>
+
+<script>
+function show(i) {
+  document.querySelectorAll('.dept-card').forEach((d, j) => d.classList.toggle('show', j === i));
+  document.querySelectorAll('.tab').forEach((t, j) => t.classList.toggle('active', j === i));
+}
+</script>
+</body>
+</html>

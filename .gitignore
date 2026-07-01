@@ -1,0 +1,42 @@
+# Dependencies & build output
+node_modules/
+dist/
+.venv/
+vendor/
+
+# Env & secrets
+.env
+.env.*
+_login.json
+
+# OS / editor junk
+.DS_Store
+__MACOSX/
+Thumbs.db
+
+# Archives & backups (không commit file nén)
+*.zip
+*.tar
+*.tar.gz
+
+# Logs & temp files
+*.log
+_build.log
+*.output
+stats_resp.json
+
+# Agent / tooling artifacts
+.agents/
+..agents/
+
+# Python caching & virtualenvs
+__pycache__/
+*.pyc
+.venv/
+env/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+*.db
+*.sqlite
+

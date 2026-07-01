@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  HRM SYSTEM — FORWARD PLAN / BACKLOG (các công việc tiếp theo)
+  Mục tiêu sản phẩm: HRM SaaS đa người thuê (multi-tenant), kiểu Zoho People, VN-first rồi quốc tế.
+  Đọc kèm: MULTITENANT_MIGRATION_PLAN.md, MT_tenant_classification.md, HRM_Implementation_Handoff.xml
+  Quy ước verify: backend test thật bằng curl + psql qua Docker; frontend chỉ verify tĩnh (host không có Node/Vite).
+-->
+<hrm_plan version="1.0" generated_on="2026-06-23" horizon="Epic 0 finish -> Epic 1 -> Epic 2 -> later">
+
+  <!-- ============================================================ -->
+  <current_state>
+    <done id="MVP-fixes">Backend: news-read/policy-ack persist thật, AI scoring rule-based, /dashboard/stats + /reports/generate, /users + ẩn cột bí mật. Frontend đã nối: recruitment flow, contract activate/terminate, leave cancel, communication, dashboard stats, report engine, 3 màn hình mới (Requests/Overtime/ShiftSwaps), RBAC + auth.</done>
+    <done id="dashboard-demo">Dashboard có dữ liệu demo + biểu đồ 30 ngày (attendance_trend trong /dashboard/stats).</done>
+    <done id="multitenant-A-D">Multi-tenant: tenants + legal_entities; tenant_id trên 88 bảng (+legal_entity_id trên 30); NOT NULL + FK + 4 composite unique; App\Support\TenantContext + trait App\Models\Concerns\BelongsToTenant (auto-stamp + global read scope); HrmAuth set context. Cách ly cross-tenant ĐÃ VERIFIED. Migrations 2026_06_24_000001/2/3.</done>
+    <done id="provisioning-rbac">Tenant provisioning (App\Services\TenantProvisioner + PlatformController + /platform/tenants) + super-admin vs tenant-admin (employees.is_super_admin, middleware platform.admin, impersonation qua header X-Tenant-Id). Migration 2026_06_24_000004. ĐÃ VERIFIED.</done>
+    <baseline>DB ở baseline: 1 tenant (Default Company), 1 legal_entity, 21 employees. Tài khoản super-admin test: an.nguyen@company.com / test1234.</baseline>
+    <not_runtime_verified>Toàn bộ thay đổi Frontend (Vue) chỉ verify tĩnh — CHƯA chạy npm run build/dev ở môi trường này.</not_runtime_verified>
+  </current_state>
+
+  <!-- ============================================================ -->
+  <conventions>
+    <env>Laravel 11 trong Docker 'hrm_laravel_php' (mount Doan2_v2/Doan2 -> /var/www/html, edit PHP live). Postgres 'hrm_postgres' (db hrm/hrm/secret). API http://localhost/api/v1. Dùng PowerShell (Bash không ra output trên host). Sau khi sửa: php artisan optimize:clear; nếu không cập nhật: docker restart hrm_laravel_php.</env>
+    <response_envelope>{ status, message, data }. List: data.items + data.pagination.</response_envelope>
+    <tenancy>Ghi: dùng TenantContext::stamp($payload, $entityScoped) hoặc model trait BelongsToTenant (entity model khai báo const TENANT_ENTITY_SCOPED=true). Đọc xuyên tenant (platform): Model::withoutTenantScope(). Route mới đặt TRONG nhóm hrm.auth và TRƯỚC catch-all /{resource}. PG: bind bool dùng DB::raw('true').</tenancy>
+    <verify_pattern>Mỗi task backend: implement -> verify (curl + psql, gồm test cách ly tenant nếu liên quan) -> fix loop. Có thể chạy bằng workflow nhiều subagent như các epic trước.</verify_pattern>
+  </conventions>
+
+  <!-- ============================================================ -->
+  <!-- EPIC 0 — HOÀN THIỆN NỀN TẢNG ENTERPRISE (phần còn lại)        -->
+  <!-- ============================================================ -->
+  <epic id="E0" title="Hoàn thiện nền tảng multi-tenant + enterprise" status="in-progress">
+    <task id="E0.5" title="Audit log thật (who-changed-what)" priority="high" effort="M" depends_on="multitenant-A-D">
+      <scope>Bảng audit_logs (tenant_id, actor_employee_id, action create|update|delete, table_name, record_id, changes jsonb {before,after}, ip_address, created_at). Eloquent observer/trait tự ghi audit khi model thay đổi; bao phủ cả write thô trong GenericResourceController. Endpoint GET /audit-logs (tenant-scoped, filter theo table/record/actor). Thay activityLogs (đang chỉ log đăng nhập) đọc từ audit_logs.</scope>
+      <files>app/Models/Concerns/Auditable.php (hoặc observer), migration tạo audit_logs (tenant-scoped), app/Http/Controllers/Api/AuditLogController.php, routes/api.php, sửa AuthController::activityLogs.</files>
+      <acceptance>Tạo/sửa/xóa một entity bất kỳ -> sinh 1 dòng audit có before/after + actor + tenant_id đúng. GET /audit-logs chỉ trả log của tenant hiện tại. Cross-tenant không lẫn.</acceptance>
+      <verify>curl tạo/sửa 1 leave-type -> psql kiểm audit_logs có dòng tương ứng tenant_id=1; login tenant khác không thấy.</verify>
+    </task>
+
+    <task id="E0.6" title="Multi-entity (đa chi nhánh) — quản lý pháp nhân" priority="high" effort="M" depends_on="provisioning-rbac">
+      <scope>CRUD legal_entities trong 1 tenant: GET/POST/PATCH/DELETE /legal-entities (tenant-scoped). Cho phép tạo nhân viên/hợp đồng/kỳ lương target một legal_entity cụ thể (hiện mặc định entity 1). Validate legal_entity thuộc đúng tenant. Guard xóa entity còn nhân viên/hợp đồng.</scope>
+      <files>app/Models/LegalEntity.php (+ Tenant.php), app/Http/Controllers/Api/LegalEntityController.php, routes/api.php, cập nhật EmployeeController/ContractController/PayrollController nhận legal_entity_id.</files>
+      <acceptance>Tạo &gt;1 pháp nhân dưới 1 tenant; tạo NV gắn pháp nhân B; đọc bị cô lập theo tenant; không tạo được NV với legal_entity của tenant khác.</acceptance>
+      <verify>curl tạo entity thứ 2; tạo employee legal_entity_id=2; psql xác nhận; thử legal_entity_id của tenant khác -> 422/403.</verify>
+    </task>
+
+    <task id="E0.7" title="Frontend: platform admin + tenant/entity + impersonation" priority="medium" effort="L" depends_on="E0.6">
+      <scope>Vue: màn Platform (danh sách + tạo tenant), màn quản lý pháp nhân, picker pháp nhân trên form NV/HĐ/lương, hiển thị audit log. axiosClient: cho super-admin gắn header X-Tenant-Id khi impersonate; điều hướng theo is_super_admin. Service mới: platformService, legalEntityService, auditLogService(update).</scope>
+      <files>client/src/services/*.js, client/src/views/Platform*.vue, LegalEntities.vue, AuditLog.vue, router/index.js, Layout.vue, axiosClient.js.</files>
+      <acceptance>Static: path/verb khớp backend; node --check service .js pass; route + nav đăng ký. (Runtime cần npm run dev — ngoài môi trường này.)</acceptance>
+      <verify>Static review + node --check. Người dùng tự chạy npm run dev kiểm UI.</verify>
+    </task>
+
+    <task id="E0.8" title="Rà soát cách ly đọc ở các controller chuyên dụng" priority="high" effort="S" depends_on="multitenant-A-D">
+      <scope>Audit Employee/Contract/Leave/Attendance/Payroll/Recruitment/RequestApproval controllers: mọi truy vấn DB::table() thô (không qua model) PHẢI có điều kiện tenant_id. Model Eloquent đã có global scope nên find()/get() an toàn; chỉ lo các raw query + join phụ. report_templates.sql_query phải ép tenant khi execute.</scope>
+      <acceptance>Không có endpoint nào trả dữ liệu xuyên tenant. Test: tạo dữ liệu tenant 2, login tenant 1 gọi mọi list endpoint -> không lộ.</acceptance>
+      <verify>workflow quét + test cross-tenant trên từng nhóm endpoint.</verify>
+    </task>
+  </epic>
+
+  <!-- ============================================================ -->
+  <!-- EPIC 1 — CHUẨN HÓA CHẤM CÔNG & NGHỈ PHÉP (policy-as-config)   -->
+  <!-- ============================================================ -->
+  <epic id="E1" title="Chuẩn hóa Chấm công &amp; Nghỉ phép theo luật VN" status="planned" depends_on="E0">
+    <task id="E1.1" title="Cấu hình ca &amp; lịch làm việc (per tenant/entity)" priority="high" effort="M">
+      <scope>Chuẩn hóa shift_types, shift_schedules, shift_assignments theo tenant/entity. Roster: gán ca theo NV/ngày. Endpoint quản lý ca + lịch.</scope>
+      <acceptance>Tạo ca, gán roster theo entity; dữ liệu tenant-scoped.</acceptance>
+    </task>
+    <task id="E1.2" title="Chấm công + điều chỉnh công + tính muộn/OT" priority="high" effort="L" depends_on="E1.1">
+      <scope>Check-in/out (geo/IP optional), đơn điều chỉnh công (regularization), tự tính late_minutes/OT theo chính sách ca. OT cap 200h/năm + hệ số 150/200/300%. QUYẾT ĐỊNH: xóa hay nối AttendanceAsyncController/AttendanceService/ProcessAttendanceLog (code chết).</scope>
+      <acceptance>Check-in muộn tính đúng phút muộn; OT vượt trần bị cảnh báo; đơn điều chỉnh duyệt được.</acceptance>
+    </task>
+    <task id="E1.3" title="Engine nghỉ phép theo luật VN" priority="high" effort="L" depends_on="E0">
+      <scope>Loại phép per tenant; tích lũy 12 ngày/năm + thâm niên (seniority_leave_history); carryover; lịch lễ VN per entity (holidays); sổ cái số dư (leave_transactions). Trừ/hoàn quỹ khi duyệt/hủy (đã có một phần ở LeaveController).</scope>
+      <acceptance>Số dư phép tính đúng theo thâm niên + carryover; lễ VN loại khỏi ngày phép; duyệt/hủy cập nhật ledger.</acceptance>
+    </task>
+    <task id="E1.4" title="Tổng hợp công tháng -> đầu vào payroll" priority="high" effort="M" depends_on="E1.2">
+      <scope>salary_attendance_summary: tổng công/muộn/OT/nghỉ theo NV theo kỳ, theo legal_entity. Là nguồn cho Epic 2.</scope>
+      <acceptance>Chốt 1 kỳ -> sinh summary đúng số liệu chấm công.</acceptance>
+    </task>
+  </epic>
+
+  <!-- ============================================================ -->
+  <!-- EPIC 2 — PAYROLL ENGINE VN (theo từng pháp nhân)             -->
+  <!-- ============================================================ -->
+  <epic id="E2" title="Payroll engine tuân thủ VN" status="planned" depends_on="E1">
+    <task id="E2.1" title="Cấu trúc lương per NV/HĐ" priority="high" effort="M">
+      <scope>salary_components/allowances/deductions gán theo NV/HĐ; lương cơ bản, phụ cấp, khấu trừ (đã có bảng).</scope>
+    </task>
+    <task id="E2.2" title="Engine thuế TNCN (PIT)" priority="high" effort="L">
+      <scope>Lũy tiến 7 bậc; giảm trừ bản thân 11.000.000 + người phụ thuộc 4.400.000 (dependents). Tính thuế theo thu nhập chịu thuế.</scope>
+      <acceptance>Bộ case thử (vd thu nhập 20tr/40tr + n phụ thuộc) ra đúng thuế theo biểu.</acceptance>
+    </task>
+    <task id="E2.3" title="Bảo hiểm bắt buộc (BHXH/BHYT/BHTN)" priority="high" effort="M">
+      <scope>NLĐ: BHXH 8% + BHYT 1.5% + BHTN 1%; DN: ~21.5% + phí công đoàn 2%. Trần đóng (20x lương cơ sở), lương tối thiểu vùng (4 vùng).</scope>
+    </task>
+    <task id="E2.4" title="Chạy bảng lương + payslip + chốt kỳ" priority="high" effort="L" depends_on="E1.4,E2.1,E2.2,E2.3">
+      <scope>Theo kỳ + pháp nhân: gather summary + components -> gross -> deductions (PIT+BH) -> net; salary_breakdowns; payslip in được; close/lock (closePeriod đã có).</scope>
+      <acceptance>Chạy 1 kỳ cho 1 entity -> net khớp tính tay; payslip đầy đủ dòng; chốt khóa sửa.</acceptance>
+    </task>
+    <task id="E2.5" title="Báo cáo tuân thủ" priority="medium" effort="M">
+      <scope>Bảng kê BHXH, quyết toán thuế TNCN, export Excel/PDF theo pháp nhân.</scope>
+    </task>
+  </epic>
+
+  <!-- ============================================================ -->
+  <!-- GIAI ĐOẠN SAU (P2+)                                           -->
+  <!-- ============================================================ -->
+  <epic id="E3plus" title="Mở rộng (sau khi lõi VN ổn định)" status="future">
+    <task id="P.perf" title="Performance / OKR / đánh giá 360" effort="L"/>
+    <task id="P.lms" title="LMS / đào tạo / chứng chỉ" effort="L"/>
+    <task id="P.ats" title="ATS nâng cao + career page" effort="M"/>
+    <task id="P.engage" title="Khảo sát / feed nội bộ" effort="M"/>
+    <task id="P.mobile" title="Mobile/PWA (chấm công geo, đơn từ)" effort="L"/>
+    <task id="P.i18n" title="i18n + đa tiền tệ đầy đủ + data residency + SSO/SAML" effort="L" note="Bước international hóa"/>
+  </epic>
+
+  <!-- ============================================================ -->
+  <tech_debt>
+    <item id="TD1" priority="medium">Frontend chưa verify runtime — chạy npm run build/dev ở client/ và sửa lỗi compile (đặc biệt sau khi xóa userService).</item>
+    <item id="TD2" priority="low">Composite uniques bị hoãn: ~85 legacy_id_unique + ~33 cột *_code app-enforced -> chuyển (tenant_id, col) cho sạch (non-blocking).</item>
+    <item id="TD3" priority="medium">report_templates.sql_query chứa SQL thô -> ép tenant scope lúc execute (rủi ro lộ dữ liệu xuyên tenant).</item>
+    <item id="TD4" priority="low">Quyết định số phận AttendanceAsyncController/AttendanceService/ProcessAttendanceLog (code chết) — xử lý trong E1.2.</item>
+    <item id="TD5" priority="low">Đồng bộ backend từ Doan2_v2/Doan2 (untracked) sang repo/môi trường deploy thật nếu khác.</item>
+    <item id="TD6" priority="medium">forgot/reset-password chưa gửi email (token chỉ nằm DB).</item>
+  </tech_debt>
+
+  <!-- ============================================================ -->
+  <recommended_sequence>
+    <step order="1" ref="E0.5">Audit log (nhanh, enterprise core, hữu ích mọi epic sau).</step>
+    <step order="2" ref="E0.8">Rà soát cách ly đọc controller chuyên dụng (bảo mật — nên làm sớm).</step>
+    <step order="3" ref="E0.6">Multi-entity backend.</step>
+    <step order="4" ref="E0.7">Frontend platform/entity (sau khi backend ổn).</step>
+    <step order="5" ref="E1.3">Engine nghỉ phép VN (độc lập, làm song song được).</step>
+    <step order="6" ref="E1.1,E1.2,E1.4">Chấm công chuẩn hóa -> tổng hợp công.</step>
+    <step order="7" ref="E2.1,E2.2,E2.3,E2.4,E2.5">Payroll VN.</step>
+    <step order="8" ref="E3plus">Mở rộng + international.</step>
+  </recommended_sequence>
+
+  <instructions_for_executor>
+    <note>Mỗi task backend: dùng workflow implement -> verify(curl+psql, gồm test cross-tenant) -> fix, như các epic trước. Giữ envelope {status,message,data}, tenant-stamp mọi write, route mới đặt trước catch-all.</note>
+    <note>Trước khi siết ràng buộc DB (NOT NULL/unique), đảm bảo tầng app đã ghi đủ dữ liệu (bài học Phase C: app-layer trước, constraint sau).</note>
+    <note>Frontend chỉ verify tĩnh ở đây; đánh dấu rõ phần cần người dùng chạy npm run dev/build để xác nhận runtime.</note>
+  </instructions_for_executor>
+
+</hrm_plan>

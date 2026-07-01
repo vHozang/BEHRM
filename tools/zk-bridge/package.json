@@ -1,0 +1,9 @@
+{
+  "name": "hrm-zk-bridge",
+  "version": "1.0.0",
+  "description": "Cầu nối máy chấm công Wise Eye / ZKTeco (TCP 4370) → HRM device-punch API",
+  "type": "commonjs",
+  "main": "bridge.js",
+  "scripts": { "start": "node bridge.js" },
+  "dependencies": { "node-zklib": "^0.2.14" }
+}

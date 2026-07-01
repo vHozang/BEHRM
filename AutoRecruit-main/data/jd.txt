@@ -1,0 +1,4 @@
+Backend Python Developer
+Must have: Python, FastAPI, SQL, Docker
+Nice to have: NLP, Sentence-Transformers, Linux
+Experience: 2+ years

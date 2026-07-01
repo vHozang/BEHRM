@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hrm-fe",
+      "runtimeExecutable": "C:\\Users\\Lenovo\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+      "runtimeArgs": ["D:\\HRM-System-2\\node_modules\\vite\\bin\\vite.js", "--config", "D:\\HRM-System-2\\vite.preview.config.mjs"],
+      "port": 5050,
+      "autoPort": false
+    }
+  ]
+}

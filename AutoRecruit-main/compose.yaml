@@ -1,0 +1,82 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: resume-backend
+    ports:
+      - "8000:8000"
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      EMBED_MODEL: mxbai-embed-large
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  trainer:
+    build:
+      context: .
+      dockerfile: training/Dockerfile.train
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: >
+      sh -lc "
+      python training/prepare_training_data.py
+      --input ./training/data/train_data.json
+      --output ./training/data/train_data.json
+      --max-triplets-per-dept 12
+      &&
+      python training/train.py
+      --data-path ./training/data/train_data.json
+      --output-path ./model_output/mxbai-cv-tuned
+      --loss-type triplet
+      --epochs 4
+      --batch-size 16
+      --warmup-steps 100
+      "
+    profiles:
+      - train
+
+  ranker:
+    build:
+      context: .
+      dockerfile: training/Dockerfile.train
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command:
+      - python
+      - training/rank_cvs.py
+      - --model-path
+      - ./model_output/mxbai-cv-tuned
+      - --jd-text
+      - ${JD_TEXT:-}
+      - --jd-file
+      - ./data/jd.txt
+      - --cv-dir
+      - ./data
+      - --output-file
+      - ./data/cv_ranking.json
+    profiles:
+      - rank
+
+volumes:
+  ollama_data:
+
+networks:
+  default:
+    name: doan2_hrm_network
+    external: true

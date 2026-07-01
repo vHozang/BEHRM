@@ -1,0 +1,18 @@
+FROM python:3.10-slim
+
+COPY training/requirements-train.txt /tmp/requirements-train.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-train.txt
+
+WORKDIR /app
+
+COPY training/train.py /app/training/train.py
+COPY training/prepare_training_data.py /app/training/prepare_training_data.py
+COPY training/rank_cvs.py /app/training/rank_cvs.py
+COPY training/data/train_data.json /app/training/data/train_data.json
+COPY training/data/sources_jd_standard.docx /app/training/data/sources_jd_standard.docx
+COPY training/data/sources_github_repos_skill_cv_training.docx /app/training/data/sources_github_repos_skill_cv_training.docx
+COPY training/data/sources_department_skill_repos.html /app/training/data/sources_department_skill_repos.html
+COPY training/data/sources_jd_department_details.docx /app/training/data/sources_jd_department_details.docx
+COPY training/data/sources_skill_set.docx /app/training/data/sources_skill_set.docx
+
+CMD ["python", "training/train.py", "--data-path", "./training/data/train_data.json", "--output-path", "./mxbai-cv-tuned"]

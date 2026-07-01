@@ -1,0 +1,251 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CV - JD Fit Checker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-top: #f4f6fb;
+        --bg-bottom: #dde8ff;
+        --card: #ffffff;
+        --ink: #10213f;
+        --soft: #4f6486;
+        --line: #b7c8ea;
+        --brand: #0f5fff;
+        --brand-dark: #0a46b8;
+        --ok: #0f7a31;
+        --warn: #8a5a0a;
+        --err: #a1153f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 8% 5%, #ffffffcc, transparent 36%),
+          radial-gradient(circle at 90% 0%, #b3ceff99, transparent 34%),
+          linear-gradient(160deg, var(--bg-top), var(--bg-bottom));
+        min-height: 100vh;
+      }
+
+      .wrap {
+        width: min(780px, 94vw);
+        margin: 34px auto;
+      }
+
+      .panel {
+        background: var(--card);
+        border: 2px solid var(--ink);
+        border-radius: 14px;
+        padding: 18px;
+        box-shadow: 0 16px 40px #10213f1f;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.4rem, 2.8vw, 2rem);
+      }
+
+      .sub {
+        margin: 8px 0 16px;
+        color: var(--soft);
+      }
+
+      label {
+        display: block;
+        margin: 14px 0 6px;
+        font-weight: 500;
+      }
+
+      input,
+      textarea,
+      button {
+        width: 100%;
+        border: 2px solid var(--line);
+        border-radius: 10px;
+        padding: 11px;
+        font: inherit;
+        background: #fff;
+      }
+
+      textarea {
+        min-height: 130px;
+        resize: vertical;
+      }
+
+      input:focus,
+      textarea:focus {
+        outline: none;
+        border-color: var(--brand);
+      }
+
+      button {
+        margin-top: 14px;
+        font-weight: 700;
+        color: #fff;
+        background: linear-gradient(135deg, var(--brand), var(--brand-dark));
+        border-color: #0a3b98;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: wait;
+      }
+
+      .result {
+        margin-top: 18px;
+        border: 2px solid var(--line);
+        border-radius: 12px;
+        background: #f7faff;
+        padding: 14px;
+      }
+
+      .score {
+        margin: 2px 0 6px;
+        font-size: clamp(2rem, 5vw, 3rem);
+        line-height: 1;
+        font-weight: 700;
+      }
+
+      .fit {
+        margin: 0;
+        font-weight: 700;
+      }
+
+      .fit.ok {
+        color: var(--ok);
+      }
+
+      .fit.warn {
+        color: var(--warn);
+      }
+
+      .fit.err {
+        color: var(--err);
+      }
+
+      .meta {
+        margin: 8px 0 0;
+        color: var(--soft);
+      }
+
+      .status {
+        min-height: 20px;
+        margin-top: 10px;
+        color: var(--soft);
+      }
+
+      .status.err {
+        color: var(--err);
+      }
+
+      .subbox {
+        margin-top: 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        padding: 10px;
+      }
+
+      .subbox h3 {
+        margin: 0 0 8px;
+        font-size: 0.98rem;
+      }
+
+      .subbox ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+
+      .subbox li {
+        margin: 6px 0;
+        word-break: break-word;
+      }
+
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.78rem;
+        border: 1px solid var(--line);
+        color: var(--soft);
+        margin-left: 6px;
+      }
+
+      details {
+        margin-top: 12px;
+      }
+
+      pre {
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 10px;
+        font: 12px/1.45 "IBM Plex Mono", monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="panel">
+        <h1>CV - JD Fit Checker</h1>
+        <p class="sub">Upload 1 CV va nhap JD de lay diem phu hop.</p>
+
+        <label for="cv-file">CV (.pdf/.docx) - co the chon nhieu file</label>
+        <input id="cv-file" type="file" accept=".pdf,.docx" multiple />
+
+        <label for="jd-text">Job Description (JD)</label>
+        <textarea id="jd-text" placeholder="Paste JD vao day..."></textarea>
+
+        <label for="top-k">Top K ket qua (khi upload nhieu CV)</label>
+        <input id="top-k" type="number" min="1" value="10" />
+
+        <button id="btn-check">Cham diem phu hop</button>
+        <div id="status" class="status"></div>
+
+        <section id="result" class="result" hidden>
+          <p class="meta">Ket qua phu hop</p>
+          <p id="score" class="score">0%</p>
+          <p id="fit" class="fit">Chua co du lieu</p>
+          <p id="candidate-meta" class="meta"></p>
+          <p id="project-score-meta" class="meta"></p>
+          <p id="link-mode-meta" class="meta"></p>
+
+          <div class="subbox">
+            <h3>Project links tu CV</h3>
+            <ul id="project-links-list">
+              <li>Chua co du lieu.</li>
+            </ul>
+          </div>
+
+          <div class="subbox">
+            <h3>Ranking (batch mode)</h3>
+            <ul id="batch-ranking-list">
+              <li>Chua co du lieu.</li>
+            </ul>
+          </div>
+        </section>
+
+        <details>
+          <summary>Chi tiet JSON</summary>
+          <pre id="raw-json">{}</pre>
+        </details>
+      </section>
+    </main>
+    <script src="/static/main.js"></script>
+  </body>
+</html>

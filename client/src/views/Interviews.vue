@@ -1,0 +1,322 @@
+<template>
+  <div class="space-y-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-foreground">Lịch Phỏng Vấn</h1>
+        <p class="text-muted-foreground mt-1">Quản lý các buổi phỏng vấn và đánh giá năng lực ứng viên</p>
+      </div>
+      <BaseButton @click="openCreateModal">+ Lên lịch phỏng vấn</BaseButton>
+    </div>
+
+    <!-- Table Card -->
+    <BaseCard>
+      <BaseTable
+        :columns="[
+          { key: 'candidate', label: 'Ứng viên' },
+          { key: 'interview_date', label: 'Thời gian' },
+          { key: 'interviewer', label: 'Hội đồng phỏng vấn' },
+          { key: 'location', label: 'Địa điểm / Link' },
+          { key: 'result', label: 'Đánh giá / Trạng thái' }
+        ]"
+        :data="interviews"
+      >
+        <template #cell-candidate="{ item }">
+          <div class="font-medium text-foreground">{{ item.candidate_name || `Ứng viên #${item.candidate_id}` }}</div>
+          <div class="text-xs text-muted-foreground">{{ item.position_title || 'Vị trí ứng tuyển' }}</div>
+        </template>
+
+        <template #cell-interview_date="{ item }">
+          <div class="font-semibold text-primary text-sm">{{ formatDateTime(item.interview_date) }}</div>
+        </template>
+
+        <template #cell-interviewer="{ item }">
+          <span>{{ item.interviewer_name || item.interviewer || '-' }}</span>
+        </template>
+
+        <template #cell-location="{ item }">
+          <span v-if="isLink(item.location)">
+            <a :href="item.location" target="_blank" class="text-blue-500 hover:underline flex items-center gap-1 text-xs">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+              Online Meeting
+            </a>
+          </span>
+          <span v-else class="text-xs text-muted-foreground">{{ item.location || '-' }}</span>
+        </template>
+
+        <template #cell-result="{ item }">
+          <div class="flex flex-col gap-1 items-start">
+            <BaseBadge :variant="item.status === 'passed' ? 'success' : (item.status === 'failed' ? 'destructive' : 'warning')">
+              {{ item.status === 'passed' ? 'Đạt phỏng vấn' : (item.status === 'failed' ? 'Không đạt' : 'Chờ phỏng vấn') }}
+            </BaseBadge>
+            <span v-if="item.result_note" class="text-[10px] text-muted-foreground line-clamp-1 max-w-[150px]" :title="item.result_note">
+              {{ item.result_note }}
+            </span>
+          </div>
+        </template>
+
+        <template #actions="{ item }">
+          <div class="flex gap-1">
+            <button
+              @click="editItem(item)"
+              class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+            >
+              Sửa / Đánh giá
+            </button>
+            <button
+              @click="openManagerReview(item)"
+              class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-accent/40 text-foreground hover:bg-accent/60 transition-colors"
+            >
+              Duyệt quản lý
+            </button>
+            <button 
+              @click="deleteItem(item.id)" 
+              class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+            >
+              Xóa
+            </button>
+          </div>
+        </template>
+      </BaseTable>
+    </BaseCard>
+
+    <!-- Create/Edit Modal -->
+    <BaseModal v-model="showModal" :title="form.id ? 'Đánh giá & cập nhật lịch phỏng vấn' : 'Lên lịch phỏng vấn mới'">
+      <div class="space-y-4">
+        <div v-if="!form.id">
+          <label class="block text-sm font-medium text-foreground mb-1">Ứng viên <span class="text-destructive">*</span></label>
+          <select 
+            v-model="form.candidate_id" 
+            class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            required
+          >
+            <option value="">-- Chọn ứng viên --</option>
+            <option v-for="c in candidates" :key="c.id" :value="c.id">{{ c.full_name }} ({{ c.recruitment_position_title || 'JD' }})</option>
+          </select>
+        </div>
+        <div v-else class="p-3 bg-muted rounded-lg">
+          <p class="text-xs text-muted-foreground">Ứng viên</p>
+          <p class="font-bold text-foreground">{{ form.candidate_name || 'Ứng viên' }}</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <BaseInput v-model="form.interview_date" type="datetime-local" label="Thời gian phỏng vấn" required />
+          <BaseInput v-model="form.interviewer" label="Người phỏng vấn / Hội đồng" placeholder="Ví dụ: Nguyễn Văn A (HR), Trần Văn B (Tech Lead)" required />
+        </div>
+
+        <BaseInput v-model="form.location" label="Địa điểm hoặc Link meeting" placeholder="Phòng họp A02 hoặc link Google Meet / Zoom..." />
+
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1">Trạng thái buổi phỏng vấn</label>
+          <select 
+            v-model="form.status" 
+            class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="pending">Chờ phỏng vấn (Pending)</option>
+            <option value="passed">Đạt yêu cầu (Passed)</option>
+            <option value="failed">Không đạt yêu cầu (Failed)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1">Nhận xét & Đánh giá chi tiết</label>
+          <textarea 
+            v-model="form.result_note" 
+            class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring" 
+            rows="3" 
+            placeholder="Nhập ghi chú đánh giá của hội đồng phỏng vấn..."
+          ></textarea>
+        </div>
+      </div>
+      <template #footer>
+        <BaseButton variant="outline" @click="showModal = false">Hủy</BaseButton>
+        <BaseButton @click="submitForm">Lưu</BaseButton>
+      </template>
+    </BaseModal>
+
+    <!-- Manager Review Modal -->
+    <BaseModal v-model="showReviewModal" title="Đánh giá của quản lý">
+      <div class="space-y-4">
+        <div class="p-3 bg-muted rounded-lg">
+          <p class="text-xs text-muted-foreground">Ứng viên</p>
+          <p class="font-bold text-foreground">{{ reviewForm.candidate_name || `Ứng viên #${reviewForm.candidate_id}` }}</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1">Quyết định <span class="text-destructive">*</span></label>
+          <select
+            v-model="reviewForm.decision"
+            class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="approved">Đồng ý</option>
+            <option value="rejected">Từ chối</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1">Nhận xét của quản lý</label>
+          <textarea
+            v-model="reviewForm.note"
+            class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            rows="3"
+            placeholder="Nhập nhận xét đánh giá..."
+          ></textarea>
+        </div>
+      </div>
+      <template #footer>
+        <BaseButton variant="outline" @click="showReviewModal = false">Hủy</BaseButton>
+        <BaseButton :disabled="reviewLoading" @click="submitManagerReview">Gửi đánh giá</BaseButton>
+      </template>
+    </BaseModal>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue';
+import BaseButton from '../components/BaseButton.vue';
+import BaseCard from '../components/BaseCard.vue';
+import BaseTable from '../components/BaseTable.vue';
+import BaseModal from '../components/BaseModal.vue';
+import BaseInput from '../components/BaseInput.vue';
+import BaseBadge from '../components/BaseBadge.vue';
+import { recruitmentService } from '../services/recruitmentService';
+import { useToast } from '../composables/useToast';
+
+const toast = useToast();
+const interviews = ref([]);
+const candidates = ref([]);
+const showModal = ref(false);
+const showReviewModal = ref(false);
+const reviewLoading = ref(false);
+
+const reviewForm = ref({
+  id: '',
+  candidate_id: '',
+  candidate_name: '',
+  decision: 'approved',
+  note: ''
+});
+
+const form = ref({
+  candidate_id: '',
+  interview_date: '',
+  interviewer: '',
+  location: '',
+  status: 'pending',
+  result_note: ''
+});
+
+const loadData = async () => {
+  try {
+    const [intRes, candRes] = await Promise.all([
+      recruitmentService.getAllInterviews(),
+      recruitmentService.getAllCandidates()
+    ]);
+    interviews.value = intRes?.data || intRes || [];
+    candidates.value = (candRes?.data || candRes || []).filter(c => c.status === 'applied' || c.status === 'shortlisted' || c.status === 'interviewing');
+  } catch (err) {
+    console.error('Error loading interviews:', err);
+  }
+};
+
+const formatDateTime = (dt) => {
+  if (!dt) return '-';
+  const date = new Date(dt);
+  return date.toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const isLink = (str) => {
+  if (!str) return false;
+  return str.startsWith('http://') || str.startsWith('https://');
+};
+
+const openCreateModal = () => {
+  form.value = {
+    candidate_id: '',
+    interview_date: '',
+    interviewer: '',
+    location: '',
+    status: 'pending',
+    result_note: ''
+  };
+  showModal.value = true;
+};
+
+const editItem = (item) => {
+  form.value = { 
+    ...item,
+    interview_date: item.interview_date ? item.interview_date.substring(0, 16) : ''
+  };
+  showModal.value = true;
+};
+
+const submitForm = async () => {
+  if (!form.value.interview_date || !form.value.interviewer || (!form.value.id && !form.value.candidate_id)) {
+    toast.error('Vui lòng điền đầy đủ các thông tin bắt buộc');
+    return;
+  }
+  try {
+    if (form.value.id) {
+      await recruitmentService.updateInterview(form.value.id, form.value);
+      toast.success('Cập nhật lịch phỏng vấn thành công');
+    } else {
+      await recruitmentService.createInterview(form.value);
+      toast.success('Lên lịch phỏng vấn thành công');
+    }
+    showModal.value = false;
+    await loadData();
+  } catch (err) {
+    console.error('Error saving interview:', err);
+    toast.error('Có lỗi xảy ra khi lưu lịch phỏng vấn');
+  }
+};
+
+const openManagerReview = (item) => {
+  reviewForm.value = {
+    id: item.id,
+    candidate_id: item.candidate_id,
+    candidate_name: item.candidate_name,
+    decision: 'approved',
+    note: ''
+  };
+  showReviewModal.value = true;
+};
+
+const submitManagerReview = async () => {
+  if (!reviewForm.value.id) return;
+  reviewLoading.value = true;
+  try {
+    await recruitmentService.interviewManagerReview(reviewForm.value.id, {
+      decision: reviewForm.value.decision,
+      note: reviewForm.value.note
+    });
+    toast.success('Đã gửi đánh giá của quản lý');
+    showReviewModal.value = false;
+    await loadData();
+  } catch (err) {
+    console.error('Error submitting manager review:', err);
+    toast.error('Có lỗi xảy ra khi gửi đánh giá của quản lý');
+  } finally {
+    reviewLoading.value = false;
+  }
+};
+
+const deleteItem = async (id) => {
+  if (!confirm('Bạn có chắc chắn muốn xóa lịch phỏng vấn này?')) return;
+  try {
+    await recruitmentService.deleteInterview(id);
+    toast.success('Xóa lịch phỏng vấn thành công');
+    await loadData();
+  } catch (err) {
+    console.error('Error deleting interview:', err);
+    toast.error('Có lỗi xảy ra khi xóa lịch phỏng vấn');
+  }
+};
+
+onMounted(async () => {
+  await loadData();
+});
+</script>

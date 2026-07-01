@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  HRM SYSTEM — FRONTEND REDESIGN PLAN (Zoho People-like, global, modern, AI-forward)
+  Mục tiêu: giao diện trực quan, mang tính quốc tế (i18n, đa tenant/đa chi nhánh), hiện đại,
+  và để người dùng CẢM NHẬN RÕ họ đang dùng AI. Stack giữ Vue 3 + Tailwind + Chart.js.
+  Đọc kèm: HRM_ROADMAP_NEXT.xml (backlog backend), product-direction (multi-tenant SaaS).
+-->
+<frontend_redesign version="1.0" generated_on="2026-06-24" inspiration="people.zoho.com">
+
+  <vision>
+    <principle id="V1" name="Global &amp; multi-tenant">Cảm giác quốc tế: song ngữ VI/EN (i18n), tiền tệ/múi giờ theo tenant, white-label (logo + màu theo công ty), bộ chuyển Tenant/Chi nhánh ngay trên thanh trên cùng.</principle>
+    <principle id="V2" name="Clean enterprise, data-dense but breathable">Nền trung tính, 1 màu nhấn (accent) theo brand tenant, khoảng trắng hợp lý, bo góc mềm, đổ bóng nhẹ. Mật độ điều chỉnh được (comfortable/compact).</principle>
+    <principle id="V3" name="Progressive disclosure">Ưu tiên Drawer/side-panel cho xem nhanh + sửa, thay vì điều hướng full-page. Tóm tắt trước, chi tiết khi cần.</principle>
+    <principle id="V4" name="AI-forward &amp; trustworthy">AI hiển thị nhất quán bằng một ngôn ngữ thị giác riêng (icon sparkle + nhãn "AI"), luôn kèm giải thích/độ tin cậy và cho phép chạy lại — người dùng thấy rõ và tin được AI.</principle>
+    <principle id="V5" name="Role-aware">Giao diện thích ứng theo vai: Super-admin (platform), Tenant-admin/HR, Manager, Employee (self-service).</principle>
+    <principle id="V6" name="Accessible &amp; responsive">WCAG AA, dark mode, mobile-first cho self-service, phím tắt + command palette.</principle>
+  </vision>
+
+  <!-- ============================================================ -->
+  <design_system>
+    <tokens>
+      <color>Nền: neutral 50-900. Accent: 1 primary (mặc định indigo/teal kiểu Zoho), suy ra từ brand tenant. Semantic: success/warning/danger/info. AI: gradient tím-xanh (violet-&gt;cyan) chỉ dùng cho yếu tố AI.</color>
+      <typography>Font Inter (Latin) + hỗ trợ tiếng Việt; thang 12/14/16/20/24/30; số dùng tabular-nums cho bảng/biểu đồ.</typography>
+      <shape>Radius 8-12px; shadow-sm/md; border 1px neutral-200.</shape>
+      <dark_mode>Token CSS biến thể; toggle ở thanh trên + theo hệ thống.</dark_mode>
+      <density>Toggle comfortable/compact ảnh hưởng padding bảng + card.</density>
+    </tokens>
+    <app_shell>
+      <left_nav>Sidebar thu gọn được, nhóm theo module + icon: Home/Dashboard, Tổ chức (NV, Org chart, Phòng ban, Chức vụ), Chấm công &amp; Phép, Tuyển dụng, Lương, Hợp đồng, Tài sản, Truyền thông (News/Policies), Yêu cầu &amp; Phê duyệt, Báo cáo, Quản trị (RBAC, Settings), Platform (chỉ super-admin). Active state rõ, có "pin/favorites".</left_nav>
+      <top_bar>Global search (Cmd/Ctrl+K), Tenant/Entity switcher, nút AI Assistant, chuông thông báo, chọn ngôn ngữ, avatar + menu (đổi mật khẩu, theme). Breadcrumb dưới top bar.</top_bar>
+    </app_shell>
+    <components>
+      <c>KPI stat card (số lớn + delta + sparkline + icon).</c>
+      <c>DataTable nâng cao: sort, filter, chọn cột, saved views, sticky header, bulk actions, inline edit, export CSV/Excel, phân trang server.</c>
+      <c>Detail/Edit Drawer (slide-over) + Modal xác nhận.</c>
+      <c>Charts: line/bar/donut/heatmap (Chart.js), tông màu token.</c>
+      <c>Status pill, Avatar + initials, Tag, Tabs, Stepper/Wizard, Timeline (phê duyệt), Empty state minh hoạ, Skeleton loader, Toast.</c>
+      <c>Kanban board (pipeline tuyển dụng), Calendar (phép/chấm công), Org chart tree, Approval timeline.</c>
+      <c>AI components (xem &lt;ai_surfacing&gt;).</c>
+    </components>
+  </design_system>
+
+  <!-- ============================================================ -->
+  <!-- CÁCH HIỂN THỊ AI (yêu cầu trọng tâm)                         -->
+  <!-- ============================================================ -->
+  <ai_surfacing principle="Người dùng phải THẤY và TIN được AI">
+    <pattern id="AI1" name="AI visual language">Mọi yếu tố AI dùng icon sparkle + nhãn "AI" + gradient violet-&gt;cyan đồng nhất, để phân biệt nội dung do AI sinh/đề xuất với dữ liệu thường.</pattern>
+    <pattern id="AI2" name="AI Insights panel (Dashboard)">Dải "AI Insights" trên dashboard: 2-4 thẻ tóm tắt do AI sinh (vd 'Tỉ lệ đi muộn tăng 12% tuần này ở CN HCM', 'Có 3 hợp đồng nên gia hạn sớm'), kèm nút 'Xem chi tiết' và nhãn 'Tạo bởi AI'.</pattern>
+    <pattern id="AI3" name="AI score chip + explainability">Ứng viên hiển thị chip điểm AI 0-100 (màu gradient AI). Bấm vào mở popover: skill khớp/thiếu, lý do, độ tin cậy, nút 'Chấm lại' (gọi /ai-score/retry). Minh bạch &gt; điểm trần trụi.</pattern>
+    <pattern id="AI4" name="AI Assistant / Ask HR">Nút AI ở top bar mở chat 'Hỏi HR AI' (drawer phải): hỏi dữ liệu ('ai sắp hết hạn HĐ?', 'số ngày phép còn lại của tôi?'), trả lời + dẫn nguồn + hành động nhanh. Có trạng thái 'đang suy nghĩ' rõ ràng.</pattern>
+    <pattern id="AI5" name="AI suggested actions">Gợi ý hành động theo ngữ cảnh (vd ở đơn nghỉ: 'AI gợi ý duyệt — không trùng lịch, đủ quỹ phép'), luôn để người dùng quyết định cuối.</pattern>
+    <pattern id="AI6" name="AI summaries">Tóm tắt do AI: tóm tắt hồ sơ ứng viên/CV, tóm tắt hiệu suất, tóm tắt chính sách dài. Luôn gắn nhãn + nút phản hồi 👍/👎.</pattern>
+    <pattern id="AI7" name="Trust signals">Mọi output AI có: nhãn 'AI', mức độ tin cậy, thời điểm sinh, nút chạy lại/chỉnh. Không giả vờ là sự thật tuyệt đối.</pattern>
+  </ai_surfacing>
+
+  <!-- ============================================================ -->
+  <!-- DASHBOARD REDESIGN                                           -->
+  <!-- ============================================================ -->
+  <dashboard role_aware="true">
+    <layout>
+      <row id="1" name="Hero">Lời chào + ngày + bộ lọc chi nhánh (entity) + quick actions (Chấm công, Xin nghỉ, Thêm NV). Góc phải: mini 'hôm nay' (có mặt/muộn/vắng).</row>
+      <row id="2" name="KPI">4-6 stat card: Tổng NV, Có mặt hôm nay (%), Đơn nghỉ chờ duyệt, HĐ sắp hết hạn, Tuyển dụng đang mở, Quỹ lương kỳ này. Mỗi card có sparkline + delta so kỳ trước.</row>
+      <row id="3" name="AI Insights">Dải AI Insights (AI2) — điểm nhấn 'mang tính AI/hiện đại'.</row>
+      <row id="4" name="Charts">Trái: xu hướng chấm công 30 ngày (đã có). Phải: donut nghỉ phép theo trạng thái + headcount theo phòng ban (bar ngang).</row>
+      <row id="5" name="Attention + Activity">Trái: 'Cần bạn xử lý' (đơn chờ duyệt, HĐ hết hạn, ticket) dạng list hành động. Phải: 'Hoạt động gần đây' từ audit log (ai làm gì) + Thông báo/News.</row>
+    </layout>
+    <data_arrangement>
+      <rule>Quan trọng-nhất lên trên-trái (KPI + AI insight). Số liệu tổng → biểu đồ xu hướng → danh sách hành động → nhật ký.</rule>
+      <rule>Mọi widget tôn trọng bộ lọc Tenant/Entity; super-admin có thêm view 'toàn platform'.</rule>
+      <rule>Dùng server-side aggregate (/dashboard/stats) — không gom client. Skeleton khi tải, empty-state có minh hoạ khi rỗng.</rule>
+      <rule>Cho phép tuỳ biến widget (ẩn/hiện, kéo-thả) — lưu theo người dùng (dashboard_views).</rule>
+    </data_arrangement>
+    <role_variants>
+      <variant role="Employee">Self-service: thẻ chấm công của tôi, quỹ phép của tôi, payslip mới nhất, đơn của tôi, thông báo. Không thấy số liệu toàn công ty.</variant>
+      <variant role="Manager">Thêm: đội của tôi (chấm công/nghỉ), đơn chờ tôi duyệt.</variant>
+      <variant role="HR/Tenant-admin">Toàn tenant + theo entity.</variant>
+      <variant role="Super-admin">Platform overview: số tenant, NV toàn hệ thống, sức khoẻ hệ thống; switch vào từng tenant.</variant>
+    </role_variants>
+  </dashboard>
+
+  <!-- ============================================================ -->
+  <!-- REDESIGN TỪNG TRANG                                          -->
+  <!-- ============================================================ -->
+  <pages>
+    <page name="Employees / Directory">Lưới thẻ + bảng (toggle). Bộ lọc: phòng ban, chi nhánh, trạng thái, chức vụ. Hồ sơ NV '360' dạng drawer/tab: Tổng quan, Công việc, Hợp đồng, Lương, Chấm công, Phép, Tài liệu, Lịch sử (audit). Avatar + status pill.</page>
+    <page name="Org Chart">Cây tổ chức tương tác (zoom/collapse), lọc theo entity. (Đã có OrgTreeNode.)</page>
+    <page name="Attendance">Widget check-in/out lớn (geo/IP) + lịch tháng heatmap; bảng bản ghi + đơn điều chỉnh công; biểu đồ muộn/OT.</page>
+    <page name="Leave">Thẻ số dư phép (theo loại) + thanh tiến độ; calendar đội nhóm; luồng xin nghỉ dạng wizard; phê duyệt timeline.</page>
+    <page name="Recruitment">Kanban pipeline (Applied→Screening→Interview→Offer→Hired) kéo-thả; thẻ ứng viên có chip điểm AI; drawer ứng viên: CV, điểm AI + giải thích, lịch phỏng vấn, manager review.</page>
+    <page name="Interviews">Lịch + danh sách; manager review nhanh.</page>
+    <page name="Contracts">Danh sách + timeline vòng đời (Draft→Active→Terminated); badge 'sắp hết hạn'; hành động Kích hoạt/Chấm dứt; nhật ký thay đổi.</page>
+    <page name="Payroll">Wizard chạy lương theo kỳ + entity; bảng chi tiết; payslip xem/in; chốt kỳ (khoá). Hiển thị PIT/BHXH rõ ràng.</page>
+    <page name="Reports">Report builder + biểu đồ; lưu mẫu (saved views); export. AI có thể gợi ý báo cáo.</page>
+    <page name="Requests &amp; Approvals">Inbox 'chờ tôi duyệt' + timeline đa cấp; AI suggested action.</page>
+    <page name="Assets">Kho tài sản + gán/thu hồi; theo entity.</page>
+    <page name="News / Policies">Feed kiểu mạng nội bộ; policy có nút Xác nhận đã đọc (đã wire); đánh dấu đã đọc.</page>
+    <page name="RBAC / Roles">Ma trận vai trò × quyền; gán quyền trực quan.</page>
+    <page name="Platform Admin (super-admin)">Danh sách tenant + tạo tenant (wizard onboarding), trạng thái, switch-into-tenant (impersonation X-Tenant-Id).</page>
+    <page name="Settings">Tenant: brand (logo/màu), locale/currency/timezone; quản lý chi nhánh (legal entities); cấu hình phép/ca; thông báo.</page>
+  </pages>
+
+  <!-- ============================================================ -->
+  <!-- Ý TƯỞNG MỞ RỘNG (đề xuất thêm)                               -->
+  <!-- ============================================================ -->
+  <expansion_ideas>
+    <idea id="X1" name="Command palette (Cmd+K)">Tìm &amp; nhảy nhanh tới NV/trang/hành động; tích hợp AI ('tạo đơn nghỉ ngày mai').</idea>
+    <idea id="X2" name="Global search">Tìm xuyên NV/ứng viên/HĐ/tài liệu, tôn trọng tenant scope.</idea>
+    <idea id="X3" name="White-label per tenant">Logo + màu accent + tên hiển thị theo công ty — tăng cảm giác 'sản phẩm SaaS'.</idea>
+    <idea id="X4" name="Notification center + realtime">Chuông + drawer thông báo; (sau) websocket cho duyệt/nhắc.</idea>
+    <idea id="X5" name="Onboarding checklist">Tenant mới có checklist thiết lập (tạo phòng ban, mời NV, cấu hình phép...).</idea>
+    <idea id="X6" name="Customizable dashboard widgets">Kéo-thả/ẩn-hiện, lưu layout theo người dùng.</idea>
+    <idea id="X7" name="Mobile self-service / PWA">Chấm công geo, xin nghỉ, payslip trên điện thoại.</idea>
+    <idea id="X8" name="i18n VI/EN + RTL-ready">Chuyển ngữ tức thời; sẵn sàng mở rộng ngôn ngữ.</idea>
+    <idea id="X9" name="Micro-interactions">Chuyển cảnh mượt, skeleton, optimistic update, hover states — cảm giác hiện đại.</idea>
+    <idea id="X10" name="AI Assistant nâng cao">Hỏi-đáp dữ liệu + sinh mô tả công việc/email + tóm tắt — mọi nơi gắn nhãn AI.</idea>
+  </expansion_ideas>
+
+  <!-- ============================================================ -->
+  <tech_approach>
+    <note>Giữ Vue 3 + Vite + Tailwind + Chart.js hiện có. Tạo TẦNG design-token (CSS variables — index.css đã có nền) + bộ component primitive (Base*) chuẩn hoá. Cân nhắc thư viện headless (Headless UI) cho drawer/menu/tabs.</note>
+    <note>Tạo AppShell mới (sidebar + topbar + breadcrumb) bọc router-view; tách layout khỏi từng page. i18n bằng vue-i18n. Theme/dark mode qua data-attribute + token.</note>
+    <note>KHÔNG viết lại tất cả cùng lúc: làm tầng nền + 1 trang mẫu trước, rồi cuốn chiếu. Frontend chỉ verify tĩnh ở môi trường này (không có Node/Vite) — cần người dùng chạy npm run dev để xem runtime.</note>
+  </tech_approach>
+
+  <implementation_phases>
+    <phase id="FE-P1" name="Design foundation">Design tokens + dark mode + AppShell (sidebar/topbar/tenant switcher/lang) + bộ Base components + i18n scaffold. 1 trang mẫu (Dashboard).</phase>
+    <phase id="FE-P2" name="Dashboard + AI language">Dashboard role-aware mới + AI Insights + AI score chip + AI Assistant drawer (khung).</phase>
+    <phase id="FE-P3" name="High-traffic pages">Employees 360, Attendance, Leave, Recruitment (kanban + AI), Approvals inbox.</phase>
+    <phase id="FE-P4" name="Remaining + admin">Payroll, Reports, Contracts, Assets, News/Policies, RBAC, Platform admin, Settings (brand/entity/locale).</phase>
+    <phase id="FE-P5" name="Polish">Command palette, global search, notifications, micro-interactions, a11y, mobile/PWA.</phase>
+  </implementation_phases>
+
+  <dependencies_on_backend>
+    <dep>AI Assistant/Insights cần endpoint AI thật (hiện AI scoring là rule-based) — có thể bắt đầu bằng insight suy luận từ /dashboard/stats + audit, gắn nhãn AI.</dep>
+    <dep>Tenant switcher/white-label cần API tenant/branding (E0.6/E0.7 + settings).</dep>
+    <dep>Saved views/widget layout cần dashboard_views (đã có bảng).</dep>
+  </dependencies_on_backend>
+</frontend_redesign>

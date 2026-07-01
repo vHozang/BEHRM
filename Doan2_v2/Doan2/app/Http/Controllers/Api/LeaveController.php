@@ -1,0 +1,663 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\LeaveBalance;
+use App\Models\LeaveRequest;
+use App\Services\LeavePolicyService;
+use App\Support\ApprovalFlow;
+use App\Support\TenantContext;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
+
+class LeaveController extends Controller
+{
+    public function __construct(private LeavePolicyService $leavePolicy)
+    {
+    }
+    public function index(Request $request): JsonResponse
+    {
+        $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
+
+        $query = LeaveRequest::with(['employee:id,full_name,employee_code'])
+            ->orderByDesc('id');
+
+        foreach (['employee_id', 'leave_type_id', 'status'] as $field) {
+            if ($request->filled($field)) {
+                $query->where($field, $request->query($field));
+            }
+        }
+
+        $page = $query->paginate($perPage);
+
+        return $this->ok([
+            'items' => $page->items(),
+            'pagination' => [
+                'current_page' => $page->currentPage(),
+                'per_page' => $page->perPage(),
+                'total' => $page->total(),
+                'last_page' => $page->lastPage(),
+            ],
+        ], 'Leave requests list');
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'employee_id' => 'required|exists:employees,id',
+            'leave_type_id' => 'required|exists:leave_types,id',
+            'start_date' => 'required|date|after_or_equal:today',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ], [
+            'employee_id.required' => 'Mã nhân viên là bắt buộc',
+            'employee_id.exists' => 'Nhân viên không tồn tại',
+            'leave_type_id.required' => 'Loại nghỉ phép là bắt buộc',
+            'start_date.required' => 'Ngày bắt đầu nghỉ là bắt buộc',
+            'start_date.after_or_equal' => 'Ngày bắt đầu nghỉ không được nằm trong quá khứ',
+            'end_date.required' => 'Ngày kết thúc nghỉ là bắt buộc',
+            'end_date.after_or_equal' => 'Ngày kết thúc phải sau hoặc bằng ngày bắt đầu',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
+        }
+
+        $employeeId = $request->input('employee_id');
+        $leaveTypeId = $request->input('leave_type_id');
+
+        // Reject cross-tenant employee/leave-type (bare `exists` is unscoped).
+        if (! TenantContext::ownsRow('employees', $employeeId)) {
+            return $this->validationError(['employee_id' => ['Nhân viên không thuộc công ty hiện tại']]);
+        }
+        if (! TenantContext::ownsRow('leave_types', $leaveTypeId)) {
+            return $this->validationError(['leave_type_id' => ['Loại nghỉ phép không thuộc công ty hiện tại']]);
+        }
+
+        // Check for overlapping leave requests
+        $overlap = LeaveRequest::where('employee_id', $employeeId)
+            ->whereNotIn('status', ['REJECTED', 'CANCELLED', 'TỪ_CHỐI', 'ĐÃ_HỦY'])
+            ->where(function ($q) use ($request) {
+                $q->whereBetween('start_date', [$request->start_date, $request->end_date])
+                    ->orWhereBetween('end_date', [$request->start_date, $request->end_date])
+                    ->orWhere(function ($q2) use ($request) {
+                        $q2->where('start_date', '<=', $request->start_date)
+                            ->where('end_date', '>=', $request->end_date);
+                    });
+            })->exists();
+
+        if ($overlap) {
+            return $this->validationError([
+                'start_date' => ['Đã có đơn nghỉ phép trùng thời gian'],
+            ]);
+        }
+
+        // Check leave balance — resolve the balance row for the REQUEST'S year
+        // ONLY (no cross-year fallback); avoids picking a stale prior-year row.
+        $leaveYear = (string) date('Y', strtotime((string) $request->start_date));
+        $balance = LeaveBalance::where('employee_id', $employeeId)
+            ->where('leave_type_id', $leaveTypeId)
+            ->where('year', $leaveYear)
+            ->first();
+
+        // Resolve the leave type's effective rule config (VN labour law): paid,
+        // accrual model (annual quota vs per-event statutory vs none), whether a
+        // balance is required, and per-event day cap.
+        $leaveType = DB::table('leave_types')->where('id', $leaveTypeId)->first();
+        $cfg = $this->leavePolicy->typeConfig($leaveType);
+
+        // Thời lượng nghỉ: cả ngày | nửa ngày | theo giờ (Đ. cho phép nghỉ <1 ngày).
+        $durationType = in_array($request->input('duration_type'), ['half_day', 'hourly'], true)
+            ? $request->input('duration_type') : 'full_day';
+
+        if ($durationType === 'half_day') {
+            // Nửa ngày: chỉ trong 1 ngày làm việc → 0.5 công.
+            if ((string) $request->start_date !== (string) $request->end_date) {
+                return $this->validationError(['end_date' => ['Nghỉ nửa ngày chỉ áp dụng trong cùng một ngày']]);
+            }
+            $totalDays = 0.5;
+        } elseif ($durationType === 'hourly') {
+            // Theo giờ: quy đổi ra ngày theo giờ chuẩn/ngày.
+            $hours = (float) $request->input('hours', 0);
+            $std = (float) \App\Support\HrmConfig::get('attendance.standard_hours_per_day', 8);
+            if ($hours <= 0 || $std <= 0) {
+                return $this->validationError(['hours' => ['Số giờ nghỉ phải lớn hơn 0']]);
+            }
+            if ((string) $request->start_date !== (string) $request->end_date) {
+                return $this->validationError(['end_date' => ['Nghỉ theo giờ chỉ áp dụng trong cùng một ngày']]);
+            }
+            $totalDays = round($hours / $std, 4);
+        } else {
+            // Cả ngày: đếm ngày làm việc (trừ cuối tuần + lễ).
+            $totalDays = $this->leavePolicy->workingDays(
+                $request->start_date,
+                $request->end_date,
+                TenantContext::id(),
+                TenantContext::legalEntityId()
+            );
+
+            if ($totalDays < 1) {
+                return $this->validationError([
+                    'start_date' => ['Khoảng thời gian không có ngày làm việc nào (toàn ngày nghỉ/lễ)'],
+                ]);
+            }
+        }
+
+        // Quota types (e.g. ANNUAL) need an entitlement balance for the request year.
+        if ($cfg['requires_balance']) {
+            if (! $balance) {
+                return $this->validationError([
+                    'total_days' => ["Nhân viên chưa có số dư phép loại này cho năm {$leaveYear}"],
+                ]);
+            }
+            if ($balance->remaining_days < $totalDays) {
+                return $this->validationError([
+                    'total_days' => ["Số dư phép không đủ. Còn lại: {$balance->remaining_days} ngày, yêu cầu: {$totalDays} ngày"],
+                ]);
+            }
+        } elseif ($cfg['accrual'] === 'per_event' && $cfg['max_days_per_event'] !== null) {
+            // Statutory per-event leave (cưới, tang, thai sản…) — cap days/lần.
+            if ($totalDays > $cfg['max_days_per_event']) {
+                $ref = $cfg['statutory_ref'] ? " ({$cfg['statutory_ref']})" : '';
+                return $this->validationError([
+                    'total_days' => ["Loại nghỉ này tối đa {$cfg['max_days_per_event']} ngày/lần theo luật{$ref}; yêu cầu {$totalDays} ngày"],
+                ]);
+            }
+        }
+
+        $columns = Schema::getColumnListing('leave_requests');
+        $data = collect($request->all())->only($columns)->toArray();
+        $data['total_days'] = $totalDays;
+        $data['status'] = $data['status'] ?? 'PENDING';
+
+        // Persist classification + reason in meta (payroll reads `paid`; no `reason` column).
+        $meta = [];
+        if (! empty($data['meta'])) {
+            $meta = is_string($data['meta']) ? (json_decode($data['meta'], true) ?: []) : (array) $data['meta'];
+        }
+        $meta['paid'] = $cfg['paid'];
+        $meta['accrual'] = $cfg['accrual'];
+        $meta['leave_type_code'] = $leaveType->leave_type_code ?? null;
+        $meta['statutory_ref'] = $cfg['statutory_ref'];
+        $meta['duration_type'] = $durationType;
+        if ($durationType === 'half_day') {
+            $meta['half_session'] = in_array($request->input('half_session'), ['morning', 'afternoon'], true)
+                ? $request->input('half_session') : 'morning';
+        } elseif ($durationType === 'hourly') {
+            $meta['hours'] = (float) $request->input('hours', 0);
+        }
+        if ($request->filled('reason')) {
+            $meta['reason'] = $request->input('reason');
+        }
+        $data['meta'] = json_encode($meta, JSON_UNESCAPED_UNICODE);
+
+        $data['created_at'] = now();
+        $data['updated_at'] = now();
+
+        $leave = LeaveRequest::create($data);
+
+        return response()->json([
+            'status' => 201,
+            'message' => 'Đơn nghỉ phép đã được tạo',
+            'data' => $leave->fresh()->load('employee:id,full_name'),
+        ], 201);
+    }
+
+    public function show(int $id): JsonResponse
+    {
+        $leave = LeaveRequest::with(['employee:id,full_name,employee_code'])->find($id);
+
+        if (! $leave) {
+            return $this->notFound();
+        }
+
+        return $this->ok($leave, 'Leave request detail');
+    }
+
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $leave = LeaveRequest::find($id);
+
+        if (! $leave) {
+            return $this->notFound();
+        }
+
+        if (! in_array($leave->status, ['PENDING', 'CHỜ_DUYỆT'])) {
+            return $this->validationError([
+                'status' => ['Chỉ có thể sửa đơn đang chờ duyệt'],
+            ]);
+        }
+
+        $columns = Schema::getColumnListing('leave_requests');
+        $data = collect($request->except(['id', 'created_at', 'updated_at']))->only($columns)->toArray();
+
+        $leave->update($data);
+
+        return $this->ok($leave->fresh(), 'Đơn nghỉ phép đã được cập nhật');
+    }
+
+    public function destroy(int $id): JsonResponse
+    {
+        $leave = LeaveRequest::find($id);
+
+        if (! $leave) {
+            return $this->notFound();
+        }
+
+        if (! in_array($leave->status, ['PENDING', 'CHỜ_DUYỆT'])) {
+            return $this->conflict(
+                ['Chỉ có thể xóa đơn nghỉ phép đang chờ duyệt'],
+                'Đơn nghỉ phép'
+            );
+        }
+
+        $leave->delete();
+
+        return $this->ok(['id' => $id], 'Đơn nghỉ phép đã được xóa');
+    }
+
+    /**
+     * POST /leave-requests/{id}/approve
+     */
+    public function approve(Request $request, int $id): JsonResponse
+    {
+        $leave = LeaveRequest::find($id);
+
+        if (! $leave) {
+            return $this->notFound();
+        }
+
+        if (! in_array($leave->status, ['PENDING', 'CHỜ_DUYỆT'])) {
+            return $this->validationError(['status' => ['Đơn không ở trạng thái chờ duyệt']]);
+        }
+
+        $approverId = $request->attributes->get('auth_employee_id');
+
+        // Người tạo đơn không tự duyệt.
+        if ($approverId !== null && (int) $leave->employee_id === (int) $approverId) {
+            return $this->validationError(['approver_id' => ['Người tạo đơn không thể tự duyệt đơn của mình']]);
+        }
+
+        // Duyệt nhiều cấp: chỉ khi qua HẾT các cấp mới chốt APPROVED + trừ số dư.
+        $meta = is_string($leave->meta) ? (json_decode($leave->meta, true) ?: []) : (array) ($leave->meta ?? []);
+        $meta = ApprovalFlow::ensure($meta, 'leave');
+        if ($err = ApprovalFlow::cannotApprove($meta, $approverId)) {
+            return $this->validationError(['approver_id' => [$err]]);
+        }
+        [$meta, $final] = ApprovalFlow::approveStep($meta, $approverId, $request->input('comment'));
+        $progress = ApprovalFlow::progress($meta);
+
+        if (! $final) {
+            // Còn cấp duyệt phía sau → giữ PENDING, lưu tiến trình.
+            $leave->update(['meta' => json_encode($meta, JSON_UNESCAPED_UNICODE)]);
+            $next = ApprovalFlow::currentRole($meta);
+
+            return $this->ok($leave->fresh(), "Đã duyệt cấp {$progress['done']}/{$progress['total']}. Chờ cấp tiếp theo" . ($next ? " ({$next})" : '') . '.');
+        }
+
+        DB::transaction(function () use ($leave, $approverId, $meta) {
+            $meta['approved_by'] = $approverId;
+            $meta['approved_at'] = now()->toIso8601String();
+
+            $leave->update([
+                'status' => 'APPROVED',
+                'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE),
+            ]);
+
+            // Only quota-backed types (e.g. ANNUAL) draw down a balance. Statutory
+            // per-event paid leave (cưới, tang, thai sản) and unpaid leave do not.
+            if ($this->requiresBalance($leave)) {
+                $this->adjustBalanceAndLedger($leave, 'DEDUCT', 'Duyệt đơn nghỉ phép');
+            }
+        });
+
+        // Khép chuỗi nghỉ → phủ ca: tự sinh yêu cầu phủ ca cho ngày nghỉ (nếu bật).
+        $this->autoCreateCoverage($leave, $approverId);
+
+        \App\Support\Notifier::notify(
+            (int) $leave->employee_id,
+            'Đơn nghỉ được duyệt',
+            'Đơn nghỉ ' . \Carbon\Carbon::parse($leave->start_date)->format('d/m/Y')
+                . ' → ' . \Carbon\Carbon::parse($leave->end_date)->format('d/m/Y') . ' đã được duyệt.',
+            'leave_request', $leave->id, ['priority' => 'normal'], $approverId
+        );
+
+        return $this->ok($leave->fresh(), 'Đơn nghỉ phép đã được duyệt (hoàn tất các cấp)');
+    }
+
+    /**
+     * Khi đơn nghỉ được duyệt (full-day) và DN bật `attendance.auto_coverage_on_leave`,
+     * tạo "yêu cầu phủ ca" (OPEN) cho mỗi ngày nghỉ mà NV có ca làm → quản lý
+     * điều người tăng ca phủ. Idempotent, bỏ qua ngày off/không có ca. Lỗi phụ
+     * trợ không làm hỏng việc duyệt nghỉ.
+     */
+    private function autoCreateCoverage(LeaveRequest $leave, $approverId): void
+    {
+        try {
+            if (! \App\Support\HrmConfig::get('attendance.auto_coverage_on_leave', false)) {
+                return;
+            }
+            if (! Schema::hasTable('shift_coverage_requests')) {
+                return;
+            }
+            // Nghỉ nửa buổi/theo giờ: NV vẫn có mặt một phần → không tạo phủ ca.
+            $meta = is_string($leave->meta) ? (json_decode($leave->meta, true) ?: []) : (array) ($leave->meta ?? []);
+            if (($meta['duration_type'] ?? 'full_day') !== 'full_day') {
+                return;
+            }
+
+            $start = \Carbon\Carbon::parse($leave->start_date)->startOfDay();
+            $end = \Carbon\Carbon::parse($leave->end_date)->startOfDay();
+            if ($end->lt($start) || $start->diffInDays($end) > 60) {
+                return;
+            }
+
+            $tenantId = TenantContext::id();
+            $entityId = TenantContext::legalEntityId();
+
+            for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+                $dateStr = $d->toDateString();
+                $shift = $this->resolveShiftForCoverage((int) $leave->employee_id, $dateStr, $tenantId);
+                if (! $shift) {
+                    continue; // ngày không có ca
+                }
+
+                $shiftMeta = is_string($shift->meta ?? null) ? (json_decode($shift->meta, true) ?: []) : (array) ($shift->meta ?? []);
+                $workWeekdays = $shiftMeta['work_weekdays'] ?? null;
+                $iso = $d->dayOfWeekIso; // 1=T2 .. 7=CN
+                if (is_array($workWeekdays)
+                    && ! in_array($iso, $workWeekdays, false) && ! in_array((string) $iso, $workWeekdays, true)) {
+                    continue; // ngày NV không làm ca này → không cần phủ
+                }
+
+                $exists = DB::table('shift_coverage_requests')
+                    ->where('tenant_id', $tenantId)
+                    ->whereDate('work_date', $dateStr)
+                    ->where('shift_type_id', $shift->id)
+                    ->where('absent_employee_id', $leave->employee_id)
+                    ->whereIn('status', ['OPEN', 'PARTIALLY_COVERED', 'COVERED'])
+                    ->exists();
+                if ($exists) {
+                    continue;
+                }
+
+                DB::table('shift_coverage_requests')->insert([
+                    'tenant_id' => $tenantId,
+                    'legal_entity_id' => $entityId,
+                    'work_date' => $dateStr,
+                    'shift_type_id' => $shift->id,
+                    'absent_employee_id' => $leave->employee_id,
+                    'reason' => 'leave',
+                    'hours_needed' => (float) ($shiftMeta['working_hours'] ?? 8),
+                    'hours_covered' => 0,
+                    'status' => 'OPEN',
+                    'created_by' => $approverId,
+                    'notes' => 'Tự sinh từ đơn nghỉ #' . $leave->id,
+                    'meta' => json_encode(['source' => 'auto-leave', 'leave_id' => $leave->id, 'shift_code' => $shift->shift_code], JSON_UNESCAPED_UNICODE),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('autoCreateCoverage failed: ' . $e->getMessage());
+        }
+    }
+
+    /** Phân giải ca có hiệu lực của NV trong 1 ngày (override có expiry ưu tiên). */
+    private function resolveShiftForCoverage(int $employeeId, string $date, $tenantId): ?object
+    {
+        $assign = DB::table('shift_assignments')
+            ->where('employee_id', $employeeId)
+            ->where('status', '!=', 'INACTIVE')
+            ->whereDate('effective_date', '<=', $date)
+            ->where(function ($q) use ($date) {
+                $q->whereNull('expiry_date')->orWhereDate('expiry_date', '>=', $date);
+            })
+            ->when($tenantId, fn ($q) => $q->where('tenant_id', $tenantId))
+            ->orderByRaw('CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('effective_date')
+            ->first();
+        if (! $assign) {
+            return null;
+        }
+
+        return DB::table('shift_types')->where('id', $assign->shift_type_id)
+            ->when($tenantId, fn ($q) => $q->where('tenant_id', $tenantId))
+            ->first();
+    }
+
+    /**
+     * POST /leave-requests/{id}/reject
+     */
+    public function reject(Request $request, int $id): JsonResponse
+    {
+        $leave = LeaveRequest::find($id);
+
+        if (! $leave) {
+            return $this->notFound();
+        }
+
+        if (! in_array($leave->status, ['PENDING', 'CHỜ_DUYỆT'])) {
+            return $this->validationError(['status' => ['Đơn không ở trạng thái chờ duyệt']]);
+        }
+
+        // rejection_reason has no column — preserve it (and the approver) in meta.
+        $leave->update([
+            'status' => 'REJECTED',
+            'meta' => $this->mergeMeta($leave, [
+                'rejected_by' => $request->attributes->get('auth_employee_id'),
+                'rejected_at' => now()->toIso8601String(),
+                'rejection_reason' => $request->input('reason'),
+            ]),
+        ]);
+
+        return $this->ok($leave->fresh(), 'Đơn nghỉ phép đã bị từ chối');
+    }
+
+    /**
+     * POST /leave-requests/{id}/cancel
+     */
+    public function cancel(Request $request, int $id): JsonResponse
+    {
+        $leave = LeaveRequest::find($id);
+
+        if (! $leave) {
+            return $this->notFound();
+        }
+
+        // Authorization: only the requesting employee may cancel their own leave.
+        // (HR/admin override would go through a dedicated admin path.)
+        $currentUserId = $request->attributes->get('auth_employee_id');
+        if ($currentUserId !== null && (int) $leave->employee_id !== (int) $currentUserId) {
+            return $this->validationError([
+                'employee_id' => ['Chỉ nhân viên tạo đơn mới có thể hủy đơn nghỉ phép'],
+            ]);
+        }
+
+        // Status guard — only un-finalized leave can be cancelled.
+        if (! in_array($leave->status, ['PENDING', 'APPROVED', 'IN_PROGRESS', 'CHỜ_DUYỆT', 'ĐÃ_DUYỆT', 'ĐANG_XỬ_LÝ'], true)) {
+            return $this->validationError(['status' => ['Không thể hủy đơn ở trạng thái hiện tại']]);
+        }
+
+        // Cannot cancel (and refund) leave that has already started/been consumed.
+        if ($leave->start_date && \Carbon\Carbon::parse($leave->start_date)->startOfDay()->lte(now()->startOfDay())) {
+            return $this->validationError([
+                'start_date' => ['Không thể hủy đơn nghỉ phép đã bắt đầu hoặc đã sử dụng'],
+            ]);
+        }
+
+        DB::transaction(function () use ($leave) {
+            $wasApproved = in_array($leave->status, ['APPROVED', 'ĐÃ_DUYỆT']);
+
+            $leave->update(['status' => 'CANCELLED']);
+
+            // Refund balance only if it was approved AND drew down a balance.
+            if ($wasApproved && $this->requiresBalance($leave)) {
+                $this->adjustBalanceAndLedger($leave, 'REFUND', 'Hủy đơn nghỉ phép — hoàn lại số dư');
+            }
+        });
+
+        return $this->ok($leave->fresh(), 'Đơn nghỉ phép đã được hủy');
+    }
+
+    /**
+     * GET /employees/{employeeId}/leave-balances
+     */
+    public function balance(Request $request, int $employeeId): JsonResponse
+    {
+        $query = LeaveBalance::where('employee_id', $employeeId);
+
+        if ($request->filled('year')) {
+            $query->where('year', (string) $request->query('year'));
+        }
+
+        $balances = $query
+            ->join('leave_types', 'leave_balances.leave_type_id', '=', 'leave_types.id')
+            ->orderByDesc('leave_balances.year')
+            ->get([
+                'leave_balances.leave_type_id',
+                'leave_types.leave_type_code',
+                'leave_types.leave_type_name',
+                'leave_balances.year',
+                'leave_balances.total_days',
+                'leave_balances.used_days',
+                'leave_balances.remaining_days',
+            ])
+            ->map(fn ($b) => [
+                'leave_type_id' => (int) $b->leave_type_id,
+                'leave_type_code' => $b->leave_type_code,
+                'leave_type_name' => $b->leave_type_name,
+                'year' => (int) $b->year,
+                'entitlement' => (float) $b->total_days,
+                'used' => (float) $b->used_days,
+                'remaining' => (float) $b->remaining_days,
+            ]);
+
+        return $this->ok($balances, 'Leave balances');
+    }
+
+    /**
+     * POST /leave/accrual/run — recompute annual leave balances for the tenant.
+     */
+    public function accrualRun(Request $request): JsonResponse
+    {
+        $year = (int) ($request->input('year') ?: now()->year);
+
+        $summary = $this->leavePolicy->recomputeBalances(TenantContext::id(), $year);
+
+        return $this->ok(array_merge(['year' => $year], $summary), 'Cấp/đối soát phép năm hoàn tất');
+    }
+
+    // ── Internal Helpers ─────────────────────────────────
+
+    /**
+     * Does this leave request's type draw down a quota balance (e.g. ANNUAL)?
+     * Statutory per-event paid leave and unpaid leave do not.
+     */
+    private function requiresBalance(LeaveRequest $leave): bool
+    {
+        $type = DB::table('leave_types')->where('id', $leave->leave_type_id)->first();
+
+        return $this->leavePolicy->typeConfig($type)['requires_balance'];
+    }
+
+    /**
+     * Merge keys into a leave_requests.meta jsonb payload and return JSON.
+     */
+    private function mergeMeta(LeaveRequest $leave, array $extra): string
+    {
+        $existing = [];
+        if ($leave->meta) {
+            $existing = is_string($leave->meta) ? json_decode($leave->meta, true) : (array) $leave->meta;
+            if (! is_array($existing)) {
+                $existing = [];
+            }
+        }
+
+        return json_encode(array_merge($existing, $extra), JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Apply a DEDUCT (used+, remaining-) or REFUND (used-, remaining+) to the
+     * matching leave_balances row and write a leave_transactions ledger entry.
+     */
+    private function adjustBalanceAndLedger(LeaveRequest $leave, string $type, string $reason): void
+    {
+        $days = (float) $leave->total_days;
+        $year = (string) optional($leave->start_date)->year ?: (string) now()->year;
+
+        // Resolve the EXACT request-year balance row — no cross-year fallback, so
+        // a deduction/refund can never land on a different year's balance.
+        $balance = LeaveBalance::where('employee_id', $leave->employee_id)
+            ->where('leave_type_id', $leave->leave_type_id)
+            ->where('year', $year)
+            ->first();
+
+        $before = $balance ? (float) $balance->remaining_days : 0.0;
+
+        if ($balance) {
+            if ($type === 'DEDUCT') {
+                $balance->update([
+                    'used_days' => (float) $balance->used_days + $days,
+                    'remaining_days' => (float) $balance->remaining_days - $days,
+                ]);
+            } else { // REFUND
+                $balance->update([
+                    'used_days' => max(0, (float) $balance->used_days - $days),
+                    'remaining_days' => (float) $balance->remaining_days + $days,
+                ]);
+            }
+        }
+
+        $after = $type === 'DEDUCT' ? $before - $days : $before + $days;
+
+        DB::table('leave_transactions')->insert(TenantContext::stamp([
+            'employee_id' => $leave->employee_id,
+            'leave_type_id' => $leave->leave_type_id,
+            'transaction_date' => now()->toDateString(),
+            'transaction_type' => $type,
+            'quantity' => $type === 'DEDUCT' ? -$days : $days,
+            'before_balance' => $before,
+            'after_balance' => $after,
+            'reference_id' => $leave->id,
+            'reference_type' => 'LEAVE_REQUEST',
+            'reason' => $reason,
+            'tenant_id' => TenantContext::id(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]));
+    }
+
+    // ── Response Helpers ─────────────────────────────────
+
+    private function ok(mixed $data, string $message): JsonResponse
+    {
+        return response()->json(['status' => 200, 'message' => $message, 'data' => $data]);
+    }
+
+    private function notFound(string $message = 'Record not found'): JsonResponse
+    {
+        return response()->json(['status' => 404, 'message' => $message, 'data' => null], 404);
+    }
+
+    private function conflict(array $violations, string $resourceName): JsonResponse
+    {
+        return response()->json([
+            'status' => 409,
+            'message' => "Không thể xóa {$resourceName} do vi phạm ràng buộc nghiệp vụ",
+            'data' => ['violations' => $violations],
+        ], 409);
+    }
+
+    private function validationError(array $errors): JsonResponse
+    {
+        return response()->json([
+            'status' => 422,
+            'message' => 'Dữ liệu không hợp lệ',
+            'data' => ['errors' => $errors],
+        ], 422);
+    }
+}

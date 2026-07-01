@@ -1,0 +1,37 @@
+{
+  "python": [
+    "python",
+    "python3",
+    "py",
+    "lap trinh python",
+    "lập trình python"
+  ],
+  "sql": [
+    "sql",
+    "mysql",
+    "postgresql",
+    "postgres",
+    "database",
+    "co so du lieu",
+    "cơ sở dữ liệu",
+    "truy van sql",
+    "truy vấn sql"
+  ],
+  "fastapi": ["fastapi", "fast api", "api fastapi"],
+  "docker": ["docker", "docker compose", "container"],
+  "aws": ["aws", "amazon web services", "amazon aws", "ec2", "s3"],
+  "redis": ["redis", "redis cache"],
+  "excel": [
+    "excel",
+    "microsoft excel",
+    "pivot table",
+    "vlookup",
+    "bang tinh",
+    "bảng tính"
+  ],
+  "javascript": ["javascript", "js", "ecmascript"],
+  "react": ["react", "reactjs", "react.js", "react native"],
+  "nodejs": ["nodejs", "node.js", "node js", "express", "nestjs"],
+  "php": ["php", "laravel"],
+  "html_css": ["html", "html5", "css", "css3", "bootstrap", "tailwind"]
+}

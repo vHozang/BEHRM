@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  HRM SYSTEM — IMPLEMENTATION HANDOFF
+  Mục đích: Tài liệu bàn giao cụ thể, trực quan để một AI khác PHÂN TÍCH và TRIỂN KHAI TIẾP.
+  Đọc theo thứ tự: <environment> -> <architecture> -> <analysis_findings> -> <work_completed>
+  -> <api_contract> -> <verification> -> <open_items> -> <instructions_for_next_ai>.
+-->
+<hrm_handoff version="1.0" generated_on="2026-06-23" status="phase-1-complete">
+
+  <meta>
+    <project>HRM System (Quản lý nhân sự)</project>
+    <stack>Backend: Laravel 11 (PHP, PostgreSQL, Redis) | Frontend: Vue 3 (Vite, axios)</stack>
+    <repo_root>D:\HRM-System-2</repo_root>
+    <summary>
+      Phase 1 đã hoàn tất: 4 nhóm sửa lỗi/bổ sung backend + 8 nhóm nối frontend.
+      Tất cả thay đổi backend đã được KIỂM THỬ THẬT (curl + truy vấn DB trực tiếp).
+      Frontend được kiểm thử TĨNH (đối chiếu hợp đồng API + node --check cú pháp service .js + review tay .vue);
+      CHƯA chạy runtime vì host không có Node/Vite.
+    </summary>
+  </meta>
+
+  <!-- ============================================================ -->
+  <!-- MÔI TRƯỜNG CHẠY & KIỂM THỬ                                    -->
+  <!-- ============================================================ -->
+  <environment>
+    <backend_location path="D:\HRM-System-2\Doan2_v2\Doan2" note="Đây là backend đang chạy thật. CẢNH BÁO: thư mục này UNTRACKED trong git (giải nén từ zip). Nếu nơi deploy thật là repo/khác (vd BE/), phải đồng bộ sang đó."/>
+    <frontend_location path="D:\HRM-System-2\client"/>
+    <docker_stack>
+      <container name="hrm_laravel_php" image="doan2-php" role="PHP-FPM" mount="D:\HRM-System-2\Doan2_v2\Doan2 => /var/www/html" note="Sửa file PHP có hiệu lực ngay, không cần build."/>
+      <container name="hrm_laravel_nginx" image="nginx:alpine" role="Web server" port="80"/>
+      <container name="hrm_postgres" image="postgres:15-alpine" role="DB" port="5432" db="hrm" user="hrm" pass="secret"/>
+      <container name="hrm_redis" image="redis:alpine" role="Cache + Queue" port="6379"/>
+    </docker_stack>
+    <api_base>http://localhost/api/v1</api_base>
+    <test_account note="Mật khẩu do quá trình triển khai đặt cho tài khoản dev có sẵn.">
+      <company_email>an.nguyen@company.com</company_email>
+      <password>test1234</password>
+      <employee_id>1</employee_id>
+      <role>Top of org hierarchy (manager_id null) — phù hợp test phê duyệt/manager-review.</role>
+    </test_account>
+    <internal_service_token header="x-internal-token" value="replace_with_internal_service_token" note="Dùng cho endpoint nội bộ xử lý hàng đợi AI scoring."/>
+    <how_to_test>
+      <db_query>docker exec hrm_postgres psql -U hrm -d hrm -c "SELECT ..."</db_query>
+      <get_token os="Windows PowerShell" note="Truyền JSON body qua file để tránh lỗi quoting của PowerShell.">
+        Set-Content -Encoding ascii -NoNewline -Path "$env:TEMP\b.json" -Value '{"company_email":"an.nguyen@company.com","password":"test1234"}'
+        $token = (curl.exe -s -X POST http://localhost/api/v1/auth/login -H "Content-Type: application/json" --data "@$env:TEMP/b.json" | ConvertFrom-Json).data.access_token
+      </get_token>
+      <authed_call>curl.exe -s -X POST "http://localhost/api/v1/news/1/read" -H "Authorization: Bearer $token"</authed_call>
+      <clear_caches>docker exec hrm_laravel_php php artisan optimize:clear</clear_caches>
+      <js_syntax_check>docker run --rm -v "D:\HRM-System-2\client":/app -w /app node:alpine node --check src/services/&lt;file&gt;.js</js_syntax_check>
+    </how_to_test>
+    <host_caveats>
+      <caveat>Host KHÔNG có php/composer/node trên PATH — chỉ có Docker. Mọi lệnh PHP/JS chạy qua container.</caveat>
+      <caveat>Công cụ Bash trên host này KHÔNG trả output — dùng PowerShell.</caveat>
+      <caveat>Không thể chạy Vite dev/build trên host — frontend chưa được kiểm thử runtime.</caveat>
+    </host_caveats>
+  </environment>
+
+  <!-- ============================================================ -->
+  <!-- KIẾN TRÚC BACKEND                                             -->
+  <!-- ============================================================ -->
+  <architecture>
+    <response_envelope>Mọi response JSON dùng dạng { "status": int, "message": string, "data": any }. List trả về data.items + data.pagination.</response_envelope>
+    <auth>
+      <middleware file="app/Http/Middleware/HrmAuth.php">Token bearer tra trong bảng api_tokens (token_hash = sha256). Set request attribute 'auth_employee' (array, có 'id') và 'auth_employee_id' (int).</middleware>
+    </auth>
+    <controller_groups>
+      <group_a name="Generic CRUD" file="app/Http/Controllers/Api/GenericResourceController.php">
+        Các bảng danh mục/cấu hình. Resource cho phép được whitelist trong app/Support/HrmTables.php (resourceMap). Resource KHÔNG có trong map => 404.
+      </group_a>
+      <group_b name="Dedicated controllers" dir="app/Http/Controllers/Api">
+        AuthController, EmployeeController, ContractController, LeaveController, AttendanceController,
+        PayrollController, RecruitmentController, RequestApprovalController — chứa nghiệp vụ cốt lõi.
+      </group_b>
+    </controller_groups>
+    <routes_file path="routes/api.php" critical_note="Các route generic catch-all Route::get('/{resource}') v.v. nằm CUỐI group hrm.auth. MỌI route chuyên dụng mới PHẢI đặt TRƯỚC khối catch-all này, nếu không sẽ bị nuốt."/>
+  </architecture>
+
+  <!-- ============================================================ -->
+  <!-- KẾT QUẢ PHÂN TÍCH BAN ĐẦU (các vấn đề đã phát hiện)           -->
+  <!-- ============================================================ -->
+  <analysis_findings note="Trạng thái TRƯỚC khi sửa. Mục [FIXED] đã xử lý ở phase 1; mục [OPEN] còn lại ở &lt;open_items&gt;.">
+    <category name="Tính năng giả lập (fake)">
+      <finding id="F1" status="FIXED">POST /news/{id}/read trả success nhưng KHÔNG ghi news_reads.</finding>
+      <finding id="F2" status="FIXED">POST /policies/{id}/acknowledge trả success nhưng KHÔNG ghi policy_acknowledgments.</finding>
+      <finding id="F3" status="FIXED">AI scoring tuyển dụng: job chỉ bị đánh dấu DONE, không tính điểm thật.</finding>
+    </category>
+    <category name="Endpoint frontend gọi nhưng backend thiếu">
+      <finding id="F4" status="FIXED">userService gọi /users nhưng 'users' không được expose (404). => Đã expose + ẩn cột nhạy cảm; sau đó userService bị xóa vì dead code.</finding>
+      <finding id="F5" status="FIXED">Dashboard không có endpoint thống kê => phải gom client-side. => Thêm GET /dashboard/stats.</finding>
+      <finding id="F6" status="FIXED">ReportBuilder không có engine báo cáo server-side. => Thêm POST /reports/generate.</finding>
+    </category>
+    <category name="Logic backend có nhưng frontend chưa dùng">
+      <finding id="F7" status="FIXED">Quy trình phê duyệt đa cấp /requests — chưa có UI. => Thêm Requests.vue.</finding>
+      <finding id="F8" status="FIXED">Tăng ca /overtime-requests — chưa có UI. => Thêm OvertimeRequests.vue.</finding>
+      <finding id="F9" status="FIXED">Đổi ca /shift-swaps — chưa có UI. => Thêm ShiftSwaps.vue.</finding>
+      <finding id="F10" status="FIXED">Hợp đồng activate/terminate — FE dùng PATCH thô. => Wire endpoint chuyên dụng.</finding>
+      <finding id="F11" status="FIXED">Pipeline tuyển dụng (advance/hire/reject/manager-review) — FE chỉ CRUD. => Đã wire.</finding>
+      <finding id="F12" status="FIXED">Hủy đơn nghỉ /leave-requests/{id}/cancel — chưa có UI. => Đã wire.</finding>
+      <finding id="F13" status="FIXED">RBAC: permissions/role-permissions chưa có UI gán quyền. => Đã thêm vào Roles.vue.</finding>
+      <finding id="F14" status="FIXED">Auth me/refresh/change-password chưa dùng đủ. => Đã wire.</finding>
+    </category>
+    <category name="Điểm yếu kiến trúc">
+      <finding id="F15" status="OPEN">AttendanceAsyncController + AttendanceService + ProcessAttendanceLog (xử lý chấm công async qua Redis/queue) viết sẵn nhưng KHÔNG nối route — code chết. Route đang dùng bản đồng bộ.</finding>
+      <finding id="F16" status="OPEN">Payroll không tự tính lương — storeSalaryDetail/updateSalaryDetail chỉ lưu gross/net do client truyền. Chưa có engine tính từ công + phụ cấp + khấu trừ.</finding>
+      <finding id="F17" status="OPEN">forgot-password/reset-password ghi DB thật nhưng KHÔNG gửi email — token không có kênh giao cho người dùng.</finding>
+    </category>
+  </analysis_findings>
+
+  <!-- ============================================================ -->
+  <!-- CÔNG VIỆC ĐÃ HOÀN THÀNH                                       -->
+  <!-- ============================================================ -->
+  <work_completed>
+
+    <backend verified="true" method="curl + truy vấn DB trực tiếp, mỗi task có vòng implement->verify->fix">
+      <task id="B1" name="persistence-fixes" result="PASS">
+        <description>Cho 2 endpoint giả lập ghi dữ liệu thật, idempotent.</description>
+        <files>
+          <file path="app/Http/Controllers/Api/GenericResourceController.php"/>
+        </files>
+        <changes>
+          <change>NEWS READ (store): DB::table('news_reads')->updateOrInsert(['news_id'=>$id,'employee_id'=>$empId], [read_at, created_at, updated_at]). Idempotent theo (news_id, employee_id).</change>
+          <change>POLICY ACK (update): DB::table('policy_acknowledgments')->updateOrInsert(['policy_id'=>$id,'employee_id'=>$empId], [acknowledged_at, ip_address, ...]). Idempotent theo (policy_id, employee_id).</change>
+          <change>employee_id lấy từ $request->attributes->get('auth_employee_id'); null thì bỏ qua insert nhưng vẫn trả success-shape.</change>
+          <bugfix severity="high">SỬA BUG CÓ SẴN: các route dùng Route::defaults() (resource/child) bị Laravel bind tham số controller theo VỊ TRÍ thay vì TÊN, khiến $id nhận chuỗi resource => 2 endpoint chết hẳn. Đã resolve theo tên qua $request->route('resource'|'child'|'id') và nới type-hint $id (int|string).</bugfix>
+        </changes>
+        <tables_touched>news_reads, policy_acknowledgments</tables_touched>
+        <verification>POST /news/1/read và /policies/1/acknowledge trả 200; DB có đúng 1 row mỗi loại; gọi lại không tạo trùng; ip_address ghi đúng. Dọn row test sau khi verify.</verification>
+      </task>
+
+      <task id="B2" name="ai-scoring" result="PASS">
+        <description>Thay AI giả bằng bộ chấm điểm rule-based thật (không gọi mạng).</description>
+        <files>
+          <file path="app/Services/RecruitmentScoringService.php" status="new" note="Scorer deterministic, bounded 0-100."/>
+          <file path="app/Http/Controllers/Api/RecruitmentController.php"/>
+          <file path="app/Models/RecruitmentCandidate.php"/>
+          <file path="routes/api.php" note="Closure /internal/recruitment-ai-jobs/process tính điểm thật."/>
+        </files>
+        <algorithm>Score = (tỉ lệ trùng skill, không phân biệt hoa thường) * 70 + (mức đáp ứng số năm kinh nghiệm) * 30, clamp 0-100, làm tròn. Thiếu dữ liệu => fallback ~50, không crash. Mỗi job try/catch; lỗi => status FAILED, không dừng cả batch.</algorithm>
+        <storage>Điểm lưu ở recruitment_candidates.ai_score (numeric) + mirror meta->>'ai_score'; ai_scoring_status; job lưu meta.score. Bảng recruitment_ai_scoring_jobs KHÔNG có cột score/position_id.</storage>
+        <bugfix severity="high">SỬA 2 BUG 500 CÓ SẴN khi tạo candidate: (1) model thiếu cast meta=>array; (2) store/retryAiScore ghi cột position_id không tồn tại (SQLSTATE 42703).</bugfix>
+        <verification>Tạo candidate => job PENDING; POST /internal/recruitment-ai-jobs/process (x-internal-token) => processed 1, job DONE, ai_score=67 (đúng công thức 2/3 skill*70 + 2/3 exp*30); retry => về PENDING. Dọn dữ liệu test.</verification>
+      </task>
+
+      <task id="B3" name="analytics" result="PASS">
+        <description>Thêm endpoint thống kê + sinh báo cáo server-side.</description>
+        <files>
+          <file path="app/Http/Controllers/Api/AnalyticsController.php" status="new"/>
+          <file path="routes/api.php" note="Đăng ký 2 route TRƯỚC khối generic catch-all."/>
+        </files>
+        <endpoints>
+          <endpoint method="GET" path="/dashboard/stats">
+            data: { employees:{total, by_status, by_department}, leave_requests:{by_status, pending}, attendances_today, recruitment:{by status, total}, contracts:{expiring 30d} }. Dùng query gộp, không N+1, auto-detect cột qua Schema:: nên không 500 khi thiếu cột.
+          </endpoint>
+          <endpoint method="POST" path="/reports/generate" body='{ "type": "headcount|leave-summary|payroll-summary|attendance-summary", "filters": {} }'>
+            Trả data:{type, rows, history_id}. Ghi 1 row report_histories (executed_by=auth_employee_id, status=DONE, parameters=json). type lạ => 422.
+          </endpoint>
+        </endpoints>
+        <verification>employees.total=21 khớp DB; pending leave khớp; headcount trả 9 nhóm phòng ban; report_histories ghi thật; type bogus => 422. Dọn report_histories test.</verification>
+      </task>
+
+      <task id="B4" name="expose-users" result="PASS">
+        <description>Expose /users qua generic + ẩn cột nhạy cảm toàn cục.</description>
+        <files>
+          <file path="app/Support/HrmTables.php" note="Thêm 'users' => 'users' vào resourceMap (mục IAM)."/>
+          <file path="app/Http/Controllers/Api/GenericResourceController.php" note="Thêm SECRET_COLUMNS + hideSecrets() gọi trong unpackMeta() — áp cho index/show/store/update mọi resource."/>
+        </files>
+        <hidden_columns>password, password_hash, remember_token, token, token_hash, secret, api_key (so khớp không phân biệt hoa thường).</hidden_columns>
+        <verification>GET /users trả 200 (data.items), không lộ password/remember_token; regression GET /employees (total 21), /departments (16) vẫn OK.</verification>
+      </task>
+    </backend>
+
+    <frontend verified="static" method="đối chiếu hợp đồng API + node --check cú pháp service .js + review tay .vue (CHƯA chạy runtime)">
+      <task id="FE1" name="recruitment-flow" result="PASS">
+        <files>
+          <file path="client/src/services/recruitmentService.js"/>
+          <file path="client/src/views/Recruitment.vue"/>
+          <file path="client/src/views/Interviews.vue"/>
+        </files>
+        <endpoints_wired>
+          POST /recruitment-candidates/{id}/advance; POST .../hire; POST .../reject;
+          PATCH .../manager-review; POST .../ai-score/retry; PATCH /interviews/{id}/manager-review
+        </endpoints_wired>
+        <notes>retryAiScore + hiển thị ai_score đã có sẵn, giữ nguyên. Hành động trong modal chi tiết ứng viên; refresh list sau mỗi action.</notes>
+      </task>
+
+      <task id="FE2" name="contract-lifecycle" result="PASS">
+        <files>
+          <file path="client/src/services/contractService.js"/>
+          <file path="client/src/views/Contracts.vue"/>
+        </files>
+        <endpoints_wired>POST /contracts/{id}/activate; POST /contracts/{id}/terminate {end_date?}</endpoints_wired>
+        <notes>Nút "Kích hoạt" (confirm) + "Chấm dứt" (modal chọn end_date tùy chọn). PATCH /contracts/{id} update() vẫn giữ cho sửa thường.</notes>
+      </task>
+
+      <task id="FE3" name="leave-cancel" result="PASS">
+        <files>
+          <file path="client/src/services/leaveService.js"/>
+          <file path="client/src/views/Leaves.vue"/>
+          <file path="client/src/views/EmployeePortal.vue"/>
+        </files>
+        <endpoints_wired>POST /leave-requests/{id}/cancel</endpoints_wired>
+        <notes>Nút "Hủy đơn" chỉ hiện cho đơn pending/approved của chính người dùng (canCancel gate theo employee_id).</notes>
+      </task>
+
+      <task id="FE4" name="communication" result="PASS">
+        <files>
+          <file path="client/src/services/communicationService.js"/>
+          <file path="client/src/views/News.vue"/>
+          <file path="client/src/views/Policies.vue"/>
+        </files>
+        <endpoints_wired>POST /news/{id}/read; POST /policies/{id}/acknowledge</endpoints_wired>
+        <notes>markRead bắn khi mở tin (chỉ khi chưa đọc). acknowledge giữ payload chữ ký từ SignaturePad. Đã bỏ demo-mode fallback cũ ở Policies.vue.</notes>
+      </task>
+
+      <task id="FE5" name="dashboard-stats" result="PASS">
+        <files>
+          <file path="client/src/services/dashboardService.js" status="new"/>
+          <file path="client/src/views/Dashboard.vue"/>
+        </files>
+        <endpoints_wired>GET /dashboard/stats</endpoints_wired>
+        <notes>Thay gom client-side bằng 1 call getStats(). Dùng optional chaining/fallback để không crash khi thiếu key.</notes>
+      </task>
+
+      <task id="FE6" name="report-engine" result="PASS">
+        <files>
+          <file path="client/src/services/reportService.js" status="new"/>
+          <file path="client/src/views/ReportBuilder.vue"/>
+        </files>
+        <endpoints_wired>POST /reports/generate {type, filters}</endpoints_wired>
+        <notes>Chọn 1 trong 4 type, render data.rows; cột bảng tính động theo union keys của rows.</notes>
+      </task>
+
+      <task id="FE7" name="approval-workflow-uis" result="PASS" note="Task này SỞ HỮU router/index.js và Layout.vue để tránh xung đột.">
+        <files>
+          <file path="client/src/services/requestService.js" status="new"/>
+          <file path="client/src/services/attendanceService.js" note="+ getOvertime/createOvertime/approveOvertime"/>
+          <file path="client/src/services/workScheduleService.js" note="+ getSwaps/requestSwap/approveSwap"/>
+          <file path="client/src/views/Requests.vue" status="new"/>
+          <file path="client/src/views/OvertimeRequests.vue" status="new"/>
+          <file path="client/src/views/ShiftSwaps.vue" status="new"/>
+          <file path="client/src/router/index.js" note="+ 3 route (adminOnly) + ADMIN_ONLY_ROUTES"/>
+          <file path="client/src/views/Layout.vue" note="+ 3 link sidebar nhóm 'time'"/>
+        </files>
+        <endpoints_wired>
+          GET/POST /requests; GET/PATCH/DELETE /requests/{id}; POST /requests/{id}/(approve|reject|cancel);
+          GET/POST /overtime-requests; POST /overtime-requests/{id}/approve;
+          GET /shift-swaps; POST /shift-swaps; POST /shift-swaps/{id}/approve
+        </endpoints_wired>
+        <notes>Requests.vue dùng lại component ApprovalTimeline.vue cho lịch sử duyệt.</notes>
+      </task>
+
+      <task id="FE8" name="rbac-auth" result="PASS">
+        <files>
+          <file path="client/src/services/roleService.js" note="+ getPermissions/getRolePermissions/assignPermission/removePermission"/>
+          <file path="client/src/services/authService.js" note="+ me/refresh (changePassword đã có)"/>
+          <file path="client/src/views/Roles.vue" note="+ UI xem/gán/gỡ quyền cho vai trò"/>
+          <file path="client/src/services/userService.js" status="deleted" note="Dead code — không view nào import (grep xác nhận)."/>
+        </files>
+        <endpoints_wired>
+          GET /permissions; GET /role-permissions?role_id=; POST /role-permissions; DELETE /role-permissions/{id};
+          POST /roles; PATCH /roles/{id}; DELETE /roles/{id}; GET /auth/me; POST /auth/refresh; POST /auth/change-password
+        </endpoints_wired>
+        <notes>Layout.vue đã có sẵn menu + modal đổi mật khẩu nối authService.changePassword — không sửa thêm.</notes>
+      </task>
+    </frontend>
+  </work_completed>
+
+  <!-- ============================================================ -->
+  <!-- HỢP ĐỒNG API (đã verify backend, FE đã nối)                  -->
+  <!-- ============================================================ -->
+  <api_contract base="/api/v1" auth="Bearer (axiosClient interceptor tự gắn)">
+    <group name="Auth (public)">
+      <ep method="POST" path="/auth/login" body='{company_email, password}' returns="data:{access_token, token_type, expires_in, employee}"/>
+      <ep method="POST" path="/auth/forgot-password"/>
+      <ep method="POST" path="/auth/reset-password"/>
+    </group>
+    <group name="Auth (authed)">
+      <ep method="GET" path="/auth/me"/>
+      <ep method="POST" path="/auth/refresh"/>
+      <ep method="POST" path="/auth/change-password" body='{password}'/>
+      <ep method="GET" path="/auth/hierarchy"/>
+    </group>
+    <group name="Communication (đã persist thật)">
+      <ep method="POST" path="/news/{id}/read"/>
+      <ep method="POST" path="/policies/{id}/acknowledge"/>
+    </group>
+    <group name="Recruitment">
+      <ep method="POST" path="/recruitment-candidates/{id}/advance"/>
+      <ep method="POST" path="/recruitment-candidates/{id}/hire"/>
+      <ep method="POST" path="/recruitment-candidates/{id}/reject"/>
+      <ep method="PATCH" path="/recruitment-candidates/{id}/manager-review"/>
+      <ep method="POST" path="/recruitment-candidates/{id}/ai-score/retry"/>
+      <ep method="PATCH" path="/interviews/{id}/manager-review"/>
+      <ep method="POST" path="/internal/recruitment-ai-jobs/process" auth="x-internal-token" note="Tính điểm AI rule-based thật."/>
+    </group>
+    <group name="Contracts">
+      <ep method="POST" path="/contracts/{id}/activate"/>
+      <ep method="POST" path="/contracts/{id}/terminate" body='{end_date?}'/>
+    </group>
+    <group name="Leave">
+      <ep method="POST" path="/leave-requests/{id}/cancel"/>
+    </group>
+    <group name="Approval requests (đa cấp)">
+      <ep method="GET" path="/requests"/>
+      <ep method="POST" path="/requests"/>
+      <ep method="POST" path="/requests/{id}/approve"/>
+      <ep method="POST" path="/requests/{id}/reject"/>
+      <ep method="POST" path="/requests/{id}/cancel"/>
+    </group>
+    <group name="Attendance extra">
+      <ep method="GET" path="/overtime-requests"/>
+      <ep method="POST" path="/overtime-requests"/>
+      <ep method="POST" path="/overtime-requests/{id}/approve"/>
+      <ep method="POST" path="/shift-swaps"/>
+      <ep method="POST" path="/shift-swaps/{id}/approve"/>
+      <ep method="GET" path="/shift-swaps" note="qua generic CRUD"/>
+    </group>
+    <group name="Analytics (mới)">
+      <ep method="GET" path="/dashboard/stats"/>
+      <ep method="POST" path="/reports/generate" body='{type, filters?}'/>
+    </group>
+    <group name="IAM / Generic">
+      <ep method="GET" path="/users" note="Mới expose, ẩn cột bí mật."/>
+      <ep method="GET/POST" path="/roles, /permissions, /role-permissions, /employee-roles"/>
+    </group>
+  </api_contract>
+
+  <!-- ============================================================ -->
+  <!-- KIỂM THỬ & GIỚI HẠN                                          -->
+  <!-- ============================================================ -->
+  <verification>
+    <backend confidence="high">Cả 4 task chạy vòng implement->verify->fix; verify bằng curl thật + psql; mỗi task tự dọn dữ liệu test. Workflow run id: wf_088166bb-643.</backend>
+    <frontend confidence="medium" limitation="Chưa chạy runtime (không có Node/Vite trên host).">
+      Verify: đối chiếu path/verb/payload với hợp đồng backend đã verify; node --check (qua container node:alpine) PASS cho các service .js; review tay file .vue. Workflow run id: wf_f9311ba0-7db.
+    </frontend>
+    <must_manually_test note="AI tiếp theo nên chạy npm run dev hoặc npm run build ở client/ rồi click thử:">
+      <item>Pipeline tuyển dụng (advance/hire/reject/manager-review) + hiển thị ai_score.</item>
+      <item>3 màn hình mới: Requests, OvertimeRequests, ShiftSwaps (route + sidebar).</item>
+      <item>Dashboard đọc /dashboard/stats; ReportBuilder đọc /reports/generate.</item>
+      <item>Đổi mật khẩu, RBAC gán quyền trong Roles.vue.</item>
+      <item>Xác nhận không còn import nào trỏ tới userService.js đã xóa (build sẽ báo nếu sót).</item>
+    </must_manually_test>
+  </verification>
+
+  <!-- ============================================================ -->
+  <!-- VIỆC CÒN MỞ / ƯU TIÊN TIẾP THEO                              -->
+  <!-- ============================================================ -->
+  <open_items>
+    <item id="O1" priority="high" type="verification">Chạy npm run build ở client/ để xác nhận FE biên dịch (xem &lt;verification&gt;/must_manually_test). Đây là bước cần làm NGAY.</item>
+    <item id="O2" priority="medium" type="decision" ref="F15">Attendance async: quyết định XÓA AttendanceAsyncController/AttendanceService/ProcessAttendanceLog (code chết) hay CHUYỂN route check-in/out sang dùng async + chạy queue worker.</item>
+    <item id="O3" priority="medium" type="feature" ref="F16">Payroll: xây engine tính lương thật (gross/net từ công + phụ cấp + khấu trừ + bảo hiểm) thay vì nhận giá trị từ client. Liên quan bảng salary_breakdowns, salary_attendance_summary, payroll_adjustments.</item>
+    <item id="O4" priority="medium" type="feature" ref="F17">forgot/reset-password: thêm gửi email token (mailer) — hiện token chỉ nằm trong DB.</item>
+    <item id="O5" priority="low" type="data">Dữ liệu mẫu: leave_requests.status đang NULL toàn bộ (Dashboard pending=0); recruitment_positions/candidates rỗng. Cần seed dữ liệu thật để số liệu có nghĩa.</item>
+    <item id="O6" priority="low" type="enhancement">Report engine giới hạn 4 loại; có thể mở rộng theo report_templates (cho phép template động).</item>
+    <item id="O7" priority="low" type="ops">Đồng bộ thay đổi backend từ Doan2_v2/Doan2 (untracked) sang repo/môi trường deploy thật nếu khác.</item>
+  </open_items>
+
+  <!-- ============================================================ -->
+  <!-- HƯỚNG DẪN CHO AI TIẾP THEO                                    -->
+  <!-- ============================================================ -->
+  <instructions_for_next_ai>
+    <step order="1">Đọc &lt;environment&gt; để dựng được vòng test (Docker đang chạy, dùng test_account + PowerShell snippet). Backend sửa file là có hiệu lực ngay.</step>
+    <step order="2">Bắt đầu từ O1: chạy `npm install` (nếu cần) rồi `npm run build` trong client/ — dùng container node nếu host không có node. Sửa mọi lỗi import/compile (đặc biệt kiểm tra không còn ai import userService.js).</step>
+    <step order="3">Test runtime FE theo &lt;verification&gt;/must_manually_test bằng trình duyệt trỏ vào http://localhost.</step>
+    <step order="4">Chọn việc tiếp theo từ &lt;open_items&gt; theo priority. Mỗi thay đổi backend: sửa -> `php artisan optimize:clear` -> curl test -> psql verify. Mỗi route mới phải đặt TRƯỚC catch-all generic trong routes/api.php.</step>
+    <step order="5">Giữ response envelope { status, message, data }, dùng auth_employee_id cho dữ liệu theo người dùng, và tuân theo pattern service/view hiện có ở frontend.</step>
+    <constraint>KHÔNG sửa schema DB (không migration mới) trừ khi được yêu cầu. KHÔNG đụng vendor/ và node_modules/.</constraint>
+  </instructions_for_next_ai>
+
+</hrm_handoff>
