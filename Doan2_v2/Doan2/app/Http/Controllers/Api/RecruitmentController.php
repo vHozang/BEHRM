@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\InterviewSchedule;
 use App\Models\RecruitmentCandidate;
+use App\Services\AiFeedbackService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -235,10 +236,16 @@ class RecruitmentController extends Controller
 
     /**
      * PATCH /recruitment-candidates/{id}/manager-review — Đánh giá ứng viên.
+     *
+     * Nếu ứng viên đã có ai_score và manager_score được gửi lên,
+     * tự động gửi feedback cho dịch vụ AI AutoRecruit để phân tích
+     * sự lệch điểm và giúp AI học lại.
      */
     public function managerReview(Request $request, int $id): JsonResponse
     {
-        if (! RecruitmentCandidate::where('id', $id)->exists()) {
+        $candidate = RecruitmentCandidate::find($id);
+
+        if (! $candidate) {
             return $this->notFound();
         }
 
@@ -252,10 +259,88 @@ class RecruitmentController extends Controller
             TenantContext::stamp($data + ['created_at' => now()])
         );
 
-        return $this->ok(
-            DB::table('recruitment_candidate_manager_reviews')->where('candidate_id', $id)->first(),
-            'Đánh giá quản lý đã được lưu'
-        );
+        // ── AI Feedback Loop ─────────────────────────────────
+        // Nếu ứng viên đã có ai_score VÀ request gửi lên manager_score,
+        // tự động gửi feedback cho AutoRecruit để AI học lại.
+        $managerScore = $request->input('manager_score');
+        $aiScore = $candidate->ai_score;
+
+        $feedbackAnalysis = null;
+
+        if ($managerScore !== null && $aiScore !== null) {
+            try {
+                // Thu thập dữ liệu về vị trí tuyển dụng
+                $position = $candidate->recruitment_position_id
+                    ? DB::table('recruitment_positions')
+                        ->where('id', $candidate->recruitment_position_id)
+                        ->first()
+                    : null;
+
+                $jdText = '';
+                $cvSkills = [];
+
+                if ($position) {
+                    $positionName = $position->position_name ?? 'Job Position';
+                    $requiredSkillsList = json_decode($position->required_skills_json ?? '[]', true) ?: [];
+                    $jdText = "Position: {$positionName}. Requirements: " . implode(', ', $requiredSkillsList);
+                }
+
+                // Kỹ năng từ meta của ứng viên
+                $candidateMeta = json_decode($candidate->meta ?? '{}', true) ?: [];
+                $cvSkills = is_array($candidateMeta['skills'] ?? null)
+                    ? $candidateMeta['skills']
+                    : [];
+
+                // Kỹ năng AI đã match / thiếu
+                $matchedSkills = json_decode($candidate->ai_matched_skills_json ?? '[]', true) ?: [];
+                $missingSkills = json_decode($candidate->ai_missing_skills_json ?? '[]', true) ?: [];
+
+                // Gửi feedback (fire-and-forget: không block nếu AI service lỗi)
+                $feedbackService = new AiFeedbackService();
+                $feedbackResult = $feedbackService->sendFeedback(
+                    candidateId: $id,
+                    aiScore: (int) $aiScore,
+                    humanScore: (int) $managerScore,
+                    jdText: $jdText,
+                    cvSkills: $cvSkills,
+                    matchedSkills: $matchedSkills,
+                    missingSkills: $missingSkills
+                );
+
+                // Lưu phân tích AI vào meta của review
+                if ($feedbackResult && isset($feedbackResult['analysis'])) {
+                    $feedbackAnalysis = $feedbackResult['analysis'];
+                    $reviewMeta = json_decode(
+                        DB::table('recruitment_candidate_manager_reviews')
+                            ->where('candidate_id', $id)
+                            ->value('meta') ?? '{}',
+                        true
+                    ) ?: [];
+
+                    $reviewMeta['ai_feedback_analysis'] = $feedbackAnalysis;
+                    $reviewMeta['ai_feedback_sent_at'] = now()->toIso8601String();
+
+                    DB::table('recruitment_candidate_manager_reviews')
+                        ->where('candidate_id', $id)
+                        ->update(['meta' => json_encode($reviewMeta, JSON_UNESCAPED_UNICODE)]);
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error(
+                    "AI feedback failed for candidate #{$id}: " . $e->getMessage()
+                );
+            }
+        }
+
+        $review = DB::table('recruitment_candidate_manager_reviews')
+            ->where('candidate_id', $id)
+            ->first();
+
+        $responseData = (array) $review;
+        if ($feedbackAnalysis) {
+            $responseData['ai_feedback_analysis'] = $feedbackAnalysis;
+        }
+
+        return $this->ok($responseData, 'Đánh giá quản lý đã được lưu');
     }
 
     /**
@@ -472,6 +557,29 @@ class RecruitmentController extends Controller
     }
 
     // ── Response Helpers ─────────────────────────────────
+
+    /**
+     * GET /recruitment-ai/feedback-stats — Thống kê feedback AI.
+     */
+    public function aiFeedbackStats(): JsonResponse
+    {
+        $feedbackService = new AiFeedbackService();
+
+        $stats = $feedbackService->getStats();
+        $adjustments = $feedbackService->getAdjustments();
+
+        if ($stats === null && $adjustments === null) {
+            return $this->ok(
+                ['message' => 'Dịch vụ AI không khả dụng'],
+                'Không thể lấy thống kê feedback AI'
+            );
+        }
+
+        return $this->ok([
+            'stats' => $stats,
+            'adjustments' => $adjustments,
+        ], 'Thống kê feedback AI');
+    }
 
     private function ok(mixed $data, string $message): JsonResponse
     {

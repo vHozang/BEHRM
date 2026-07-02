@@ -1,0 +1,6 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/AutoRecruit-main/.venv/bin/python",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/AutoRecruit-main/app"
+  ]
+}

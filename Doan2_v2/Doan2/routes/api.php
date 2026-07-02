@@ -295,6 +295,7 @@ Route::prefix('v1')->group(function (): void {
         Route::patch('/interviews/{id}', [RecruitmentController::class, 'updateInterview'])->whereNumber('id');
         Route::delete('/interviews/{id}', [RecruitmentController::class, 'destroyInterview'])->whereNumber('id');
         Route::patch('/interviews/{id}/manager-review', [RecruitmentController::class, 'interviewManagerReview'])->whereNumber('id');
+        Route::get('/recruitment-ai/feedback-stats', [RecruitmentController::class, 'aiFeedbackStats']);
 
         // ─── Recruitment Posts (Bài đăng tuyển dụng) ────
         Route::get('/recruitment-posts', [RecruitmentPostController::class, 'index']);

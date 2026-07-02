@@ -1,9 +1,11 @@
-﻿import io
+import io
 import json
+import math
 import os
 import re
 import sqlite3
 import unicodedata
+from datetime import datetime
 from html import unescape
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
@@ -13,6 +15,7 @@ import numpy as np
 import requests
 from docx import Document
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -192,6 +195,24 @@ def init_db() -> None:
             candidate_skills TEXT,
             years_experience INTEGER,
             raw_text TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS feedback_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            candidate_id INTEGER,
+            ai_score REAL,
+            human_score REAL,
+            score_delta REAL,
+            jd_text TEXT,
+            cv_skills TEXT,
+            ai_matched_skills TEXT,
+            ai_missing_skills TEXT,
+            analysis TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -1383,4 +1404,345 @@ def get_job_ranking(job_id: int, top_k: int = 10) -> Dict[str, Any]:
         "jd_text": job["jd_text"],
         "jd": json.loads(job["jd_json"]) if job["jd_json"] else {},
         "top_candidates": rows,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  AI FEEDBACK LOOP — Học lại từ đánh giá của HR / Trưởng phòng
+# ═══════════════════════════════════════════════════════════════════
+
+
+class FeedbackPayload(BaseModel):
+    """Payload nhận từ Laravel khi HR/Trưởng phòng chấm lại điểm."""
+    candidate_id: int
+    ai_score: float           # Điểm AI ban đầu (0..1)
+    human_score: float        # Điểm người chấm (0..1)
+    jd_text: str = ""
+    cv_skills: List[str] = []
+    ai_matched_skills: List[str] = []
+    ai_missing_skills: List[str] = []
+
+
+def analyze_score_discrepancy(
+    ai_score: float,
+    human_score: float,
+    cv_skills: List[str],
+    ai_matched_skills: List[str],
+    ai_missing_skills: List[str],
+) -> Dict[str, Any]:
+    """
+    Phân tích tại sao điểm AI và điểm người chấm bị lệch.
+
+    Sử dụng rule-based heuristics dựa trên:
+    - Mức chênh lệch giữa hai điểm.
+    - Tỷ lệ kỹ năng AI match/miss so với kỹ năng thực tế của ứng viên.
+    - Dữ liệu feedback tích lũy từ trước.
+    """
+    delta = human_score - ai_score
+    abs_delta = abs(delta)
+
+    # Phân loại mức độ lệch
+    if abs_delta < 0.05:
+        severity = "negligible"
+        severity_vi = "Không đáng kể"
+    elif abs_delta < 0.15:
+        severity = "minor"
+        severity_vi = "Nhẹ"
+    elif abs_delta < 0.30:
+        severity = "moderate"
+        severity_vi = "Trung bình"
+    else:
+        severity = "significant"
+        severity_vi = "Đáng kể"
+
+    # Phân tích nguyên nhân dựa trên hướng lệch
+    reasons = []
+    suggestions = []
+
+    if delta > 0.05:
+        # Người chấm cho điểm CAO hơn AI → AI đánh giá quá khắt khe
+        direction = "ai_underscored"
+        direction_vi = "AI chấm thấp hơn thực tế"
+
+        if ai_missing_skills:
+            missing_count = len(ai_missing_skills)
+            reasons.append(
+                f"AI báo thiếu {missing_count} kỹ năng ({', '.join(ai_missing_skills[:5])}), "
+                f"nhưng HR đánh giá ứng viên vẫn đáp ứng tốt — có thể ứng viên có kỹ năng tương đương "
+                f"hoặc kinh nghiệm thực tế bù đắp."
+            )
+            suggestions.append("Giảm trọng số must_have_score hoặc mở rộng từ điển kỹ năng tương đương.")
+
+        if len(cv_skills) > len(ai_matched_skills) + len(ai_missing_skills):
+            reasons.append(
+                f"Ứng viên có {len(cv_skills)} kỹ năng nhưng AI chỉ đánh giá dựa trên "
+                f"{len(ai_matched_skills) + len(ai_missing_skills)} kỹ năng yêu cầu — "
+                f"các kỹ năng bổ sung (soft skills, leadership) chưa được tính."
+            )
+            suggestions.append("Tăng trọng số semantic_score để đánh giá toàn diện hơn.")
+
+        if not reasons:
+            reasons.append(
+                "AI có thể chưa đánh giá đầy đủ kinh nghiệm thực tế, "
+                "soft skills hoặc tiềm năng phát triển của ứng viên."
+            )
+            suggestions.append("Xem xét bổ sung đánh giá soft skills vào mô hình AI.")
+
+    elif delta < -0.05:
+        # Người chấm cho điểm THẤP hơn AI → AI đánh giá quá cao
+        direction = "ai_overscored"
+        direction_vi = "AI chấm cao hơn thực tế"
+
+        if ai_matched_skills:
+            reasons.append(
+                f"AI match được {len(ai_matched_skills)} kỹ năng từ CV nhưng HR đánh giá "
+                f"mức độ thành thạo thực tế thấp hơn — CV có thể trình bày ấn tượng hơn năng lực thực."
+            )
+            suggestions.append("Tăng trọng số must_have_score, giảm trọng số semantic_score.")
+
+        reasons.append(
+            "Có thể CV được viết tốt tạo ấn tượng semantic cao, "
+            "nhưng phỏng vấn/đánh giá thực tế cho thấy năng lực thấp hơn."
+        )
+        suggestions.append("Giảm trọng số semantic và tăng trọng số kinh nghiệm thực tế.")
+
+    else:
+        direction = "aligned"
+        direction_vi = "AI và HR đánh giá tương đồng"
+        reasons.append("Điểm AI và điểm HR gần nhau, cho thấy mô hình chấm điểm đang hoạt động tốt.")
+
+    return {
+        "delta": round(delta, 4),
+        "abs_delta": round(abs_delta, 4),
+        "direction": direction,
+        "direction_vi": direction_vi,
+        "severity": severity,
+        "severity_vi": severity_vi,
+        "reasons": reasons,
+        "suggestions": suggestions,
+        "ai_score": round(ai_score, 4),
+        "human_score": round(human_score, 4),
+    }
+
+
+@app.post("/feedback")
+def receive_feedback(payload: FeedbackPayload) -> Dict[str, Any]:
+    """
+    Nhận feedback từ Laravel khi HR/Trưởng phòng chấm lại điểm.
+    Lưu vào feedback_log và trả về phân tích tại sao điểm lệch.
+    """
+    analysis = analyze_score_discrepancy(
+        ai_score=payload.ai_score,
+        human_score=payload.human_score,
+        cv_skills=payload.cv_skills,
+        ai_matched_skills=payload.ai_matched_skills,
+        ai_missing_skills=payload.ai_missing_skills,
+    )
+
+    delta = payload.human_score - payload.ai_score
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO feedback_log
+            (candidate_id, ai_score, human_score, score_delta, jd_text,
+             cv_skills, ai_matched_skills, ai_missing_skills, analysis)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            payload.candidate_id,
+            payload.ai_score,
+            payload.human_score,
+            round(delta, 4),
+            payload.jd_text,
+            json.dumps(payload.cv_skills, ensure_ascii=False),
+            json.dumps(payload.ai_matched_skills, ensure_ascii=False),
+            json.dumps(payload.ai_missing_skills, ensure_ascii=False),
+            json.dumps(analysis, ensure_ascii=False),
+        ),
+    )
+    feedback_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    return {
+        "feedback_id": feedback_id,
+        "candidate_id": payload.candidate_id,
+        "analysis": analysis,
+    }
+
+
+@app.get("/feedback/stats")
+def feedback_stats() -> Dict[str, Any]:
+    """
+    Thống kê tổng hợp từ tất cả feedback đã nhận.
+    Giúp HR và quản trị viên hiểu mức độ chính xác của AI theo thời gian.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) as total FROM feedback_log")
+    total = cur.fetchone()["total"]
+
+    if total == 0:
+        conn.close()
+        return {
+            "total_feedbacks": 0,
+            "message": "Chưa có dữ liệu feedback nào.",
+        }
+
+    cur.execute(
+        """
+        SELECT
+            AVG(score_delta) as avg_delta,
+            AVG(ABS(score_delta)) as avg_abs_delta,
+            MIN(score_delta) as min_delta,
+            MAX(score_delta) as max_delta,
+            AVG(ai_score) as avg_ai_score,
+            AVG(human_score) as avg_human_score,
+            SUM(CASE WHEN score_delta > 0.05 THEN 1 ELSE 0 END) as ai_underscored_count,
+            SUM(CASE WHEN score_delta < -0.05 THEN 1 ELSE 0 END) as ai_overscored_count,
+            SUM(CASE WHEN ABS(score_delta) <= 0.05 THEN 1 ELSE 0 END) as aligned_count
+        FROM feedback_log
+        """
+    )
+    row = dict(cur.fetchone())
+
+    # Lấy 10 feedback gần nhất
+    cur.execute(
+        """
+        SELECT candidate_id, ai_score, human_score, score_delta, created_at
+        FROM feedback_log
+        ORDER BY created_at DESC
+        LIMIT 10
+        """
+    )
+    recent = [dict(r) for r in cur.fetchall()]
+
+    conn.close()
+
+    return {
+        "total_feedbacks": total,
+        "avg_delta": round(row["avg_delta"], 4),
+        "avg_abs_delta": round(row["avg_abs_delta"], 4),
+        "min_delta": round(row["min_delta"], 4),
+        "max_delta": round(row["max_delta"], 4),
+        "avg_ai_score": round(row["avg_ai_score"], 4),
+        "avg_human_score": round(row["avg_human_score"], 4),
+        "distribution": {
+            "ai_underscored": row["ai_underscored_count"],
+            "ai_overscored": row["ai_overscored_count"],
+            "aligned": row["aligned_count"],
+            "ai_underscored_pct": round(row["ai_underscored_count"] / total * 100, 1),
+            "ai_overscored_pct": round(row["ai_overscored_count"] / total * 100, 1),
+            "aligned_pct": round(row["aligned_count"] / total * 100, 1),
+        },
+        "recent_feedbacks": recent,
+    }
+
+
+@app.get("/feedback/adjustments")
+def feedback_weight_adjustments() -> Dict[str, Any]:
+    """
+    Gợi ý điều chỉnh trọng số chấm điểm AI dựa trên dữ liệu feedback tích lũy.
+
+    Trọng số mặc định trong score_candidate():
+      semantic: 0.55, must: 0.30, nice: 0.10, exp: 0.05, project: 0.12
+
+    Hệ thống phân tích xu hướng lệch và đề xuất điều chỉnh.
+    """
+    DEFAULT_WEIGHTS = {
+        "semantic": 0.55,
+        "must": 0.30,
+        "nice": 0.10,
+        "exp": 0.05,
+        "project": 0.12,
+    }
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) as total FROM feedback_log")
+    total = cur.fetchone()["total"]
+
+    if total < 3:
+        conn.close()
+        return {
+            "total_feedbacks": total,
+            "message": "Cần ít nhất 3 feedback để tính toán gợi ý điều chỉnh.",
+            "current_weights": DEFAULT_WEIGHTS,
+            "suggested_weights": DEFAULT_WEIGHTS,
+            "adjustments": [],
+        }
+
+    cur.execute(
+        """
+        SELECT
+            AVG(score_delta) as avg_delta,
+            AVG(ABS(score_delta)) as avg_abs_delta,
+            SUM(CASE WHEN score_delta > 0.05 THEN 1 ELSE 0 END) as underscored,
+            SUM(CASE WHEN score_delta < -0.05 THEN 1 ELSE 0 END) as overscored
+        FROM feedback_log
+        """
+    )
+    stats = dict(cur.fetchone())
+    conn.close()
+
+    avg_delta = stats["avg_delta"]
+    underscored_ratio = stats["underscored"] / total
+    overscored_ratio = stats["overscored"] / total
+
+    suggested = dict(DEFAULT_WEIGHTS)
+    adjustments = []
+
+    if avg_delta > 0.08 and underscored_ratio > 0.5:
+        # AI thường xuyên chấm thấp hơn → tăng semantic (đánh giá rộng hơn),
+        # giảm must (bớt khắt khe với kỹ năng bắt buộc)
+        shift = min(0.08, abs(avg_delta) * 0.3)
+        suggested["semantic"] = round(suggested["semantic"] + shift, 4)
+        suggested["must"] = round(suggested["must"] - shift * 0.6, 4)
+        suggested["nice"] = round(suggested["nice"] + shift * 0.3, 4)
+        adjustments.append({
+            "type": "ai_too_strict",
+            "message_vi": f"AI chấm thấp hơn HR trung bình {abs(avg_delta)*100:.1f}% — "
+                          f"đề xuất tăng trọng số semantic và giảm must_have.",
+            "detail": f"{stats['underscored']}/{total} lần AI chấm thấp hơn.",
+        })
+
+    elif avg_delta < -0.08 and overscored_ratio > 0.5:
+        # AI thường xuyên chấm cao hơn → giảm semantic, tăng must
+        shift = min(0.08, abs(avg_delta) * 0.3)
+        suggested["semantic"] = round(suggested["semantic"] - shift, 4)
+        suggested["must"] = round(suggested["must"] + shift * 0.6, 4)
+        suggested["exp"] = round(suggested["exp"] + shift * 0.3, 4)
+        adjustments.append({
+            "type": "ai_too_lenient",
+            "message_vi": f"AI chấm cao hơn HR trung bình {abs(avg_delta)*100:.1f}% — "
+                          f"đề xuất giảm trọng số semantic và tăng must_have.",
+            "detail": f"{stats['overscored']}/{total} lần AI chấm cao hơn.",
+        })
+
+    else:
+        adjustments.append({
+            "type": "well_calibrated",
+            "message_vi": "Mô hình AI đang chấm điểm khá chính xác so với đánh giá của HR.",
+            "detail": f"Trung bình lệch {abs(avg_delta)*100:.1f}%.",
+        })
+
+    # Đảm bảo trọng số không âm
+    for key in suggested:
+        suggested[key] = max(0.01, suggested[key])
+
+    return {
+        "total_feedbacks": total,
+        "current_weights": DEFAULT_WEIGHTS,
+        "suggested_weights": suggested,
+        "adjustments": adjustments,
+        "stats_summary": {
+            "avg_delta": round(avg_delta, 4),
+            "avg_abs_delta": round(stats["avg_abs_delta"], 4),
+            "underscored_ratio": round(underscored_ratio, 3),
+            "overscored_ratio": round(overscored_ratio, 3),
+        },
     }
