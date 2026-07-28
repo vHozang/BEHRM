@@ -42,7 +42,7 @@ Trong GitHub repository, vào **Settings → Environments → New environment**,
 | `VPS_SSH_KEY` | toàn bộ private key `~/.ssh/hrm_github_actions` |
 | `VPS_KNOWN_HOSTS` | tùy chọn; output của `ssh-keyscan -H 180.93.42.137` |
 
-`CI` chạy frontend tests/build, Laravel tests và kiểm tra Compose. `Deploy production` tự chạy khi push lên `production` hoặc khi bấm **Run workflow**. Workflow checkout code trên VPS, build/restart Docker Compose, cài dependency production, migrate và cache Laravel.
+`CI` chạy frontend tests/build, Laravel tests và kiểm tra Compose. `Deploy production` tự chạy khi push lên `production`, chờ CI của đúng commit thành công, hoặc chạy thủ công bằng **Run workflow**. Workflow checkout code trên VPS, build/restart Docker Compose, cài dependency production, migrate và cache Laravel.
 
 ## 3. Frontend
 
