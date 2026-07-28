@@ -7,7 +7,7 @@
       </div>
 
       <div class="flex items-center gap-2">
-      <BaseButton variant="outline" size="sm" @click="openRotateModal">🔄 Tạo lịch ca xoay</BaseButton>
+      <BaseButton variant="outline" size="sm" @click="openRotateModal" :disabled="!shiftTypes.length">🔄 Tạo lịch ca xoay</BaseButton>
       <!-- Week Navigator -->
       <div class="flex items-center gap-2 bg-card border border-border p-1.5 rounded-xl shadow-xs">
         <BaseButton variant="outline" size="sm" class="px-2" @click="navigateWeek(-1)">
@@ -66,6 +66,7 @@
     <BaseCard>
       <div class="flex flex-wrap items-center gap-4 text-xs">
         <span class="font-bold text-muted-foreground uppercase tracking-wider">Ký hiệu ca:</span>
+        <span v-if="!shiftTypes.length" class="text-amber-600">Chưa cấu hình loại ca làm việc</span>
         <div v-for="shift in shiftTypes" :key="shift.id" class="flex items-center gap-1.5">
           <span 
             class="w-3.5 h-3.5 rounded-md border border-border" 
@@ -291,14 +292,6 @@ const weekDays = computed(() => {
   return days;
 });
 
-// Mock/Default Shift Types if BE has no data
-const defaultShiftTypes = [
-  { id: 1, shift_code: 'HC', shift_name: 'Hành chính', start_time: '08:00:00', end_time: '17:00:00', color_code: '#3b82f6' },
-  { id: 2, shift_code: 'SA', shift_name: 'Ca Sáng', start_time: '06:00:00', end_time: '14:00:00', color_code: '#10b981' },
-  { id: 3, shift_code: 'CH', shift_name: 'Ca Chiều', start_time: '14:00:00', end_time: '22:00:00', color_code: '#f59e0b' },
-  { id: 4, shift_code: 'DE', shift_name: 'Ca Đêm', start_time: '22:00:00', end_time: '06:00:00', color_code: '#6366f1' },
-];
-
 const rosterData = computed(() => {
   return employees.value.map(e => ({
     id: e.id,
@@ -460,7 +453,7 @@ onMounted(async () => {
     loading.value = true;
     
     const [employeesRes, shiftsRes] = await Promise.all([
-      employeeService.getAll(),
+      employeeService.getLookup(),
       workShiftService.getAll().catch(() => [])
     ]);
 
@@ -471,7 +464,7 @@ onMounted(async () => {
     if (!Array.isArray(emps)) emps = [];
     
     employees.value = emps;
-    shiftTypes.value = (shiftsRes && shiftsRes.length > 0) ? shiftsRes : defaultShiftTypes;
+    shiftTypes.value = Array.isArray(shiftsRes) ? shiftsRes : [];
     
     await loadSchedules();
   } catch (err) {

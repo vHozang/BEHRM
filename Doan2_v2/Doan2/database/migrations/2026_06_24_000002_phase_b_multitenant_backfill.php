@@ -71,9 +71,11 @@ return new class extends Migration
             ]
         );
 
-        // Keep the id sequences ahead of the explicit id=1 insert.
-        DB::statement("SELECT setval(pg_get_serial_sequence('tenants', 'id'), GREATEST((SELECT MAX(id) FROM tenants), 1))");
-        DB::statement("SELECT setval(pg_get_serial_sequence('legal_entities', 'id'), GREATEST((SELECT MAX(id) FROM legal_entities), 1))");
+        // Keep PostgreSQL sequences ahead of the explicit id=1 insert.
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement("SELECT setval(pg_get_serial_sequence('tenants', 'id'), GREATEST((SELECT MAX(id) FROM tenants), 1))");
+            DB::statement("SELECT setval(pg_get_serial_sequence('legal_entities', 'id'), GREATEST((SELECT MAX(id) FROM legal_entities), 1))");
+        }
 
         foreach ($this->tenantOnly as $table) {
             if (Schema::hasTable($table) && Schema::hasColumn($table, 'tenant_id')) {

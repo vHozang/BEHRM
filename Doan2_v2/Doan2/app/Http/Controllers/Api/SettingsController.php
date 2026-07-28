@@ -42,6 +42,10 @@ class SettingsController extends Controller
                 ['key' => 'payroll.base_salary', 'label' => 'Lương cơ sở (VNĐ)', 'type' => 'int'],
                 ['key' => 'payroll.region_min_wage', 'label' => 'Lương tối thiểu vùng (VNĐ)', 'type' => 'int'],
                 ['key' => 'payroll.overtime_multiplier', 'label' => 'Hệ số tăng ca (×)', 'type' => 'float'],
+                ['key' => 'payroll.ot_premium_tax_exempt', 'label' => 'Miễn thuế TNCN phần phụ trội tăng ca/đêm', 'type' => 'bool'],
+                ['key' => 'payroll.night_ot_premium', 'label' => 'Phụ trội giờ làm đêm (0.3 = +30%)', 'type' => 'float'],
+                ['key' => 'payroll.monthly_budget', 'label' => 'Ngân sách quỹ lương tháng toàn công ty (VNĐ, 0 = chưa đặt)', 'type' => 'int'],
+                ['key' => 'payroll.prorate_by_attendance', 'label' => 'Trừ lương theo ngày công vắng (prorate)', 'type' => 'bool'],
                 ['key' => 'payroll.standard_hours_per_day', 'label' => 'Giờ làm chuẩn / ngày', 'type' => 'int'],
                 ['key' => 'payroll.insurance', 'label' => 'Tỷ lệ trích BH (nâng cao, JSON)', 'type' => 'json'],
             ],
@@ -56,7 +60,21 @@ class SettingsController extends Controller
                 ['key' => 'leave.marriage_child_days', 'label' => 'Nghỉ con kết hôn — ngày/lần (Đ.115.1.b)', 'type' => 'int'],
                 ['key' => 'leave.bereavement_days', 'label' => 'Nghỉ tang chế — ngày/lần (Đ.115.1.c)', 'type' => 'int'],
                 ['key' => 'leave.maternity_days', 'label' => 'Nghỉ thai sản — ngày (Đ.139 / BHXH)', 'type' => 'int'],
+                ['key' => 'leave.maternity_days_second_child', 'label' => 'Thai sản sinh con thứ 2 — ngày (luật 01/07/2026)', 'type' => 'int'],
                 ['key' => 'leave.unpaid_personal_days', 'label' => 'Nghỉ việc riêng không lương — ngày/lần (Đ.115.2)', 'type' => 'int'],
+                // Carryover: LUẬT không quy định trần/hạn (Đ.113.4 chỉ cho thỏa thuận
+                // gộp ≤3 năm/lần) — đây là CHÍNH SÁCH nội quy từng công ty → config.
+                ['key' => 'leave.carryover_max_days', 'label' => 'Phép gộp: số ngày chuyển tối đa (0 = không giới hạn)', 'type' => 'int'],
+                ['key' => 'leave.carryover_deadline', 'label' => 'Phép gộp: hạn dùng phép năm cũ (MM-DD, vd 03-31)', 'type' => 'string'],
+                // Phiếu lương custom theo công ty (render ở FE, không ảnh hưởng cách tính).
+                ['key' => 'payslip.title', 'label' => 'Phiếu lương: tiêu đề (mặc định "PHIẾU LƯƠNG THÁNG")', 'type' => 'string'],
+                ['key' => 'payslip.footer', 'label' => 'Phiếu lương: lời cảm ơn cuối phiếu', 'type' => 'string'],
+                ['key' => 'payslip.show_allowance_detail', 'label' => 'Phiếu lương: liệt kê từng phụ cấp theo tên', 'type' => 'bool'],
+                ['key' => 'payslip.show_ot_detail', 'label' => 'Phiếu lương: tách tăng ca thường/CN/lễ/đêm', 'type' => 'bool'],
+                ['key' => 'payslip.show_insurance_base', 'label' => 'Phiếu lương: hiện nền đóng BHXH', 'type' => 'bool'],
+                ['key' => 'payslip.show_relief', 'label' => 'Phiếu lương: hiện giảm trừ gia cảnh', 'type' => 'bool'],
+                ['key' => 'payslip.show_work_days', 'label' => 'Phiếu lương: hiện số ngày công', 'type' => 'bool'],
+                ['key' => 'payslip.show_employer_cost', 'label' => 'Phiếu lương: hiện chi phí DN đóng (17.5/3/1%)', 'type' => 'bool'],
             ],
         ],
         'approval' => [

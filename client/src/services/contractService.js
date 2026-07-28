@@ -34,8 +34,21 @@ const mapContract = (contract) => {
 };
 
 export const contractService = {
-  getAll: async (params) => {
-    const response = await axiosClient.get('/contracts', { params });
+  getPage: async (params = {}) => {
+    const response = await axiosClient.get('/contracts', { params: { per_page: 50, ...params } });
+    return {
+      items: Array.isArray(response.data) ? response.data.map(mapContract) : [],
+      pagination: response.pagination || null
+    };
+  },
+
+  getLookup: async () => {
+    const response = await axiosClient.get('/contracts/lookup');
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  getAll: async (params = {}) => {
+    const response = await axiosClient.get('/contracts', { params: { ...params, per_page: 2000 } });
     const data = response.data || [];
     return Array.isArray(data) ? data.map(mapContract) : data;
   },
@@ -80,11 +93,6 @@ export const contractService = {
       }
     };
     const response = await axiosClient.patch(`/contracts/${id}`, payload);
-    return response.data;
-  },
-
-  delete: async (id) => {
-    const response = await axiosClient.delete(`/contracts/${id}`);
     return response.data;
   },
 

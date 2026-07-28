@@ -24,7 +24,12 @@
       </div>
       <div class="rounded-lg border border-border p-3 col-span-2 sm:col-span-1">
         <p class="text-2xl font-bold text-primary">{{ formatCurrency(orgSummary.totalSalary) }}</p>
-        <p class="text-xs text-muted-foreground">Quỹ lương tháng (toàn công ty)</p>
+        <p class="text-xs text-muted-foreground">Quỹ lương tháng (toàn công ty) — tính từ lương NV</p>
+        <p v-if="companyBudget > 0" class="text-xs mt-1 font-medium"
+           :class="companyBudgetPct > 100 ? 'text-red-600' : (companyBudgetPct >= 90 ? 'text-amber-600' : 'text-emerald-600')">
+          {{ companyBudgetPct }}% ngân sách ({{ formatCurrency(companyBudget) }}){{ companyBudgetPct > 100 ? ' — vượt!' : '' }}
+        </p>
+        <p v-else class="text-[11px] text-muted-foreground mt-1">Đặt ngân sách tại Cấu hình nghiệp vụ → BHXH &amp; Lương</p>
       </div>
     </div>
 
@@ -44,7 +49,7 @@
             <input type="checkbox" v-model="showOnlyOverBudget" class="h-3.5 w-3.5 rounded border-input text-primary" />
             Chỉ phòng vượt ngân sách
           </label>
-          <button @click="exportCostReport" class="text-xs text-primary hover:underline">⬇ Xuất Excel</button>
+          <button @click="exportCostReport" class="text-xs text-primary hover:underline">⬇ Xuất CSV</button>
         </div>
 
         <div v-if="departments.length === 0" class="text-center py-8 text-muted-foreground">
@@ -354,7 +359,9 @@ import BaseModal from '../components/BaseModal.vue';
 import IconBuilding from '../components/IconBuilding.vue';
 import { departmentService } from '../services/departmentService';
 import { employeeService } from '../services/employeeService';
+import { settingsService } from '../services/settingsService';
 import { useNotificationStore } from '../stores/notificationStore';
+import { downloadCsv } from '../utils/csv';
 
 const notificationStore = useNotificationStore();
 
@@ -439,6 +446,18 @@ const formatCurrency = (v) => new Intl.NumberFormat('vi-VN', { style: 'currency'
 
 const loadCostSummary = async () => {
   try { costByDept.value = await departmentService.getCostSummary(); } catch (e) { costByDept.value = {}; }
+};
+
+// Ngân sách quỹ lương toàn công ty — cấu hình tenant (payroll.monthly_budget).
+const companyBudget = ref(0);
+const companyBudgetPct = computed(() =>
+  companyBudget.value > 0 ? Math.round((orgSummary.value.totalSalary / companyBudget.value) * 100) : null
+);
+const loadCompanyBudget = async () => {
+  try {
+    const map = await settingsService.getEffectiveMap();
+    companyBudget.value = Number(map['payroll.monthly_budget'] || 0);
+  } catch { companyBudget.value = 0; }
 };
 
 const orgSummary = computed(() => ({
@@ -647,7 +666,7 @@ const assignUnassigned = async (employeeId) => {
   try {
     await departmentService.assignEmployee(parseInt(deptId, 10), employeeId);
     notificationStore.addSuccess('Đã phân bổ nhân viên vào phòng ban');
-    allEmployees.value = await employeeService.getAll();
+    allEmployees.value = await employeeService.getLookup();
     await loadCostSummary();
   } catch (err) {
     notificationStore.addError(err.response?.data?.data?.errors?.employee_id?.[0] || err.response?.data?.message || 'Không thể phân bổ');
@@ -685,10 +704,8 @@ const saveFinance = async () => {
   }
 };
 
-// ── Xuất Excel báo cáo chi phí theo phòng ── (lazy-load xlsx khi cần)
-const exportCostReport = async () => {
-  const mod = await import('xlsx');
-  const XLSX = mod.utils ? mod : (mod.default || mod);
+// ── Xuất CSV báo cáo chi phí theo phòng ──
+const exportCostReport = () => {
   const rows = orderedDepartments.value.map((r) => {
     const d = r.dept;
     const cost = deptCostOf(d.id);
@@ -706,11 +723,9 @@ const exportCostReport = async () => {
       'Trạng thái NS': budget > 0 ? (cost > budget ? 'VƯỢT NGÂN SÁCH' : 'Trong ngân sách') : '—',
     };
   });
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Chi phí phòng ban');
-  XLSX.writeFile(wb, `bao-cao-chi-phi-phong-ban-${new Date().toISOString().slice(0, 10)}.xlsx`);
-  notificationStore.addSuccess('Đã xuất báo cáo Excel');
+  const headers = Object.keys(rows[0] || {});
+  downloadCsv([headers, ...rows.map(row => headers.map(key => row[key]))], `bao-cao-chi-phi-phong-ban-${new Date().toISOString().slice(0, 10)}.csv`);
+  notificationStore.addSuccess('Đã xuất báo cáo CSV');
 };
 
 const selectDepartment = async (dept) => {
@@ -780,7 +795,7 @@ const assignPrimaryMember = async () => {
     notificationStore.addSuccess('Đã thêm/điều chuyển nhân viên vào phòng ban');
     addPrimaryId.value = '';
     // Tải lại danh sách nhân viên để cập nhật phòng ban chính + sĩ số, rồi refresh chi tiết.
-    allEmployees.value = await employeeService.getAll();
+    allEmployees.value = await employeeService.getLookup();
     await loadCostSummary();
     await selectDepartment(selectedDept.value);
   } catch (err) {
@@ -797,7 +812,7 @@ const unassignPrimaryMember = async (employeeId) => {
   try {
     await departmentService.unassignEmployee(selectedDept.value.id, employeeId);
     notificationStore.addSuccess('Đã gỡ nhân viên khỏi phòng ban');
-    allEmployees.value = await employeeService.getAll();
+    allEmployees.value = await employeeService.getLookup();
     await loadCostSummary();
     await selectDepartment(selectedDept.value);
   } catch (err) {
@@ -954,9 +969,10 @@ onMounted(async () => {
     loading.value = true;
     error.value = '';
     
+    loadCompanyBudget(); // không chặn render — chỉ bổ sung % ngân sách
     const [deptsRes, empsRes] = await Promise.all([
       departmentService.getAll(),
-      employeeService.getAll()
+      employeeService.getLookup()
     ]);
     
     let rawDepts = deptsRes?.data || deptsRes || [];

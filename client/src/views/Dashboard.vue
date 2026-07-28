@@ -18,7 +18,7 @@
           <IconCalendar class="h-4 w-4" />
           {{ t('dashboard.requestLeave') }}
         </button>
-        <button class="dashboard-action dashboard-action--primary" @click="$router.push('/employees')">
+        <button v-if="canManageHr" class="dashboard-action dashboard-action--primary" @click="$router.push('/employees')">
           <IconUser class="h-4 w-4" />
           {{ t('dashboard.addEmployee') }}
         </button>
@@ -91,6 +91,7 @@
         </StatCard>
 
         <StatCard
+          v-if="canManageHr"
           :label="t('dashboard.contractsExpiring')"
           :value="contractsExpiringSoon"
           accent="info"
@@ -100,6 +101,7 @@
         </StatCard>
 
         <StatCard
+          v-if="canRecruit"
           :label="t('dashboard.candidates')"
           :value="recruitmentTotal"
           accent="ai"
@@ -290,7 +292,7 @@
 
       <!-- BOTTOM ROW: recent activity timeline + upcoming events -->
       <section class="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(300px,0.85fr)]">
-        <BaseCard class="dashboard-panel" :title="t('dashboard.recentActivity')">
+        <BaseCard v-if="canViewActivities" class="dashboard-panel" :title="t('dashboard.recentActivity')">
           <div v-if="activitiesLoading" class="empty-panel">{{ t('dashboard.loadingData') }}</div>
           <div v-else-if="activities.length === 0" class="empty-panel">{{ t('dashboard.noActivity') }}</div>
           <ul v-else class="timeline">
@@ -353,6 +355,9 @@ const loadError = ref(false);
 const activitiesLoading = ref(true);
 const activities = ref([]);
 const serverStats = ref(null);
+const canManageHr = computed(() => authService.canAccessModule('hr'));
+const canRecruit = computed(() => authService.canAccessModule('recruitment'));
+const canViewActivities = computed(() => authService.canAccessModule('settings'));
 
 // ----- Greeting + date (hero) -----
 const userName = computed(() => {
@@ -555,7 +560,7 @@ const aiInsights = computed(() => {
     }
   }
 
-  if (contractsExpiringSoon.value > 0) {
+  if (canManageHr.value && contractsExpiringSoon.value > 0) {
     out.push({
       id: 'contracts-expiring',
       title: locale.value === 'en'
@@ -879,6 +884,12 @@ function formatTime(dateStr) {
 }
 
 async function fetchActivities() {
+  if (!canViewActivities.value) {
+    activities.value = [];
+    activitiesLoading.value = false;
+    return;
+  }
+
   try {
     activitiesLoading.value = true;
     const response = await activityLogService.getAll();

@@ -74,20 +74,6 @@ export const useEmployeeStore = defineStore('employee', () => {
     }
   };
 
-  const deleteEmployee = async (id) => {
-    loading.value = true;
-    error.value = null;
-    try {
-      await employeeService.delete(id);
-      employees.value = employees.value.filter(e => e.id !== id);
-    } catch (err) {
-      error.value = err.message || 'Failed to delete employee';
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
   return {
     employees,
     currentEmployee,
@@ -97,7 +83,6 @@ export const useEmployeeStore = defineStore('employee', () => {
     fetchEmployees,
     fetchEmployeeById,
     createEmployee,
-    updateEmployee,
-    deleteEmployee
+    updateEmployee
   };
 });

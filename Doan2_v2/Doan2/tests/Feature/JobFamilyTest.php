@@ -24,6 +24,9 @@ class JobFamilyTest extends TestCase
             'company_email' => 'test.employee@company.com',
             'password_hash' => Hash::make('password'),
             'status' => 'ACTIVE',
+            'is_super_admin' => true,
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -55,6 +58,7 @@ class JobFamilyTest extends TestCase
             'name' => 'Engineering',
             'description' => 'Software engineering job family',
             'is_active' => true,
+            'tenant_id' => 1,
             'meta' => json_encode(['level_count' => 5]),
             'created_at' => now(),
             'updated_at' => now(),
@@ -64,6 +68,7 @@ class JobFamilyTest extends TestCase
             'position_code' => 'P-SWE',
             'position_name' => 'Software Engineer',
             'job_family_id' => $jobFamilyId,
+            'tenant_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -85,6 +90,7 @@ class JobFamilyTest extends TestCase
             'code' => 'JF-ENG',
             'name' => 'Engineering',
             'is_active' => true,
+            'tenant_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

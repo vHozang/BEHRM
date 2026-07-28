@@ -64,6 +64,18 @@ class LeaveTypeStatutorySeeder extends Seeder
                 'meta' => ['paid' => true, 'accrual' => 'comp_off', 'requires_balance' => true,
                     'affects_annual_balance' => false, 'statutory_ref' => 'Nghỉ bù từ tăng ca'],
             ],
+            // WORK: không phải nghỉ — làm việc từ xa / công tác, duyệt theo đơn rồi
+            // tính là NGÀY CÔNG (không trừ quỹ phép, không trừ lương).
+            'WFH' => [
+                'name' => 'Làm việc từ xa', 'category' => 'WORK',
+                'meta' => ['paid' => true, 'accrual' => 'none', 'requires_balance' => false,
+                    'affects_annual_balance' => false, 'counts_as_work' => true, 'statutory_ref' => 'Nội quy công ty'],
+            ],
+            'BUSINESS_TRIP' => [
+                'name' => 'Đi công tác', 'category' => 'WORK',
+                'meta' => ['paid' => true, 'accrual' => 'none', 'requires_balance' => false,
+                    'affects_annual_balance' => false, 'counts_as_work' => true, 'statutory_ref' => 'Nội quy công ty'],
+            ],
         ];
 
         $tenantIds = DB::table('tenants')->pluck('id')->all();

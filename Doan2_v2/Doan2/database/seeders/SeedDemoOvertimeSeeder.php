@@ -18,88 +18,110 @@ use Illuminate\Support\Facades\DB;
 class SeedDemoOvertimeSeeder extends Seeder
 {
     private const START = '2026-05-01';
-    private const END = '2026-06-26';
 
     private const PRESENT = ['ON_TIME', 'LATE', 'EARLY_LEAVE'];
+
+    private static function end(): string
+    {
+        return env('HRM_SEED_OT_END', CarbonImmutable::now()->toDateString());
+    }
 
     public function run(): void
     {
         mt_srand(20260628);
 
-        foreach (DB::table('tenants')->pluck('id') as $tenantId) {
-            // Đặt tenant context để TimePolicy đọc đúng hệ số OT cấu hình riêng
-            // (T7/CN) của tenant — CLI seeder mặc định không có tenant context.
-            \App\Support\TenantContext::set((int) $tenantId);
+        try {
+            foreach (DB::table('tenants')->pluck('id') as $tenantId) {
+                // Đặt tenant context để TimePolicy đọc đúng hệ số OT cấu hình riêng
+                // (T7/CN) của tenant — CLI seeder mặc định không có tenant context.
+                \App\Support\TenantContext::set((int) $tenantId);
 
-            // Dọn dữ liệu demo cũ.
-            DB::table('overtime_requests')->where('tenant_id', $tenantId)
-                ->whereRaw("meta->>'source' = 'demo-ot'")->delete();
-            DB::table('attendances')->where('tenant_id', $tenantId)
-                ->whereRaw("meta->>'source' = 'demo-ot-rest'")->delete();
+                // Dọn đúng dữ liệu demo do seeder này sở hữu; không chạm bản ghi thật.
+                DB::table('overtime_requests')->where('tenant_id', $tenantId)
+                    ->where('meta->source', 'demo-ot')->delete();
+                DB::table('attendances')->where('tenant_id', $tenantId)
+                    ->where('meta->source', 'demo-ot-rest')->delete();
 
-            $employees = DB::table('employees')
-                ->where('tenant_id', $tenantId)
-                ->whereIn('status', ['ACTIVE', 'PROBATION'])
-                ->whereRaw("COALESCE((profile->>'system_account')::boolean, false) = false")
-                ->get(['id', 'legal_entity_id']);
-
-            $assignments = $this->assignmentMap($tenantId);
-            $now = now();
-            $created = 0;
-            $restCreated = 0;
-
-            foreach ($employees as $emp) {
-                $shiftId = $assignments[$emp->id] ?? DB::table('shift_types')->where('tenant_id', $tenantId)->where('shift_code', 'HC')->value('id');
-
-                // 1) OT trên các ngày NV thực sự đi làm (có attendance present).
-                $workedDates = DB::table('attendances')
+                $employees = DB::table('employees')
                     ->where('tenant_id', $tenantId)
-                    ->where('employee_id', $emp->id)
-                    ->whereBetween('work_date', [self::START, self::END])
-                    ->whereIn('status', self::PRESENT)
-                    ->pluck('work_date')
-                    ->map(fn ($d) => CarbonImmutable::parse($d)->toDateString())
-                    ->all();
+                    ->whereIn('status', ['ACTIVE', 'PROBATION'])
+                    ->get(['id', 'legal_entity_id', 'profile'])
+                    ->reject(function ($employee): bool {
+                        $profile = is_string($employee->profile) ? json_decode($employee->profile, true) : (array) $employee->profile;
 
-                foreach ($workedDates as $date) {
-                    if (mt_rand(1, 100) > 25) {
-                        continue; // ~25% ngày đi làm có OT
+                        return ! empty($profile['system_account']);
+                    });
+
+                $assignments = $this->assignmentMap($tenantId);
+                $now = now();
+                $created = 0;
+                $restCreated = 0;
+
+                foreach ($employees as $emp) {
+                    $shiftId = $assignments[$emp->id] ?? DB::table('shift_types')->where('tenant_id', $tenantId)->where('shift_code', 'HC')->value('id');
+
+                    // 1) OT trên các ngày NV thực sự đi làm (có attendance present).
+                    $workedDates = DB::table('attendances')
+                        ->where('tenant_id', $tenantId)
+                        ->where('employee_id', $emp->id)
+                        ->whereBetween('work_date', [self::START, self::end()])
+                        ->whereIn('status', self::PRESENT)
+                        ->pluck('work_date')
+                        ->map(fn ($d) => CarbonImmutable::parse($d)->toDateString())
+                        ->all();
+
+                    foreach ($workedDates as $date) {
+                        if (mt_rand(1, 100) > 25) {
+                            continue; // ~25% ngày đi làm có OT
+                        }
+                        // OT ngày thường: LINH HOẠT 1–4h (Đ.107: ≤4h/ngày), bắt đầu sau giờ HC.
+                        $h = mt_rand(1, 4);
+                        $created += $this->insertOt($tenantId, $emp->id, $date, $now, '18:00:00', sprintf('%02d:00:00', 18 + $h), (float) $h);
                     }
-                    // OT ngày thường: LINH HOẠT 1–4h (Đ.107: ≤4h/ngày), bắt đầu sau giờ HC.
-                    $h = mt_rand(1, 4);
-                    $created += $this->insertOt($tenantId, $emp->id, $date, $now, '18:00:00', sprintf('%02d:00:00', 18 + $h), (float) $h);
+
+                    // 2) ~1/3 nhân viên có 1 ca làm Chủ nhật 4h, không vượt cap/ngày.
+                    if (mt_rand(1, 3) === 1) {
+                        $sunday = $this->firstRestDayWithout($tenantId, $emp->id);
+                        if ($sunday && $this->insertOt($tenantId, $emp->id, $sunday, $now, '08:00:00', '12:00:00', 4.0)) {
+                            DB::table('attendances')->insert([
+                                'employee_id' => $emp->id,
+                                'work_date' => $sunday,
+                                'check_in_time' => '08:00:00',
+                                'check_out_time' => '12:00:00',
+                                'shift_type_id' => $shiftId,
+                                'status' => 'ON_TIME',
+                                'meta' => json_encode(['worked_hours' => 4, 'late_minutes' => 0, 'early_leave_minutes' => 0, 'source' => 'demo-ot-rest'], JSON_UNESCAPED_UNICODE),
+                                'tenant_id' => $tenantId,
+                                'legal_entity_id' => $emp->legal_entity_id,
+                                'created_at' => $now,
+                                'updated_at' => $now,
+                            ]);
+                            $created++;
+                            $restCreated++;
+                        }
+                    }
                 }
 
-                // 2) ~1/3 nhân viên có 1 ca làm Chủ nhật (rest): ĐỦ 1 CA = 8h → OT 8h.
-                if (mt_rand(1, 3) === 1) {
-                    $sunday = $this->firstRestDayWithout($tenantId, $emp->id);
-                    if ($sunday) {
-                        DB::table('attendances')->insert([
-                            'employee_id' => $emp->id,
-                            'work_date' => $sunday,
-                            'check_in_time' => '08:00:00',
-                            'check_out_time' => '17:00:00',
-                            'shift_type_id' => $shiftId,
-                            'status' => 'ON_TIME',
-                            'meta' => json_encode(['worked_hours' => 8, 'late_minutes' => 0, 'early_leave_minutes' => 0, 'source' => 'demo-ot-rest'], JSON_UNESCAPED_UNICODE),
-                            'tenant_id' => $tenantId,
-                            'legal_entity_id' => $emp->legal_entity_id,
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ]);
-                        // Làm cả ngày nghỉ = tăng ca đủ 1 ca (8h, 200%).
-                        $created += $this->insertOt($tenantId, $emp->id, $sunday, $now, '08:00:00', '17:00:00', 8.0);
-                        $restCreated++;
-                    }
-                }
+                $this->command?->info("Tenant {$tenantId}: {$created} đơn OT (gắn ngày đi làm), {$restCreated} ca làm CN demo.");
             }
-
-            $this->command?->info("Tenant {$tenantId}: {$created} đơn OT (gắn ngày đi làm), {$restCreated} ca làm CN demo.");
+        } finally {
+            \App\Support\TenantContext::clear();
         }
     }
 
     private function insertOt($tenantId, $empId, string $date, $now, string $start, string $end, float $hours): int
     {
+        $duplicate = DB::table('overtime_requests')
+            ->where('tenant_id', $tenantId)
+            ->where('employee_id', $empId)
+            ->where('work_date', $date)
+            ->where('start_time', $start)
+            ->where('end_time', $end)
+            ->exists();
+        if ($duplicate || TimePolicy::overtimeCaps((int) $empId, $date, $hours)['violations']) {
+            return 0;
+        }
+
         $cls = TimePolicy::classifyOvertime($date, $start, $end, $hours);
 
         DB::table('overtime_requests')->insert([
@@ -127,7 +149,7 @@ class SeedDemoOvertimeSeeder extends Seeder
     private function firstRestDayWithout($tenantId, $empId): ?string
     {
         $d = CarbonImmutable::parse(self::START);
-        $end = CarbonImmutable::parse(self::END);
+        $end = CarbonImmutable::parse(self::end());
         for (; $d->lte($end); $d = $d->addDay()) {
             if (! TimePolicy::isRestDay($d)) {
                 continue;

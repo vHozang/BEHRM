@@ -10,8 +10,9 @@ và đẩy lên HRM: `POST /api/v1/internal/attendance/device-punch`.
 2. **Ánh xạ User ID ↔ nhân viên**: "User ID" (số đăng ký vân tay/khuôn mặt/thẻ trên máy) phải khớp
    `employees.profile.enroll_id` trong HRM. Mặc định dự án đã set `enroll_id = id nhân viên` để test.
    Khi đăng ký vân tay cho nhân viên trên máy, đặt User ID = đúng id (hoặc cập nhật `enroll_id` cho khớp).
-3. Lấy **token nội bộ**: biến `INTERNAL_SERVICE_TOKEN` trong `.env` của backend
-   (mặc định `replace_with_internal_service_token` — nên đổi ở môi trường thật).
+3. Khuyến nghị đăng ký máy tại màn hình **Máy chấm công** và lấy `device_token`
+   riêng của máy. Có thể dùng `INTERNAL_SERVICE_TOKEN` trong `.env` để test local,
+   nhưng không nên dùng chung token nội bộ này cho nhiều máy ở production.
 
 ## Chạy
 
@@ -20,8 +21,19 @@ cd tools/zk-bridge
 npm install
 DEVICE_IP=192.168.1.201 \
 API_BASE=http://localhost/api/v1 \
-INTERNAL_TOKEN=replace_with_internal_service_token \
+DEVICE_TOKEN=dev_token_cua_may \
 node bridge.js
+```
+
+Trên Windows PowerShell:
+
+```powershell
+cd D:\HRM\BEHRM\tools\zk-bridge
+npm install
+$env:DEVICE_IP = "192.168.1.201"
+$env:API_BASE = "http://localhost/api/v1"
+$env:DEVICE_TOKEN = "dev_token_cua_may"
+npm start
 ```
 
 Bridge sẽ poll máy mỗi 30s (đổi qua `POLL_MS`), gửi các punch mới lên API.
@@ -35,7 +47,7 @@ gửi cùng định dạng punch lên API (mỗi dòng = `{enroll_id, timestamp,
 
 ```bash
 curl -X POST http://localhost/api/v1/internal/attendance/device-punch \
-  -H "x-internal-token: replace_with_internal_service_token" \
+  -H "x-device-token: dev_token_cua_may" \
   -H "Content-Type: application/json" \
   -d '{"punches":[{"enroll_id":"2","timestamp":"2026-06-27 08:03:00","verify_method":"fingerprint"}]}'
 ```

@@ -14,10 +14,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Lockout-safety rules (deliberate):
  *   - Super-admins always have full access.
- *   - A role whose meta has NO 'modules' key AND is not flagged is_admin is
- *     treated as UNCONFIGURED → full access (so nothing breaks until an admin
- *     explicitly restricts a role by giving it a modules list).
- *   - Unknown / unmapped API paths are allowed (never block what we don't model).
+ *   - A role without a module list grants no management module.
+ *   - Unknown / unmapped API paths are denied for restricted roles.
  */
 class AccessControl
 {
@@ -33,60 +31,73 @@ class AccessControl
 
     /**
      * API path-prefix (first segment) → required module. Anything not listed is
-     * unguarded. GET on SHARED_READ prefixes is always allowed (dropdowns/lookups
+     * denied. GET on SHARED_READ prefixes is always allowed (dropdowns/lookups
      * used across modules).
      */
     private const PATH_MODULE = [
-        'employees' => 'hr',
-        'organization' => 'hr',
-        'contracts' => 'hr',
-        'contract-types' => 'hr',
-        'contract-templates' => 'hr',
-        'contract-change-logs' => 'hr',
-        'employment-histories' => 'hr',
-        'dependents' => 'hr',
-        'onboarding-checklists' => 'hr',
-        'profile-change-requests' => 'hr',
-        'departments' => 'hr',
+        'employees' => 'hr', 'organization' => 'hr', 'departments' => 'hr',
+        'contracts' => 'hr', 'contract-types' => 'hr', 'contract-templates' => 'hr',
+        'contract-change-logs' => 'hr', 'contract-histories' => 'hr',
+        'personnel-decisions' => 'hr',   // quyết định nhân sự: tăng lương/điều chuyển/thôi việc
+        'employment-histories' => 'hr', 'dependents' => 'hr',
+        'onboarding-checklists' => 'hr', 'profile-change-requests' => 'hr',
+        'asset-assignments' => 'hr', 'asset-categories' => 'hr',
+        'asset-incidents' => 'hr', 'asset-locations' => 'hr',
+        'asset-maintenance' => 'hr', 'assets' => 'hr',
+        'certificates' => 'hr', 'certificate-types' => 'hr',
+        'document-types' => 'hr', 'identity-documents' => 'hr',
+        'qualifications' => 'hr', 'qualification-types' => 'hr',
+        'social-insurance-info' => 'hr',
 
-        'attendances' => 'time',
-        'attendance-adjustments' => 'time',
-        'shift-types' => 'time',
-        'shift-assignments' => 'time',
-        'shift-schedules' => 'time',
-        'shift-swaps' => 'time',
-        'shift-coverage-requests' => 'time',
-        'shift-coverage-offers' => 'time',
-        'overtime-requests' => 'time',
-        'leave-requests' => 'time',
-        'leave-types' => 'time',
-        'leave-balances' => 'time',
-        'holidays' => 'time',
-        'requests' => 'time',
+        'attendance' => 'time', 'attendances' => 'time',
+        'attendance-adjustments' => 'time', 'leave' => 'time',
+        'shift-types' => 'time', 'shift-assignments' => 'time',
+        'shift-schedules' => 'time', 'shift-schedule-details' => 'time',
+        'shift-roster' => 'time', 'shift-swaps' => 'time',
+        'shift-coverage-requests' => 'time', 'shift-coverage-offers' => 'time',
+        'overtime-requests' => 'time', 'leave-requests' => 'time',
+        'leave-types' => 'time', 'leave-balances' => 'time',
+        'leave-advancement-config' => 'time', 'leave-advancement-requests' => 'time',
+        'leave-carryover-tracking' => 'time', 'leave-transactions' => 'time',
+        'seniority-leave-history' => 'time', 'holidays' => 'time',
+        'requests' => 'time', 'approval-flows' => 'time',
+        'approval-histories' => 'time', 'approval-roles' => 'time',
+        'approval-steps' => 'time',
 
-        'salary-periods' => 'payroll',
-        'salary-details' => 'payroll',
-        'salary-components' => 'payroll',
-        'payroll' => 'payroll',
-        'reports' => 'payroll',
+        'salary-periods' => 'payroll', 'salary-details' => 'payroll',
+        'salary-components' => 'payroll', 'salary-attendance-summary' => 'payroll',
+        'salary-breakdowns' => 'payroll', 'payroll' => 'payroll',
+        'payroll-adjustments' => 'payroll', 'piece-rate-entries' => 'payroll',
+        'reports' => 'payroll', 'report-histories' => 'payroll',
+        'report-templates' => 'payroll', 'allowances' => 'payroll',
+        'deductions' => 'payroll', 'employee-allowances' => 'payroll',
+        'employee-deductions' => 'payroll', 'insurance-claims' => 'payroll',
+        'insurance-types' => 'payroll',
 
         'recruitment-candidates' => 'recruitment',
-        'recruitment-positions' => 'recruitment',
-        'interviews' => 'recruitment',
+        'recruitment-positions' => 'recruitment', 'interviews' => 'recruitment',
 
-        'news' => 'communications',
-        'policies' => 'communications',
+        'news' => 'communications', 'news-categories' => 'communications',
+        'news-reads' => 'communications', 'policies' => 'communications',
+        'policy-acknowledgments' => 'communications',
+        'service-categories' => 'communications',
+        'service-tickets' => 'communications',
+        'service-ticket-updates' => 'communications',
 
-        'job-families' => 'settings',
-        'job-titles' => 'settings',
-        'positions' => 'settings',
-        'legal-entities' => 'settings',
-        'audit-logs' => 'settings',
-        'roles' => 'settings',
-        'employee-roles' => 'settings',
-        'permissions' => 'settings',
-        'settings' => 'settings',
+        'activity-logs' => 'settings', 'attendance-devices' => 'settings',
+        'dashboard-views' => 'settings', 'job-families' => 'settings',
+        'job-titles' => 'settings', 'positions' => 'settings',
+        'legal-entities' => 'settings', 'audit-logs' => 'settings',
+        'roles' => 'settings', 'employee-roles' => 'settings',
+        'permissions' => 'settings', 'role-permissions' => 'settings',
+        'settings' => 'settings', 'banks' => 'settings',
+        'nationalities' => 'settings', 'notification-configs' => 'settings',
+        'request-attachments' => 'settings', 'request-types' => 'settings',
+        'suppliers' => 'settings', 'users' => 'settings',
     ];
+
+    /** Authenticated endpoints that are self-scoped by their controllers. */
+    private const ALWAYS_ALLOWED = ['auth', 'ai', 'notifications'];
 
     /**
      * GET requests to these prefixes are always allowed for any authenticated
@@ -95,7 +106,11 @@ class AccessControl
     private const SHARED_READ = [
         'employees', 'departments', 'positions', 'job-titles', 'job-families',
         'nationalities', 'banks', 'contract-types', 'leave-types', 'roles',
-        'dashboard', 'notifications', 'shift-types',
+        'notifications', 'shift-types',
+        // Tin nội bộ + chính sách công ty: MỌI nhân viên phải ĐỌC được (để nắm
+        // thông báo + xác nhận nội quy). Chỉ GET mở; tạo/sửa/xóa vẫn cần module
+        // communications (SHARED_READ chỉ nới GET).
+        'news', 'policies', 'holidays',
     ];
 
     /**
@@ -159,8 +174,7 @@ class AccessControl
             }
 
             if (! array_key_exists('modules', $meta)) {
-                // Unconfigured non-admin role → treat as full (backward-compatible).
-                return ['full' => true, 'modules' => array_keys(self::MODULES), 'enabled' => $enabled];
+                continue;
             }
 
             if (is_array($meta['modules'])) {
@@ -188,6 +202,19 @@ class AccessControl
             return true;
         }
 
+        if (in_array($segment, self::ALWAYS_ALLOWED, true)) {
+            return true;
+        }
+
+        // The management dashboard contains tenant-wide aggregates. It is for
+        // people/operations roles, never for a portal-only employee or payroll-only role.
+        if ($segment === 'dashboard') {
+            return count(array_intersect(
+                ['hr', 'time', 'recruitment'],
+                $access['modules'] ?? []
+            )) > 0;
+        }
+
         // Shared lookup reads are always allowed.
         if (strtoupper($method) === 'GET' && in_array($segment, self::SHARED_READ, true)) {
             return true;
@@ -195,7 +222,7 @@ class AccessControl
 
         $required = self::PATH_MODULE[$segment] ?? null;
         if ($required === null) {
-            return true; // unmapped → not guarded
+            return false;
         }
 
         return in_array($required, $access['modules'] ?? [], true);

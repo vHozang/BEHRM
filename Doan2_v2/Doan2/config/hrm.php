@@ -27,7 +27,7 @@ return [
 
     // Token cho endpoint nội bộ (máy chấm công bridge, job nền). Đọc qua config()
     // để hoạt động cả khi đã config:cache (env() trả null khi cache).
-    'internal_service_token' => env('INTERNAL_SERVICE_TOKEN', 'replace_with_internal_service_token'),
+    'internal_service_token' => env('INTERNAL_SERVICE_TOKEN'),
 
     /*
     |--------------------------------------------------------------------------
@@ -48,19 +48,22 @@ return [
         // Each bracket: up = upper bound of the bracket (null = open-ended),
         // rate = marginal rate applied to the slice within the bracket.
         // Slices are taxed marginally (Vietnam Luật Thuế TNCN).
+        //
+        // Luật Thuế TNCN số 109/2025/QH15 (hiệu lực 01/01/2026): biểu lũy tiến
+        // rút từ 7 xuống 5 bậc — 10/30/60/100 triệu/tháng, thuế suất 5-35%.
         'pit_brackets' => [
-            ['up' => 5_000_000,  'rate' => 0.05],
-            ['up' => 10_000_000, 'rate' => 0.10],
-            ['up' => 18_000_000, 'rate' => 0.15],
-            ['up' => 32_000_000, 'rate' => 0.20],
-            ['up' => 52_000_000, 'rate' => 0.25],
-            ['up' => 80_000_000, 'rate' => 0.30],
-            ['up' => null,       'rate' => 0.35],
+            ['up' => 10_000_000,  'rate' => 0.05],
+            ['up' => 30_000_000,  'rate' => 0.10],
+            ['up' => 60_000_000,  'rate' => 0.20],
+            ['up' => 100_000_000, 'rate' => 0.30],
+            ['up' => null,        'rate' => 0.35],
         ],
 
         // Family-circumstance deductions (giảm trừ gia cảnh), monthly.
-        'personal_deduction' => 11_000_000,   // for the taxpayer
-        'dependent_deduction' => 4_400_000,    // per registered dependent
+        // Nghị quyết 110/2025/UBTVQH15 (áp dụng từ kỳ tính thuế 2026): tăng
+        // giảm trừ bản thân 11tr→15,5tr, người phụ thuộc 4,4tr→6,2tr.
+        'personal_deduction' => 15_500_000,   // for the taxpayer
+        'dependent_deduction' => 6_200_000,    // per registered dependent
 
         // Compulsory social-insurance rates (tỷ lệ trích bảo hiểm bắt buộc).
         'insurance' => [
@@ -77,8 +80,12 @@ return [
         ],
 
         // Statutory wage references used for the insurance contribution caps.
-        'base_salary' => 2_340_000,        // lương cơ sở
-        'region_min_wage' => 4_960_000,     // lương tối thiểu vùng (default vùng I)
+        // 'base_salary' = mức tham chiếu đóng BHXH (Luật BHXH 2024): từ
+        // 01/07/2026 = 2.530.000 (trước đó = lương cơ sở 2.340.000).
+        // Trần đóng BHXH/BHYT = 20× = 50,6 triệu/tháng.
+        'base_salary' => 2_530_000,        // mức tham chiếu BHXH (01/07/2026)
+        // Lương tối thiểu vùng I — Nghị định 293/2025/NĐ-CP (01/01/2026).
+        'region_min_wage' => 5_310_000,     // vùng I (BHTN cap = 20× = 106,2tr)
 
         // Contribution-base caps, expressed as a multiplier of the references.
         // BHXH + BHYT capped at 20x base_salary; BHTN capped at 20x region min wage.
@@ -99,6 +106,19 @@ return [
         // Overtime pay multiplier applied to the hourly rate (Bộ luật Lao động
         // Art.98: weekday OT ≥150%). Tunable per tenant/policy.
         'overtime_multiplier' => env('HRM_PAYROLL_OT_MULTIPLIER', 1.5),
+
+        // Miễn thuế TNCN phần PHỤ TRỘI của tiền làm thêm giờ / làm đêm (phần
+        // trả cao hơn đơn giá giờ thường — TT 111/2013 Đ.3, nhấn lại trong đợt
+        // luật hiệu lực 01/07/2026). true = chỉ phần 100% chịu thuế.
+        'ot_premium_tax_exempt' => env('HRM_PAYROLL_OT_EXEMPT', true),
+
+        // Ngân sách quỹ lương tháng TOÀN CÔNG TY (VNĐ) — mốc so sánh với quỹ
+        // lương thực tế (tổng lương NV). 0 = chưa đặt, không hiển thị cảnh báo.
+        'monthly_budget' => env('HRM_PAYROLL_MONTHLY_BUDGET', 0),
+
+        // Phụ trội làm ĐÊM (Đ.98 BLLĐ: ít nhất +30% đơn giá giờ) — cộng thêm
+        // cho mỗi giờ đêm trong đơn OT (meta.night_hours), ngoài hệ số ngày.
+        'night_ot_premium' => env('HRM_PAYROLL_NIGHT_PREMIUM', 0.3),
 
         // When true, base pay is prorated by actual_working_days / standard_days
         // (or by unpaid_leave_days) from the attendance summary.
@@ -134,6 +154,8 @@ return [
 
         // Nghỉ thai sản (Đ.139 + Luật BHXH) — 6 tháng = 180 ngày (per-event, BHXH chi trả).
         'maternity_days' => 180,
+        // Sinh con THỨ HAI: 7 tháng = 210 ngày (luật hiệu lực 01/07/2026).
+        'maternity_days_second_child' => 210,
 
         // Nghỉ việc riêng KHÔNG hưởng lương tối thiểu theo luật (Đ.115.2):
         // ông bà/anh chị em ruột mất; cha mẹ/anh chị em ruột kết hôn → 01 ngày.

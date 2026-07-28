@@ -18,6 +18,11 @@ axiosClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Upload tệp: phải để axios tự đặt multipart/form-data KÈM boundary. Giữ
+    // Content-Type mặc định application/json sẽ làm server không đọc được tệp (422).
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
     return config;
   },
   (error) => {
@@ -77,7 +82,7 @@ axiosClient.interceptors.response.use(
           if (parsedMeta && typeof parsedMeta === 'object' && !Array.isArray(parsedMeta)) {
             const excludeKeys = ['id', 'created_at', 'updated_at', 'status'];
             for (const key of Object.keys(parsedMeta)) {
-              if (!excludeKeys.includes(key)) {
+              if (!excludeKeys.includes(key) && !(key in item)) {
                 item[key] = parsedMeta[key];
               }
             }

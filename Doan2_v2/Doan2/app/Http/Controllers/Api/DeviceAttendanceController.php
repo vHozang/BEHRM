@@ -140,6 +140,14 @@ class DeviceAttendanceController extends Controller
             return;
         }
 
+        // Thiết bị thường trả lại toàn bộ lịch sử sau khi bridge khởi động lại.
+        // Bỏ qua bản ghi trùng hoặc cũ để không biến một lần check-in thành
+        // check-out ngay lập tức và không làm giờ ra bị lùi lại.
+        $checkOut = $attendance->check_out_time ? substr((string) $attendance->check_out_time, 0, 8) : null;
+        if ($checkIn && $time <= ($checkOut ?: substr($checkIn, 0, 8))) {
+            return;
+        }
+
         $cls = TimePolicy::classifyAttendance($shift, $checkIn ?: $time, $time);
         $this->update($attendance->id, ['check_out_time' => $time], $cls, $attendance->meta, $deviceMeta);
 

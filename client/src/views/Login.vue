@@ -55,6 +55,18 @@
           </BaseButton>
         </div>
       </form>
+
+      <!-- Đăng nhập nhanh (demo) — tiết kiệm thời gian lúc bảo vệ đồ án -->
+      <div class="pt-2">
+        <p class="text-center text-xs text-muted-foreground mb-2">Đăng nhập nhanh (demo)</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button v-for="acc in demoAccounts" :key="acc.email" type="button"
+            :disabled="loading" @click="quickLogin(acc)"
+            class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50">
+            {{ acc.label }}
+          </button>
+        </div>
+      </div>
           </div>
         </section>
       </div>
@@ -77,7 +89,19 @@ const password = ref('');
 const loading = ref(false);
 const error = ref('');
 
-const ADMIN_EMAIL = 'admin@company.com';
+// Tài khoản demo cho nút đăng nhập nhanh (4 tầng quyền khác nhau).
+const demoAccounts = [
+  { label: 'Admin', email: 'an.nguyen@company.com', password: 'test1234' },
+  { label: 'Trưởng phòng', email: 'cuong.le@company.com', password: 'demo1234' },
+  { label: 'HR', email: 'mai.tran@company.com', password: 'demo1234' },
+  { label: 'Nhân viên', email: 'huong.pham@company.com', password: 'demo1234' },
+];
+
+const quickLogin = (acc: { email: string; password: string }) => {
+  email.value = acc.email;
+  password.value = acc.password;
+  return handleLogin();
+};
 
 const handleLogin = async () => {
   loading.value = true;

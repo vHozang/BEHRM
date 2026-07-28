@@ -118,7 +118,7 @@ const loadData = async () => {
   try {
     const [histRes, empRes, deptRes, posRes] = await Promise.all([
       employeeService.getAllHistories().catch(() => []),
-      employeeService.getAll().catch(() => []),
+      employeeService.getLookup().catch(() => []),
       departmentService.getAll().catch(() => []),
       jobTitleService.getAll().catch(() => [])
     ]);

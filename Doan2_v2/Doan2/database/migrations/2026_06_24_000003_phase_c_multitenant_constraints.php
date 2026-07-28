@@ -57,6 +57,10 @@ return new class extends Migration
 
     public function up(): void
     {
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         // 0. DEFENSIVE BACKFILL — stragglers created during the nullable window
         //    (e.g. api_tokens rows from smoke tests inserted before write-stamping
         //    landed). Default everything to tenant 1 / legal entity 1 so the
@@ -104,6 +108,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         // Reverse 3: restore the original single-column global uniques.
         foreach ($this->compositeUniques as [$table, $oldName, $col]) {
             if (! Schema::hasTable($table)) {

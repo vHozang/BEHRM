@@ -74,7 +74,6 @@
         </div>
         <BaseInput v-if="form.protocol === 'adms_push'" v-model="form.serial" label="Serial máy (SN)" placeholder="In trên tem máy" />
         <BaseInput v-if="form.protocol === 'cloud_api'" v-model="form.api_key" label="API key của hãng" placeholder="Lấy từ cổng quản trị của hãng" />
-        <p v-if="form.protocol === 'file_import'" class="text-xs text-muted-foreground">Xuất Excel/CSV từ phần mềm hãng rồi nhập theo định dạng punch (sẽ có nút nhập file).</p>
 
         <div class="rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground" v-html="protocolHint(form.protocol)"></div>
       </div>
@@ -116,7 +115,6 @@ const protocolOptions = [
   { value: 'zk_pull', label: 'Kéo qua LAN (ZKTeco/Wise Eye)' },
   { value: 'adms_push', label: 'Máy tự đẩy (ADMS/Push)' },
   { value: 'cloud_api', label: 'API đám mây của hãng' },
-  { value: 'file_import', label: 'Nhập từ file Excel/CSV' },
 ];
 
 const form = reactive({ name: '', brand: 'wiseeye', protocol: 'zk_pull', location: '', ip: '', port: '4370', serial: '', api_key: '' });

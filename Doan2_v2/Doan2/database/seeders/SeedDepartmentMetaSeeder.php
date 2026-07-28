@@ -18,6 +18,19 @@ class SeedDepartmentMetaSeeder extends Seeder
 {
     public function run(): void
     {
+        // Cây phòng ban: BGD (Ban Giám đốc) là gốc; BKS + 8 phòng chính trực
+        // thuộc BGD. Idempotent — trước đây chỉ set bằng SQL live, reseed là mất.
+        foreach ([['BGD', 'Ban Giám đốc'], ['BKS', 'Ban kiểm soát']] as [$code, $name]) {
+            if (! DB::table('departments')->where('department_code', $code)->exists()) {
+                DB::table('departments')->insert([
+                    'department_code' => $code, 'department_name' => $name,
+                    'tenant_id' => 1, 'legal_entity_id' => 1,
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+        }
+        $bgdId = (int) DB::table('departments')->where('department_code', 'BGD')->value('id');
+
         // Xóa phòng ban rác (tên rỗng, không nhân viên).
         DB::table('departments')
             ->where(fn ($q) => $q->whereNull('department_name')->orWhere('department_name', ''))
@@ -45,6 +58,16 @@ class SeedDepartmentMetaSeeder extends Seeder
                 continue;
             }
             $meta = $this->decode($d->meta);
+
+            // Cây phòng ban: FE chỉ đọc meta.parent_id → normalize key legacy
+            // parent_department_id, và gắn phòng chính + BKS vào gốc BGD.
+            if (empty($meta['parent_id']) && ! empty($meta['parent_department_id'])) {
+                $meta['parent_id'] = (int) $meta['parent_department_id'];
+            }
+            $mainDepts = ['HCNS', 'KT', 'KD', 'IT', 'MKT', 'CSKH', 'KHO', 'SX', 'BKS'];
+            if (empty($meta['parent_id']) && $bgdId && in_array($d->department_code, $mainDepts, true)) {
+                $meta['parent_id'] = $bgdId;
+            }
 
             $meta['cost_center'] = $meta['cost_center'] ?? ('CC-' . ($d->department_code ?: str_pad((string) $d->id, 2, '0', STR_PAD_LEFT)));
 

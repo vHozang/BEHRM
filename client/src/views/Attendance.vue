@@ -29,26 +29,26 @@
       <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
         <BaseCard>
           <div class="text-center">
-            <p class="text-sm text-muted-foreground">Có mặt</p>
+            <p class="text-sm text-muted-foreground">Có mặt <span class="text-[11px]">({{ scopeLabel }})</span></p>
             <p class="text-3xl font-bold text-green-600 dark:text-green-400 mt-2">{{ recordsSummary.present }}</p>
             <p class="text-xs text-muted-foreground mt-1">{{ recordsSummary.total }} bản ghi</p>
           </div>
         </BaseCard>
         <BaseCard>
           <div class="text-center">
-            <p class="text-sm text-muted-foreground">Vắng mặt</p>
+            <p class="text-sm text-muted-foreground">Vắng mặt <span class="text-[11px]">({{ scopeLabel }})</span></p>
             <p class="text-3xl font-bold text-red-600 dark:text-red-400 mt-2">{{ recordsSummary.absent }}</p>
           </div>
         </BaseCard>
         <BaseCard>
           <div class="text-center">
-            <p class="text-sm text-muted-foreground">Đi muộn</p>
+            <p class="text-sm text-muted-foreground">Đi muộn <span class="text-[11px]">({{ scopeLabel }})</span></p>
             <p class="text-3xl font-bold text-amber-600 dark:text-amber-400 mt-2">{{ recordsSummary.late }}</p>
           </div>
         </BaseCard>
         <BaseCard>
           <div class="text-center">
-            <p class="text-sm text-muted-foreground">Về sớm</p>
+            <p class="text-sm text-muted-foreground">Về sớm <span class="text-[11px]">({{ scopeLabel }})</span></p>
             <p class="text-3xl font-bold text-orange-600 dark:text-orange-400 mt-2">{{ recordsSummary.early }}</p>
           </div>
         </BaseCard>
@@ -287,7 +287,7 @@
                 {{ getInitials(item.full_name || item.employee_name) }}
               </div>
               <div>
-                <span class="font-medium">{{ item.full_name || item.employee_name || `NV #${item.employee_id}` }}</span>
+                <span class="font-medium">{{ item.full_name || item.employee_name || item.employee_code || `NV#${item.employee_id}` }}</span>
                 <p class="text-xs text-muted-foreground">{{ item.employee_code || '' }}</p>
               </div>
             </div>
@@ -379,7 +379,7 @@
         <div class="grid grid-cols-2 gap-4">
           <div>
             <p class="text-sm text-muted-foreground">Nhân viên</p>
-            <p class="font-medium">{{ editingRecord.full_name || `NV #${editingRecord.employee_id}` }}</p>
+            <p class="font-medium">{{ editingRecord.full_name || editingRecord.employee_code || `NV#${editingRecord.employee_id}` }} <span v-if="editingRecord.employee_code" class="text-xs text-muted-foreground">({{ editingRecord.employee_code }})</span></p>
           </div>
           <div>
             <p class="text-sm text-muted-foreground">Ngày</p>
@@ -422,7 +422,7 @@
         <div class="grid grid-cols-2 gap-4">
           <div>
             <p class="text-muted-foreground">Nhân viên</p>
-            <p class="font-medium">{{ logRecord.full_name || logRecord.employee_name || `NV #${logRecord.employee_id}` }}</p>
+            <p class="font-medium">{{ logRecord.full_name || logRecord.employee_name || logRecord.employee_code || `NV#${logRecord.employee_id}` }} <span v-if="logRecord.employee_code" class="text-xs text-muted-foreground">({{ logRecord.employee_code }})</span></p>
           </div>
           <div>
             <p class="text-muted-foreground">Ngày</p>
@@ -654,7 +654,23 @@ const updateClock = () => {
   currentDate.value = now.toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 };
 
-// Summary of ALL currently visible records (for admin overview)
+// Nhãn phạm vi đang thống kê — tránh hiểu nhầm số liệu cũ là của tháng này.
+const scopeLabel = computed(() => {
+  const f = filters.value.startDate, t = filters.value.endDate;
+  if (f && t) {
+    const fm = f.slice(0, 7), tm = t.slice(0, 7);
+    if (fm === tm) {
+      const [y, m] = fm.split('-');
+      return `tháng ${Number(m)}/${y}`;
+    }
+    return `${f} → ${t}`;
+  }
+  if (f) return `từ ${f}`;
+  if (t) return `đến ${t}`;
+  return 'tất cả';
+});
+
+// Summary of records in the CURRENT filter scope (defaults to current month)
 const recordsSummary = computed(() => ({
   total: records.value.length,
   present: records.value.filter(r => r.status === 'present').length,
@@ -984,11 +1000,17 @@ const loadData = async () => {
     if (filters.value.startDate) params.from = filters.value.startDate;
     if (filters.value.endDate) params.to = filters.value.endDate;
     if (filters.value.employee_id) params.employee_id = filters.value.employee_id;
+    if (filters.value.status) params.status = filters.value.status;
+    // Ngoài lăng kính toàn công ty → CHỈ lấy chấm công của chính mình. NV thường gọi
+    // theo khoảng ngày mà không kèm employee_id sẽ bị 403 (RBAC) → lịch trống.
+    if (!orgLens.value && myEmployeeId.value) params.employee_id = myEmployeeId.value;
 
     try {
       const [attendanceData, employeesData] = await Promise.all([
         attendanceService.getRecords(params),
-        employeeService.getAll()
+        // per_page cao — mặc định API chỉ trả trang 1 (15/21 NV) làm thiếu
+        // người trong dropdown lọc và map tên.
+        employeeService.getLookup()
       ]);
 
       // API returns array directly
@@ -996,25 +1018,38 @@ const loadData = async () => {
         ? attendanceData
         : (attendanceData?.data || []);
 
-      if (rawRecords.length > 0) {
-        // Normalize: ensure both attendance_date and record_date exist
-        records.value = rawRecords.map(r => ({
-          ...r,
-          attendance_date: r.attendance_date || r.record_date,
-          record_date: r.record_date || r.attendance_date,
-          // employee_name comes from the JOIN; also expose as full_name
-          full_name: r.full_name || r.employee_name,
-          employee_name: r.employee_name || r.full_name,
-        }));
-      } else {
-        records.value = [];
-      }
-
       const rawEmployees = Array.isArray(employeesData)
         ? employeesData
         : (employeesData?.data || []);
       if (rawEmployees.length > 0) {
         employees.value = rawEmployees;
+      }
+
+      // Map employee_id → {tên, mã NV} để hiển thị CHUẨN NVxxxx (đồng bộ với
+      // các module khác), thay cho fallback "NV #12" khi API không join tên.
+      const empMap = {};
+      for (const e of employees.value) {
+        empMap[String(e.id)] = { name: e.full_name, code: e.employee_code || e.code };
+      }
+
+      if (rawRecords.length > 0) {
+        // Normalize: ensure both attendance_date and record_date exist
+        records.value = rawRecords.map(r => {
+          // Ưu tiên relation `employee` mà API đã join sẵn; fallback map từ
+          // danh sách nhân viên. Hiển thị CHUẨN: Họ tên + mã NVxxxx.
+          const rel = r.employee || {};
+          const emp = empMap[String(r.employee_id)] || {};
+          return {
+            ...r,
+            attendance_date: r.attendance_date || r.record_date,
+            record_date: r.record_date || r.attendance_date,
+            full_name: r.full_name || r.employee_name || rel.full_name || emp.name,
+            employee_name: r.employee_name || r.full_name || rel.full_name || emp.name,
+            employee_code: r.employee_code || rel.employee_code || emp.code,
+          };
+        });
+      } else {
+        records.value = [];
       }
     } catch (apiError) {
       console.error('Attendance API error:', apiError.message);
@@ -1033,6 +1068,13 @@ const loadData = async () => {
 onMounted(() => {
   updateClock();
   clockInterval = setInterval(updateClock, 1000);
+  // Mặc định thống kê THEO THÁNG HIỆN TẠI — tránh cộng dồn dữ liệu cũ
+  // khiến thẻ "Có mặt/Vắng" hiển thị số của tháng trước như thể là tháng này.
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const pad = (n) => String(n).padStart(2, '0');
+  filters.value.startDate = `${y}-${pad(m + 1)}-01`;
+  filters.value.endDate = `${y}-${pad(m + 1)}-${pad(new Date(y, m + 1, 0).getDate())}`;
   loadData();
 });
 

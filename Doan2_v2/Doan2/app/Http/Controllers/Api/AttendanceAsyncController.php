@@ -20,7 +20,7 @@ use Throwable;
  *  - KHÔNG query database trực tiếp (việc đó của Repository).
  *  - Mọi logic phức tạp được delegate xuống Service layer.
  */
-class AttendanceController extends Controller
+class AttendanceAsyncController extends Controller
 {
     /**
      * Inject dependencies qua constructor (Dependency Injection).

@@ -411,7 +411,7 @@ onMounted(async () => {
         if (err.response?.status === 403) return [];
         throw err;
       }),
-      employeeService.getAll().catch(() => [])
+      employeeService.getLookup().catch(() => [])
     ];
 
     const results = await Promise.all(promises);

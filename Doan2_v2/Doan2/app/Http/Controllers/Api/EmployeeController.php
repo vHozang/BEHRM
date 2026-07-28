@@ -6,24 +6,226 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\LegalEntity;
 use App\Repositories\OrganizationChartRepository;
+use App\Support\EmployeeStatus;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class EmployeeController extends Controller
 {
+    /**
+     * POST /employees/import — Nhập nhân viên hàng loạt từ file Excel/CSV.
+     *
+     * FE parse CSV phía client rồi gửi JSON rows (không cần multipart/phpspreadsheet).
+     * Mỗi dòng độc lập: dòng lỗi bị bỏ qua kèm lý do, dòng hợp lệ vẫn vào — HR import
+     * 200 người mà 3 dòng lỗi thì 197 người vẫn được tạo, sửa 3 dòng import lại
+     * (chống trùng theo mã NV/email nên chạy lại an toàn).
+     *
+     * Mỗi NV tạo kèm: hợp đồng hiệu lực (payroll cần contract), phòng ban/chức danh
+     * find-or-create theo TÊN (file Excel của khách ghi tên, không có id).
+     */
+    public function import(Request $request): JsonResponse
+    {
+        $rows = $request->input('rows');
+        if (! is_array($rows) || ! count($rows) || count($rows) > 2000) {
+            return $this->validationError(['rows' => ['Cần danh sách 1-2000 dòng nhân viên']]);
+        }
+
+        $tenantId = (int) TenantContext::id();
+        $legalEntityId = (int) (DB::table('legal_entities')->where('tenant_id', $tenantId)->min('id') ?: 1);
+        $contractTypeId = DB::table('contract_types')->where('tenant_id', $tenantId)
+            ->where('contract_type_code', 'HDLD01')->value('id')
+            ?? DB::table('contract_types')->where('tenant_id', $tenantId)->min('id');
+
+        // Mã NV tự sinh: tiếp nối số NVxxxx lớn nhất hiện có.
+        $maxCode = (int) DB::table('employees')->where('tenant_id', $tenantId)
+            ->where('employee_code', '~', '^NV[0-9]+$')
+            ->selectRaw("max(substring(employee_code from 3)::int) m")->value('m');
+
+        $deptCache = [];
+        $posCache = [];
+        $findOrCreate = function (string $table, string $nameCol, string $codeCol, string $name, array &$cache) use ($tenantId, $legalEntityId) {
+            $key = mb_strtolower(trim($name));
+            if (isset($cache[$key])) {
+                return $cache[$key];
+            }
+            $id = DB::table($table)->where('tenant_id', $tenantId)->whereRaw("lower({$nameCol}) = ?", [$key])->value('id');
+            if (! $id) {
+                $row = [
+                    $codeCol => mb_strtoupper(mb_substr(preg_replace('/[^A-Za-z0-9]/', '', $this->viSlug($name)), 0, 12)) ?: strtoupper(substr(md5($key), 0, 8)),
+                    $nameCol => trim($name),
+                    'tenant_id' => $tenantId,
+                    'created_at' => now(), 'updated_at' => now(),
+                ];
+                if (Schema::hasColumn($table, 'legal_entity_id')) {
+                    $row['legal_entity_id'] = $legalEntityId;
+                }
+                if (Schema::hasColumn($table, 'status')) {
+                    $row['status'] = DB::raw('true');
+                }
+                $id = DB::table($table)->insertGetId($row);
+            }
+
+            return $cache[$key] = (int) $id;
+        };
+
+        $created = 0;
+        $results = [];
+        foreach (array_values($rows) as $i => $r) {
+            $line = $i + 2; // dòng Excel (sau header)
+            $name = trim((string) ($r['full_name'] ?? ''));
+            if ($name === '') {
+                $results[] = ['line' => $line, 'status' => 'skipped', 'reason' => 'Thiếu họ tên'];
+
+                continue;
+            }
+
+            $code = strtoupper(trim((string) ($r['employee_code'] ?? ''))) ?: 'NV'.str_pad((string) (++$maxCode), 4, '0', STR_PAD_LEFT);
+            $email = strtolower(trim((string) ($r['company_email'] ?? '')));
+
+            $dup = DB::table('employees')->where('tenant_id', $tenantId)
+                ->where(fn ($q) => $q->where('employee_code', $code)->when($email, fn ($q2) => $q2->orWhere('company_email', $email)))
+                ->first(['employee_code', 'company_email']);
+            if ($dup) {
+                $results[] = ['line' => $line, 'status' => 'skipped', 'reason' => "Trùng mã NV/email ({$dup->employee_code})"];
+
+                continue;
+            }
+
+            $g = mb_strtoupper(trim((string) ($r['gender'] ?? '')));
+            $gender = in_array($g, ['MALE', 'M', 'NAM'], true) ? 'MALE' : (in_array($g, ['FEMALE', 'F', 'NỮ', 'NU'], true) ? 'FEMALE' : null);
+            $hire = $this->parseDateCell($r['hire_date'] ?? null) ?? now()->toDateString();
+            $dob = $this->parseDateCell($r['date_of_birth'] ?? null);
+            $salary = (float) preg_replace('/[^0-9.]/', '', (string) ($r['base_salary'] ?? 0));
+
+            // Pre-check các ràng buộc DB để báo lỗi ĐỌC ĐƯỢC thay vì SQLSTATE.
+            if ($hire > now()->addDays(7)->toDateString()) {
+                $results[] = ['line' => $line, 'status' => 'skipped',
+                    'reason' => "Ngày vào làm {$hire} quá xa tương lai (hệ thống cho tối đa hôm nay +7 ngày) — import lại gần ngày nhận việc"];
+
+                continue;
+            }
+            if (! preg_match('/^[A-Z]{2,4}[0-9]{4,8}$/', $code)) {
+                $results[] = ['line' => $line, 'status' => 'skipped', 'reason' => "Mã NV '{$code}' sai định dạng (2-4 chữ + 4-8 số, vd NV0123)"];
+
+                continue;
+            }
+
+            try {
+                DB::transaction(function () use ($r, $name, $code, $email, $gender, $hire, $dob, $salary, $tenantId, $legalEntityId, $contractTypeId, $findOrCreate, &$deptCache, &$posCache) {
+                    $deptId = trim((string) ($r['department'] ?? '')) !== ''
+                        ? $findOrCreate('departments', 'department_name', 'department_code', $r['department'], $deptCache) : null;
+                    $posId = trim((string) ($r['position'] ?? '')) !== ''
+                        ? $findOrCreate('positions', 'position_name', 'position_code', $r['position'], $posCache) : null;
+
+                    $profile = array_filter([
+                        'id_number' => trim((string) ($r['id_number'] ?? '')) ?: null,
+                        'tax_number' => trim((string) ($r['tax_number'] ?? '')) ?: null,
+                        'insurance_number' => trim((string) ($r['insurance_number'] ?? '')) ?: null,
+                        'bank_name' => trim((string) ($r['bank_name'] ?? '')) ?: null,
+                        'bank_account' => trim((string) ($r['bank_account'] ?? '')) ?: null,
+                        'address' => trim((string) ($r['address'] ?? '')) ?: null,
+                        'source' => 'excel-import',
+                    ]);
+
+                    $empId = DB::table('employees')->insertGetId([
+                        'employee_code' => $code,
+                        'full_name' => $name,
+                        'company_email' => $email ?: null,
+                        'password_hash' => null, // HR cấp mật khẩu sau — chưa đăng nhập được
+                        'status' => 'ACTIVE',
+                        'gender' => $gender,
+                        'date_of_birth' => $dob,
+                        'phone_number' => trim((string) ($r['phone_number'] ?? '')) ?: null,
+                        'department_id' => $deptId,
+                        'position_id' => $posId,
+                        'base_salary' => $salary ?: null,
+                        'hire_date' => $hire,
+                        'profile' => json_encode($profile, JSON_UNESCAPED_UNICODE),
+                        'tenant_id' => $tenantId,
+                        'legal_entity_id' => $legalEntityId,
+                        'is_super_admin' => DB::raw('false'),
+                        'created_at' => now(), 'updated_at' => now(),
+                    ]);
+
+                    DB::table('contracts')->insert([
+                        'tenant_id' => $tenantId, 'legal_entity_id' => $legalEntityId,
+                        'employee_id' => $empId, 'contract_type_id' => $contractTypeId,
+                        'department_id' => $deptId, 'position_id' => $posId,
+                        'contract_number' => 'HDLD/'.$code.'/'.date('Y'),
+                        'status' => 'CÓ_HIỆU_LỰC', 'start_date' => $hire, 'end_date' => null,
+                        'meta' => json_encode(['basic_salary' => $salary, 'source' => 'excel-import'], JSON_UNESCAPED_UNICODE),
+                        'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                });
+                $created++;
+                $results[] = ['line' => $line, 'status' => 'created', 'employee_code' => $code, 'full_name' => $name];
+            } catch (\Throwable $e) {
+                // Không lộ SQL ra HR — quy về thông điệp ngắn.
+                $msg = str_contains($e->getMessage(), 'SQLSTATE')
+                    ? 'Dữ liệu không hợp lệ với ràng buộc hệ thống (kiểm tra mã NV, ngày, lương)'
+                    : mb_substr($e->getMessage(), 0, 120);
+                $results[] = ['line' => $line, 'status' => 'skipped', 'reason' => $msg];
+            }
+        }
+
+        // Cấp số dư phép năm hiện tại cho người mới (idempotent).
+        if ($created > 0) {
+            try {
+                app(\App\Services\LeavePolicyService::class)->recomputeBalances($tenantId, (int) now()->year);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Import: recomputeBalances failed: '.$e->getMessage());
+            }
+        }
+
+        return $this->ok([
+            'created' => $created,
+            'skipped' => count($results) - $created,
+            'results' => $results,
+        ], "Đã nhập {$created} nhân viên");
+    }
+
+    /** Ngày từ ô Excel: nhận d/m/Y, Y-m-d, d-m-Y. */
+    private function parseDateCell($v): ?string
+    {
+        $v = trim((string) $v);
+        if ($v === '') {
+            return null;
+        }
+        foreach (['Y-m-d', 'd/m/Y', 'd-m-Y', 'm/d/Y'] as $fmt) {
+            $d = \DateTime::createFromFormat($fmt, $v);
+            if ($d && $d->format($fmt) === $v) {
+                return $d->format('Y-m-d');
+            }
+        }
+
+        return null;
+    }
+
+    /** Bỏ dấu tiếng Việt để sinh mã code từ tên. */
+    private function viSlug(string $s): string
+    {
+        $from = ['à','á','ả','ã','ạ','ă','ằ','ắ','ẳ','ẵ','ặ','â','ầ','ấ','ẩ','ẫ','ậ','đ','è','é','ẻ','ẽ','ẹ','ê','ề','ế','ể','ễ','ệ','ì','í','ỉ','ĩ','ị','ò','ó','ỏ','õ','ọ','ô','ồ','ố','ổ','ỗ','ộ','ơ','ờ','ớ','ở','ỡ','ợ','ù','ú','ủ','ũ','ụ','ư','ừ','ứ','ử','ữ','ự','ỳ','ý','ỷ','ỹ','ỵ'];
+        $to = ['a','a','a','a','a','a','a','a','a','a','a','a','a','a','a','a','a','d','e','e','e','e','e','e','e','e','e','e','e','i','i','i','i','i','o','o','o','o','o','o','o','o','o','o','o','o','o','o','o','o','o','u','u','u','u','u','u','u','u','u','u','u','y','y','y','y','y'];
+
+        return str_replace($from, $to, mb_strtolower($s));
+    }
+
     /**
      * GET /employees — Danh sách nhân viên kèm filter, enriched data.
      */
     public function index(Request $request): JsonResponse
     {
-        $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
+        $perPage = min(max((int) $request->query('per_page', 50), 1), 2000);
 
         $query = Employee::query()
             ->with(['department:id,department_name,department_code', 'position:id,position_name,position_code'])
+            ->where(fn ($query) => $query->whereNull('profile->system_account')->orWhere('profile->system_account', false))
             ->orderByDesc('id');
 
         // Filter by query params
@@ -48,8 +250,21 @@ class EmployeeController extends Controller
 
         // Trạng thái hiển thị = suy ra từ HĐ + đơn nghỉ (nhất quán toàn hệ thống).
         $items = $page->items();
+        $statuses = EmployeeStatus::resolveMany($items);
         foreach ($items as $emp) {
-            $emp->status = \App\Support\EmployeeStatus::resolve((int) $emp->id);
+            $emp->status = $statuses[(int) $emp->id];
+        }
+
+        // Danh bạ nhân viên là SHARED_READ (mọi NV xem được để tra tên/liên hệ),
+        // nhưng LƯƠNG + hồ sơ cá nhân (CMND, ngày sinh…) chỉ dành cho vai trò
+        // HR/Payroll. Người xem thường → ẩn các cột nhạy cảm khỏi kết quả list.
+        $access = $request->attributes->get('access');
+        $privileged = is_array($access) && (! empty($access['full'])
+            || array_intersect(['hr', 'payroll'], $access['modules'] ?? []));
+        if (! $privileged) {
+            foreach ($items as $emp) {
+                unset($emp->base_salary, $emp->profile, $emp->personal_email, $emp->date_of_birth);
+            }
         }
 
         return $this->ok([
@@ -61,6 +276,23 @@ class EmployeeController extends Controller
                 'last_page' => $page->lastPage(),
             ],
         ], 'Employees list');
+    }
+
+    /** Lightweight data for selectors; never returns profile or salary fields. */
+    public function lookup(): JsonResponse
+    {
+        $employees = Employee::query()
+            ->select(['id', 'employee_code', 'full_name', 'status', 'department_id', 'position_id', 'manager_id'])
+            ->where(fn ($query) => $query->whereNull('profile->system_account')->orWhere('profile->system_account', false))
+            ->orderBy('full_name')
+            ->get();
+
+        $statuses = EmployeeStatus::resolveMany($employees);
+        foreach ($employees as $employee) {
+            $employee->status = $statuses[(int) $employee->id];
+        }
+
+        return $this->ok($employees, 'Employee lookup');
     }
 
     public function orgChart(Request $request): JsonResponse
@@ -97,8 +329,17 @@ class EmployeeController extends Controller
 
         $validator = Validator::make($request->all(), [
             'full_name' => 'required|string|max:255',
-            'company_email' => 'required|email|unique:employees,company_email',
-            'employee_code' => 'nullable|string|unique:employees,employee_code|regex:/^[A-Z]{2,4}[0-9]{4,8}$/',
+            'company_email' => [
+                'required',
+                'email',
+                Rule::unique('employees', 'company_email')->where('tenant_id', TenantContext::id()),
+            ],
+            'employee_code' => [
+                'nullable',
+                'string',
+                Rule::unique('employees', 'employee_code')->where('tenant_id', TenantContext::id()),
+                'regex:/^[A-Z]{2,4}[0-9]{4,8}$/',
+            ],
             'phone' => 'nullable|string|max:20',
             'phone_number' => 'nullable|string|max:20',
             'personal_email' => 'nullable|email',
@@ -135,10 +376,10 @@ class EmployeeController extends Controller
 
         // department_id/position_id must belong to the current tenant. The bare
         // `exists:` rule is NOT tenant-scoped, so guard them explicitly.
-        if ($request->filled('department_id') && ! \App\Support\TenantContext::ownsRow('departments', $request->input('department_id'))) {
+        if ($request->filled('department_id') && ! TenantContext::ownsRow('departments', $request->input('department_id'))) {
             return $this->validationError(['department_id' => ['Phòng ban không thuộc công ty hiện tại']]);
         }
-        if ($request->filled('position_id') && ! \App\Support\TenantContext::ownsRow('positions', $request->input('position_id'))) {
+        if ($request->filled('position_id') && ! TenantContext::ownsRow('positions', $request->input('position_id'))) {
             return $this->validationError(['position_id' => ['Chức vụ không thuộc công ty hiện tại']]);
         }
 
@@ -171,7 +412,7 @@ class EmployeeController extends Controller
         // org chart. Must belong to the current tenant when provided.
         if ($request->filled('manager_id')) {
             $managerId = (int) $request->input('manager_id');
-            if (! \App\Support\TenantContext::ownsRow('employees', $managerId)) {
+            if (! TenantContext::ownsRow('employees', $managerId)) {
                 return $this->validationError(['manager_id' => ['Quản lý không thuộc công ty hiện tại']]);
             }
             $data['manager_id'] = $managerId;
@@ -196,7 +437,7 @@ class EmployeeController extends Controller
     /**
      * GET /employees/{id} — Chi tiết nhân viên kèm relations.
      */
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
         $employee = Employee::with([
             'department:id,department_name,department_code',
@@ -209,7 +450,18 @@ class EmployeeController extends Controller
             return $this->notFound();
         }
 
-        $employee->status = \App\Support\EmployeeStatus::resolve((int) $employee->id);
+        $employee->status = EmployeeStatus::resolve((int) $employee->id);
+
+        // Lương + hợp đồng + hồ sơ cá nhân chỉ cho HR/Payroll hoặc chính chủ.
+        $access = $request->attributes->get('access');
+        $privileged = is_array($access) && (! empty($access['full'])
+            || array_intersect(['hr', 'payroll'], $access['modules'] ?? []));
+        $isSelf = (int) $request->attributes->get('auth_employee_id') === (int) $id;
+        if (! $privileged && ! $isSelf) {
+            unset($employee->base_salary, $employee->personal_email, $employee->date_of_birth);
+            $employee->unsetRelation('activeContract');
+            $employee->setAttribute('profile', null);
+        }
 
         return $this->ok($employee, 'Employee detail');
     }
@@ -246,8 +498,17 @@ class EmployeeController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'company_email' => "nullable|email|unique:employees,company_email,{$id}",
-            'employee_code' => "nullable|string|unique:employees,employee_code,{$id}|regex:/^[A-Z]{2,4}[0-9]{4,8}$/",
+            'company_email' => [
+                'nullable',
+                'email',
+                Rule::unique('employees', 'company_email')->where('tenant_id', TenantContext::id())->ignore($id),
+            ],
+            'employee_code' => [
+                'nullable',
+                'string',
+                Rule::unique('employees', 'employee_code')->where('tenant_id', TenantContext::id())->ignore($id),
+                'regex:/^[A-Z]{2,4}[0-9]{4,8}$/',
+            ],
             'phone' => 'nullable|string|max:20',
             'phone_number' => 'nullable|string|max:20',
             'department_id' => 'nullable|exists:departments,id',
@@ -269,10 +530,10 @@ class EmployeeController extends Controller
         }
 
         // Reject cross-tenant org units (bare `exists:` is not tenant-scoped).
-        if ($request->filled('department_id') && ! \App\Support\TenantContext::ownsRow('departments', $request->input('department_id'))) {
+        if ($request->filled('department_id') && ! TenantContext::ownsRow('departments', $request->input('department_id'))) {
             return $this->validationError(['department_id' => ['Phòng ban không thuộc công ty hiện tại']]);
         }
-        if ($request->filled('position_id') && ! \App\Support\TenantContext::ownsRow('positions', $request->input('position_id'))) {
+        if ($request->filled('position_id') && ! TenantContext::ownsRow('positions', $request->input('position_id'))) {
             return $this->validationError(['position_id' => ['Chức vụ không thuộc công ty hiện tại']]);
         }
 
@@ -289,7 +550,7 @@ class EmployeeController extends Controller
                 if ($managerId === $id) {
                     return $this->validationError(['manager_id' => ['Nhân viên không thể là quản lý của chính mình']]);
                 }
-                if (! \App\Support\TenantContext::ownsRow('employees', $managerId)) {
+                if (! TenantContext::ownsRow('employees', $managerId)) {
                     return $this->validationError(['manager_id' => ['Quản lý không thuộc công ty hiện tại']]);
                 }
                 // Cycle check: manager mới không được nằm trong cây cấp dưới của NV này.
@@ -301,11 +562,22 @@ class EmployeeController extends Controller
             }
         }
 
-        // Only update columns that exist on the table
+        // Only update columns that exist on the table. BLOCK security/identity
+        // columns from mass-assignment: is_super_admin (platform cross-tenant
+        // operator), tenant_id/legal_entity_id (moving a row between companies) —
+        // otherwise any HR-module user could grant super-admin or leak across
+        // tenants. Those are never set through a normal employee edit.
         $columns = Schema::getColumnListing('employees');
-        $data = collect($request->except(['id', 'created_at', 'updated_at', 'password_hash']))
+        $data = collect($request->except([
+            'id', 'created_at', 'updated_at', 'password_hash',
+            'is_super_admin', 'tenant_id', 'legal_entity_id',
+        ]))
             ->only($columns)
             ->toArray();
+
+        if (isset($data['profile']) && is_array($data['profile'])) {
+            $data['profile'] = array_replace($employee->profile ?? [], $data['profile']);
+        }
 
         $oldDept = $employee->department_id;
         $oldPos = $employee->position_id;
@@ -347,7 +619,7 @@ class EmployeeController extends Controller
             ->whereRaw('is_current = true')
             ->update(['is_current' => DB::raw('false'), 'end_date' => $today, 'updated_at' => now()]);
 
-        DB::table('employment_histories')->insert(\App\Support\TenantContext::stamp([
+        DB::table('employment_histories')->insert(TenantContext::stamp([
             'employee_id' => $employee->id,
             'department_id' => $employee->department_id,
             'position_id' => $employee->position_id,
@@ -371,14 +643,9 @@ class EmployeeController extends Controller
         }
 
         $violations = $employee->deletionViolations();
+        $violations[] = 'Hồ sơ nhân viên là dữ liệu lịch sử; hãy chuyển trạng thái hoặc dùng Gỡ khỏi sơ đồ thay vì xóa';
 
-        if (! empty($violations)) {
-            return $this->conflict($violations, 'Nhân viên');
-        }
-
-        $employee->delete();
-
-        return $this->ok(['id' => $id], 'Nhân viên đã được xóa');
+        return $this->conflict($violations, 'Nhân viên');
     }
 
     /**
@@ -443,8 +710,8 @@ class EmployeeController extends Controller
                 ->join('departments as d', 'd.id', '=', 'ed.department_id')
                 ->where('ed.employee_id', $id)
                 ->select('d.id', 'd.department_name', 'd.department_code', 'ed.role_in_dept');
-            if (\App\Support\TenantContext::hasTenant()) {
-                $query->where('ed.tenant_id', \App\Support\TenantContext::id());
+            if (TenantContext::hasTenant()) {
+                $query->where('ed.tenant_id', TenantContext::id());
             }
             $secondary = $query->get();
         }
@@ -514,10 +781,18 @@ class EmployeeController extends Controller
             return $this->notFound();
         }
 
-        $histories = DB::table('employment_histories')
-            ->where('employee_id', $id)
-            ->orderByDesc('id')
-            ->get();
+        // FE đọc job_title/department (tên) + employment_status — join sẵn ở đây,
+        // trả id trần thì tab Lịch sử công tác hiện "Chưa có chức danh" với mọi NV.
+        $histories = DB::table('employment_histories as h')
+            ->leftJoin('positions as p', 'p.id', '=', 'h.position_id')
+            ->leftJoin('departments as d', 'd.id', '=', 'h.department_id')
+            ->where('h.employee_id', $id)
+            ->orderByDesc('h.id')
+            ->get(['h.*', 'p.position_name as job_title', 'd.department_name as department']);
+
+        foreach ($histories as $h) {
+            $h->employment_status = in_array($h->is_current, [true, 'true', 1, '1'], true) ? 'active' : 'transferred';
+        }
 
         return $this->ok($histories, 'Employment histories');
     }

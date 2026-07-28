@@ -199,7 +199,7 @@ const loadRoles = async () => {
 };
 
 const loadEmployees = async () => {
-  try { employees.value = asArray(await employeeService.getAll()); } catch { /* ignore */ }
+  try { employees.value = asArray(await employeeService.getLookup()); } catch { /* ignore */ }
 };
 
 const openCreate = () => { createForm.value = { role_name: '', role_code: '' }; showCreate.value = true; };

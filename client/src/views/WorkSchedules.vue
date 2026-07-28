@@ -184,9 +184,11 @@ const mySwaps = ref([]);
 
 const swapStatusText = (s) => ({
   PENDING: 'Chờ duyệt', 'CHỜ_DUYỆT': 'Chờ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Từ chối',
+  CANCELLED: 'Đã hủy', 'ĐÃ_HỦY': 'Đã hủy',
 }[s] || s || 'Chờ duyệt');
 const swapStatusVariant = (s) => ({
   PENDING: 'warning', 'CHỜ_DUYỆT': 'warning', APPROVED: 'success', REJECTED: 'destructive',
+  CANCELLED: 'default', 'ĐÃ_HỦY': 'default',
 }[s] || 'warning');
 
 const filters = ref({
@@ -201,15 +203,17 @@ const form = ref({
   shift_id: ''
 });
 
+// work_date thực chất là effective_date của PHÂN CA (service map lại) — nhãn phải
+// là "Áp dụng từ", để "Ngày làm" NV đọc thành "chỉ làm đúng 1 ngày 1/1/2024".
 const adminColumns = [
   { key: 'employee_id', label: 'Nhân viên' },
-  { key: 'work_date', label: 'Ngày làm' },
+  { key: 'work_date', label: 'Áp dụng từ' },
   { key: 'shift_id', label: 'Ca' },
   { key: 'status', label: 'Trạng thái' }
 ];
 
 const employeeColumns = [
-  { key: 'work_date', label: 'Ngày làm' },
+  { key: 'work_date', label: 'Áp dụng từ' },
   { key: 'shift_id', label: 'Ca' },
   { key: 'status', label: 'Trạng thái' }
 ];
@@ -244,7 +248,10 @@ const getStatusText = (status) => {
     present: 'Có mặt',
     absent: 'Vắng mặt',
     late: 'Muộn',
-    half_day: 'Nửa ngày'
+    half_day: 'Nửa ngày',
+    ACTIVE: 'Hiệu lực',
+    'HIỆU_LỰC': 'Hiệu lực',
+    INACTIVE: 'Hết hiệu lực',
   };
   return statuses[status] || status;
 };
@@ -293,7 +300,7 @@ const loadData = async () => {
 
 const loadEmployees = async () => {
   try {
-    const response = await employeeService.getAll();
+    const response = await employeeService.getLookup();
     const employees = response?.data || response || [];
     employeeOptions.value = employees.map((emp) => ({
       value: emp.id,
@@ -355,7 +362,7 @@ const saveItem = async () => {
 
 const loadColleagues = async () => {
   try {
-    const response = await employeeService.getAll({ per_page: 500 });
+    const response = await employeeService.getLookup();
     const employees = response?.data || response || [];
     const myId = currentUser.value?.employee_id;
     colleagueOptions.value = employees

@@ -157,7 +157,7 @@ const load = async () => {
 
 onMounted(async () => {
   try {
-    const data = await employeeService.getAll({ per_page: 500 });
+    const data = await employeeService.getLookup();
     employees.value = Array.isArray(data) ? data : (data?.items || data?.data || []);
   } catch { employees.value = []; }
   await load();

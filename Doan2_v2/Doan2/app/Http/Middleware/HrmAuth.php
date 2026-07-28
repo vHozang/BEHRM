@@ -47,7 +47,9 @@ class HrmAuth
             ], 401);
         }
 
-        $request->attributes->set('auth_employee', (array) $employee);
+        $employeeArr = (array) $employee;
+        unset($employeeArr['password_hash']); // auth_employee bị trả thẳng ở /auth/me — không lộ hash
+        $request->attributes->set('auth_employee', $employeeArr);
         $request->attributes->set('auth_employee_id', $employee->id);
 
         $isSuperAdmin = ! empty($employee->is_super_admin);

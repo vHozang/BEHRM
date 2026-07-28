@@ -10,7 +10,7 @@
     <!-- Sidebar -->
     <aside 
       :class="[
-        'fixed left-0 top-0 h-full w-72 bg-sidebar/98 backdrop-blur-xl border-r border-sidebar-border z-50 transition-transform duration-300 shadow-[18px_0_60px_-46px_rgba(15,23,42,0.45)]',
+        'fixed left-0 top-0 h-full w-72 bg-sidebar backdrop-blur-xl border-r border-sidebar-border z-50 transition-transform duration-300 shadow-[18px_0_60px_-46px_rgba(15,23,42,0.45)]',
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full',
         isSidebarCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0'
       ]"
@@ -482,11 +482,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, shallowRef, onMounted, onUnmounted, computed, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useNotificationStore } from '../stores/notificationStore';
 import { notificationService } from '../services/notificationService';
-import { nextTick } from 'vue';
 import BaseModal from '../components/BaseModal.vue';
 import BaseInput from '../components/BaseInput.vue';
 import BaseButton from '../components/BaseButton.vue';
@@ -660,6 +659,10 @@ const loadPersisted = async () => {
 };
 
 const isAdmin = computed(() => authService.isAdmin());
+const canUseDashboard = computed(() => {
+  const access = authService.getAccess();
+  return access.full || access.modules.some(module => ['hr', 'time', 'recruitment'].includes(module));
+});
 const isSuperAdmin = computed(() => authService.isSuperAdmin());
 
 const notifications = computed(() => {
@@ -667,7 +670,8 @@ const notifications = computed(() => {
     id: 'db-' + n.id,
     _persisted: true,
     _rawId: n.id,
-    message: n.title ? `${n.title}: ${n.message}` : n.message,
+    // message có thể null (dữ liệu legacy) → chỉ nối khi có, tránh "Tiêu đề: null".
+    message: [n.title, n.message].filter(Boolean).join(': ') || 'Thông báo',
     time: formatTime(new Date(n.created_at)),
     read: !!n.read_at,
   }));
@@ -701,13 +705,8 @@ const formatTime = (date) => {
   return `${days} ngày trước`;
 };
 
-const handleLogout = () => {
-  if (confirm('Bạn có chắc chắn muốn đăng xuất?')) {
-    authService.logout();
-    router.push('/login');
-  }
-};
-const navGroupsData = ref([
+const handleLogout = () => authService.logout();
+const navGroupsData = shallowRef([
   {
     id: 'dashboard',
     label: 'Tổng quan',
@@ -727,6 +726,7 @@ const navGroupsData = ref([
       { path: '/onboarding', name: 'onboarding', label: 'Hội nhập & Nghỉ việc', icon: IconUser, adminOnly: true },
       { path: '/departments', name: 'departments', label: 'Phòng ban', icon: IconBuilding, adminOnly: true },
       { path: '/profile-change-requests', name: 'profile-change-requests', label: 'Đơn đổi thông tin', icon: IconFileText, adminOnly: true },
+      { path: '/personnel-decisions', name: 'personnel-decisions', label: 'Quyết định nhân sự', icon: IconShieldCheck, adminOnly: true },
     ]
   },
   {
@@ -773,7 +773,8 @@ const navGroupsData = ref([
     isOpen: false,
     items: [
       { path: '/news', name: 'news', label: 'Tin tức nội bộ', icon: IconNewspaper, adminOnly: false },
-      { path: '/policies', name: 'policies', label: 'Chính sách công ty', icon: IconShieldCheck, adminOnly: false }
+      { path: '/policies', name: 'policies', label: 'Chính sách công ty', icon: IconShieldCheck, adminOnly: false },
+      { path: '/service-tickets', name: 'service-tickets', label: 'Hỗ trợ nội bộ', icon: IconSupport, adminOnly: false }
     ]
   },
   {
@@ -821,7 +822,8 @@ const filteredGroups = computed(() => {
         isOpen: true,
         items: [
           { path: '/news', name: 'news', label: 'Tin tức nội bộ', icon: IconNewspaper, adminOnly: false },
-          { path: '/policies', name: 'policies', label: 'Chính sách công ty', icon: IconShieldCheck, adminOnly: false }
+          { path: '/policies', name: 'policies', label: 'Chính sách công ty', icon: IconShieldCheck, adminOnly: false },
+          { path: '/service-tickets', name: 'service-tickets', label: 'Hỗ trợ nội bộ', icon: IconSupport, adminOnly: false }
         ]
       }
     ];
@@ -838,8 +840,9 @@ const filteredGroups = computed(() => {
   return navGroupsData.value
     .filter(group => !group.superAdminOnly || isSuperAdmin.value)
     .filter(group => {
+      if (group.id === 'dashboard') return canUseDashboard.value;
       const m = GROUP_MODULE[group.id];
-      return !m || authService.canAccessModule(m);
+      return group.id === 'communications' || !m || authService.canAccessModule(m);
     })
     .map(group => ({
       ...group,
@@ -849,13 +852,16 @@ const filteredGroups = computed(() => {
 
 const mobileNavItems = computed(() => {
   if (isAdmin.value) {
-    return [
-      { path: '/', label: 'Tổng quan', icon: IconDashboard },
-      { path: '/attendance', label: 'Chấm công', icon: IconClock },
-      { path: '/recruitment', label: 'Tuyển dụng', icon: IconBriefcase },
+    const items = [];
+    if (canUseDashboard.value) items.push({ path: '/', label: 'Tổng quan', icon: IconDashboard });
+    else if (authService.canAccessModule('payroll')) items.push({ path: '/salaries', label: 'Tính lương', icon: IconCash });
+    if (authService.canAccessModule('time')) items.push({ path: '/attendance', label: 'Chấm công', icon: IconClock });
+    if (authService.canAccessModule('recruitment')) items.push({ path: '/recruitment', label: 'Tuyển dụng', icon: IconBriefcase });
+    items.push(
       { path: '/news', label: 'Tin tức', icon: IconNewspaper },
       { path: '/service-tickets', label: 'Hỗ trợ', icon: IconSupport },
-    ];
+    );
+    return items;
   } else {
     return [
       { path: '/employee-portal', label: 'Portal', icon: IconDashboard },
@@ -871,8 +877,9 @@ const dashboardGroup = computed(() => filteredGroups.value.find(g => g.id === 'd
 const menuGroups = computed(() => filteredGroups.value.filter(g => g.id !== 'dashboard'));
 
 const toggleMenu = (groupItem) => {
-  const g = navGroupsData.value.find(g => g.id === groupItem.id);
-  if(g) { g.isOpen = !g.isOpen; }
+  navGroupsData.value = navGroupsData.value.map(g =>
+    g.id === groupItem.id ? { ...g, isOpen: !g.isOpen } : g
+  );
 };
 
 const navItems = computed(() => {

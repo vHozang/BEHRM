@@ -92,7 +92,7 @@
               </div>
             </div>
 
-            <p class="text-xs text-muted-foreground mt-1">{{ cand.recruitment_position_title || cand.position_name || 'Vị trí chưa rõ' }}</p>
+            <p class="text-xs text-muted-foreground mt-1">{{ cand.position?.position_name || cand.job_title_name || cand.recruitment_position_title || 'Vị trí chưa rõ' }}</p>
             
             <div class="flex items-center justify-between mt-3 text-[11px] text-muted-foreground">
               <span class="truncate max-w-[130px]">{{ cand.email }}</span>
@@ -132,7 +132,7 @@
             </div>
             <div>
               <label class="text-xs text-muted-foreground">Vị trí ứng tuyển</label>
-              <p class="font-semibold text-primary">{{ selectedCandidate.recruitment_position_title || selectedCandidate.position_name }}</p>
+              <p class="font-semibold text-primary">{{ selectedCandidate.position?.position_name || selectedCandidate.job_title_name || selectedCandidate.recruitment_position_title || '—' }}</p>
             </div>
             <div>
               <label class="text-xs text-muted-foreground">Trạng thái tuyển dụng</label>
@@ -530,15 +530,13 @@ const runAiScoring = async () => {
   if (!selectedCandidate.value.id) return;
   aiLoading.value = true;
   try {
-    const res = await recruitmentService.retryAiScore(selectedCandidate.value.id);
-    toast.success('Phân tích AI hoàn tất!');
-    selectedCandidate.value.ai_score = res?.data?.ai_score || res?.ai_score || Math.floor(Math.random() * 40) + 60; // Mock score if null
+    await recruitmentService.retryAiScore(selectedCandidate.value.id);
+    toast.success('Đã đưa hồ sơ vào hàng chờ chấm điểm');
+    selectedCandidate.value.ai_scoring_status = 'PENDING';
     await loadCandidates();
   } catch (err) {
     console.error('Error running AI scoring:', err);
     toast.error('AI chấm điểm thất bại hoặc chưa cấu hình API key');
-    // Fallback mock for grading demo
-    selectedCandidate.value.ai_score = Math.floor(Math.random() * 40) + 60;
   } finally {
     aiLoading.value = false;
   }

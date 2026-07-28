@@ -11,8 +11,8 @@ use Symfony\Component\HttpFoundation\Response;
  * Enforces role/module-based access on the authenticated API. Runs AFTER
  * hrm.auth (which populates auth_employee). Super-admins and full-admin roles
  * pass everything; otherwise the request's path must map to a module the
- * employee's roles grant (see App\Support\AccessControl). Unmapped paths and
- * shared lookup reads are always allowed, so this never blocks core flows.
+ * employee's roles grant (see App\Support\AccessControl). Unmapped paths fail
+ * closed; only the explicit shared-read and self-service lists bypass modules.
  */
 class ModuleAccess
 {
@@ -64,6 +64,36 @@ class ModuleAccess
     private function selfServiceAllowed(Request $request, int $employeeId, string $path): bool
     {
         $segment = strtolower(explode('/', ltrim($path, '/'))[0] ?? '');
+
+        // Tin nội bộ: nhân viên đánh dấu ĐÃ ĐỌC (POST /news/{id}/read). Controller
+        // ghi nhận theo đúng nhân viên đang đăng nhập — an toàn self-service.
+        if ($segment === 'news' && str_contains($path, '/read')) {
+            return true;
+        }
+        // Chính sách công ty: nhân viên XÁC NHẬN đã đọc (POST /policies/{id}/acknowledge).
+        if ($segment === 'policies' && str_contains($path, '/acknowledge')) {
+            return true;
+        }
+
+        // Helpdesk: every employee may create and read their own tickets.
+        // GenericResourceController applies the row scope and limits updates.
+        if ($segment === 'service-tickets') {
+            $method = strtoupper($request->method());
+            if (in_array($method, ['GET', 'POST'], true)) {
+                return true;
+            }
+
+            $parts = explode('/', ltrim($path, '/'));
+            $ticketId = $parts[1] ?? '';
+            if (is_numeric($ticketId)) {
+                $ownerId = (int) \Illuminate\Support\Facades\DB::table('service_tickets')
+                    ->where('id', (int) $ticketId)->value('requester_id');
+
+                return $ownerId === $employeeId;
+            }
+
+            return false;
+        }
 
         // Onboarding/offboarding: employees may READ their own checklists and
         // TICK their own tasks. The controller enforces row ownership for
@@ -187,6 +217,22 @@ class ModuleAccess
                 $req = $request->input('requester_id', $request->query('requester_id'));
 
                 return $req !== null && (int) $req === $employeeId;
+            }
+
+            return false;
+        }
+
+        // Phiếu lương chi tiết: GET /salary-details/{id}/payslip không mang
+        // employee_id nên check tổng quát bên dưới sẽ chặn nhầm nhân viên xem
+        // phiếu lương CỦA CHÍNH MÌNH. Phân giải chủ sở hữu từ bản ghi.
+        if ($segment === 'salary-details' && str_contains($path, '/payslip')) {
+            $parts = explode('/', ltrim($path, '/'));
+            $rid = $parts[1] ?? '';
+            if (is_numeric($rid)) {
+                $ownerId = (int) \Illuminate\Support\Facades\DB::table('salary_details')
+                    ->where('id', (int) $rid)->value('employee_id');
+
+                return $ownerId === $employeeId;
             }
 
             return false;

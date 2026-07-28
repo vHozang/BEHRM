@@ -54,6 +54,13 @@ class InsuranceService
         $bhxhBhytBase = $bhxhBhytCap > 0 ? min($base, $bhxhBhytCap) : $base;
         $bhtnBase = $bhtnCap > 0 ? min($base, $bhtnCap) : $base;
 
+        // FLOOR: tiền lương đóng BH không thấp hơn lương tối thiểu vùng (Đ.89
+        // Luật BHXH). Chỉ floor khi có base thực (>0) — NV lương 0 đã bị bỏ qua.
+        if ($regionMin > 0 && $base > 0) {
+            $bhxhBhytBase = max($bhxhBhytBase, $regionMin);
+            $bhtnBase = max($bhtnBase, $regionMin);
+        }
+
         $bhxh = round($bhxhBhytBase * (float) ($rates['bhxh'] ?? 0), 4);
         $bhyt = round($bhxhBhytBase * (float) ($rates['bhyt'] ?? 0), 4);
         $bhtn = round($bhtnBase * (float) ($rates['bhtn'] ?? 0), 4);

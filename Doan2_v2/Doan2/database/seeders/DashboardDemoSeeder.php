@@ -12,9 +12,9 @@ class DashboardDemoSeeder extends Seeder
         $this->syncContractDatesFromMeta();
         $this->assignDemoDepartments();
         $this->assignDemoPositions();
+        $this->assignDemoHierarchy();
         $this->normalizeLeaveStatuses();
         $this->seedRecruitmentDemo();
-        $this->seedRecentAttendance();
     }
 
     private function syncContractDatesFromMeta(): void
@@ -45,6 +45,15 @@ class DashboardDemoSeeder extends Seeder
               AND (c.status IS NULL OR c.status IN ('ACTIVE', 'CÓ_HIỆU_LỰC', 'ĐANG_HIỆU_LỰC'))
         SQL);
 
+        $itDepartmentId = DB::table('departments')->where('department_code', 'IT')->value('id');
+        if ($itDepartmentId) {
+            DB::table('employees')
+                ->where('tenant_id', 1)
+                ->where('employee_code', 'AD0001')
+                ->whereNull('department_id')
+                ->update(['department_id' => $itDepartmentId, 'updated_at' => now()]);
+        }
+
         $departmentIds = DB::table('departments')->orderBy('id')->limit(8)->pluck('id')->all();
 
         if ($departmentIds === []) {
@@ -52,6 +61,7 @@ class DashboardDemoSeeder extends Seeder
         }
 
         $unassignedEmployees = DB::table('employees')
+            ->where('tenant_id', 1)
             ->whereNull('department_id')
             ->orderBy('id')
             ->pluck('id')
@@ -78,23 +88,74 @@ class DashboardDemoSeeder extends Seeder
               AND (c.status IS NULL OR c.status IN ('ACTIVE', 'CÓ_HIỆU_LỰC', 'ĐANG_HIỆU_LỰC'))
         SQL);
 
-        $positionIds = DB::table('positions')->orderBy('id')->pluck('id')->all();
+        $developerPositionId = DB::table('positions')->where('position_code', 'LD')->value('id');
+        if ($developerPositionId) {
+            DB::table('employees')
+                ->where('tenant_id', 1)
+                ->where('employee_code', 'AD0001')
+                ->whereNull('position_id')
+                ->update(['position_id' => $developerPositionId, 'updated_at' => now()]);
+        }
 
-        if ($positionIds === []) {
+        $defaultPositionId = DB::table('positions')->where('position_code', 'NV')->value('id')
+            ?? DB::table('positions')->min('id');
+
+        if ($defaultPositionId) {
+            DB::table('employees')
+                ->where('tenant_id', 1)
+                ->whereNull('position_id')
+                ->update([
+                    'position_id' => $defaultPositionId,
+                    'updated_at' => now(),
+                ]);
+        }
+    }
+
+    private function assignDemoHierarchy(): void
+    {
+        // ponytail: demo-only hierarchy; real tenants must import explicit reporting lines.
+        $tenantId = 1;
+        $employees = DB::table('employees as e')
+            ->leftJoin('positions as p', 'p.id', '=', 'e.position_id')
+            ->where('e.tenant_id', $tenantId)
+            ->where('e.status', '!=', 'TERMINATED')
+            ->select('e.*', 'p.position_code')
+            ->get();
+        $root = $employees->firstWhere('employee_code', 'NV0009');
+        $deputy = $employees->firstWhere('employee_code', 'NV0005') ?? $root;
+
+        if (! $root) {
             return;
         }
 
-        $missingPositionEmployees = DB::table('employees')
-            ->whereNull('position_id')
-            ->orderBy('id')
-            ->pluck('id')
-            ->all();
+        DB::table('employees')->where('tenant_id', $tenantId)->where('status', '!=', 'TERMINATED')
+            ->update(['manager_id' => null, 'updated_at' => now()]);
 
-        foreach ($missingPositionEmployees as $index => $employeeId) {
-            DB::table('employees')->where('id', $employeeId)->update([
-                'position_id' => $positionIds[$index % count($positionIds)],
-                'updated_at' => now(),
-            ]);
+        $heads = $employees->where('position_code', 'TP');
+        $deputies = $employees->where('position_code', 'PP');
+
+        foreach ($employees as $employee) {
+            if ($employee->id === $root->id) {
+                continue;
+            }
+
+            if ($employee->employee_code === 'AD0001' || in_array($employee->position_code, ['GD', 'PGD'], true)) {
+                $manager = $root;
+            } elseif ($employee->position_code === 'TP') {
+                $manager = $deputy;
+            } elseif ($employee->position_code === 'PP') {
+                $manager = $employee->department_id ? $heads->firstWhere('department_id', $employee->department_id) : null;
+                $manager ??= $deputy;
+            } else {
+                $manager = $employee->department_id ? $deputies->firstWhere('department_id', $employee->department_id) : null;
+                $manager ??= $employee->department_id ? $heads->firstWhere('department_id', $employee->department_id) : null;
+                $manager ??= $deputy;
+            }
+
+            if ($manager && $manager->id !== $employee->id) {
+                DB::table('employees')->where('tenant_id', $tenantId)->where('id', $employee->id)
+                    ->update(['manager_id' => $manager->id, 'updated_at' => now()]);
+            }
         }
     }
 
@@ -177,6 +238,9 @@ class DashboardDemoSeeder extends Seeder
         ];
 
         foreach ($candidates as [$legacyId, $positionId, $name, $email, $status, $score]) {
+            // CV đã được AI chấm điểm (ai_scoring_status=DONE) → phải có cv_path cho khớp.
+            // FE đọc cand.cv_path; normalizeItem của axiosClient tự nâng key meta lên cấp item.
+            $cvPath = 'cvs/'.explode('@', $email)[0].'-cv.pdf';
             DB::table('recruitment_candidates')->updateOrInsert(
                 ['legacy_id' => $legacyId],
                 [
@@ -184,7 +248,7 @@ class DashboardDemoSeeder extends Seeder
                     'recruitment_position_id' => $positionId,
                     'full_name' => $name,
                     'email' => $email,
-                    'phone_number' => '09' . substr((string) $legacyId, -8),
+                    'phone_number' => '09'.substr((string) $legacyId, -8),
                     'application_status' => $status,
                     'ai_score' => $score,
                     'ai_scoring_status' => 'DONE',
@@ -192,47 +256,11 @@ class DashboardDemoSeeder extends Seeder
                     'ai_scored_at' => now(),
                     'ai_matched_skills_json' => json_encode(['Communication', 'HRM']),
                     'ai_missing_skills_json' => json_encode(['Advanced payroll']),
-                    'meta' => json_encode(['source' => 'dashboard-demo', 'ai_score' => $score]),
+                    'meta' => json_encode(['source' => 'dashboard-demo', 'ai_score' => $score, 'cv_path' => $cvPath]),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ],
             );
-        }
-    }
-
-    private function seedRecentAttendance(): void
-    {
-        $employeeIds = DB::table('employees')->orderBy('id')->limit(3)->pluck('id')->all();
-
-        if (count($employeeIds) < 3) {
-            return;
-        }
-
-        for ($dayOffset = 29; $dayOffset >= 0; $dayOffset--) {
-            $date = now()->subDays($dayOffset)->toDateString();
-            $statuses = ['ON_TIME', $dayOffset % 4 === 0 ? 'LATE' : 'ON_TIME', $dayOffset % 6 === 0 ? 'ABSENT' : 'ON_TIME'];
-
-            foreach ($employeeIds as $index => $employeeId) {
-                $status = $statuses[$index];
-                $legacyId = 930000 + ($dayOffset * 10) + $index;
-
-                DB::table('attendances')->updateOrInsert(
-                    ['legacy_id' => $legacyId],
-                    [
-                        'tenant_id' => 1,
-                        'legal_entity_id' => 1,
-                        'employee_id' => $employeeId,
-                        'shift_type_id' => null,
-                        'work_date' => $date,
-                        'check_in_time' => $status === 'ABSENT' ? null : ($status === 'LATE' ? '08:45:00' : '08:00:00'),
-                        'check_out_time' => $status === 'ABSENT' ? null : '17:30:00',
-                        'status' => $status,
-                        'meta' => json_encode(['source' => 'dashboard-demo']),
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ],
-                );
-            }
         }
     }
 }

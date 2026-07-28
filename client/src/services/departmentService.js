@@ -7,13 +7,15 @@ const mapDepartment = (dept) => {
   try {
     meta = typeof dept.meta === 'string' ? JSON.parse(dept.meta) : (dept.meta || {});
   } catch (e) {}
+
+  const status = dept.status ?? dept.is_active;
   
   return {
     ...dept,
     name: dept.department_name || dept.name || '',
     code: dept.department_code || dept.code || '',
-    is_active: dept.status === 'ACTIVE' || dept.is_active === 1 || dept.is_active === true,
-    parent_id: meta.parent_department_id || meta.parent_id || dept.parent_id || null,
+    is_active: ![false, 0, '0', 'f', 'false', 'INACTIVE'].includes(status),
+    parent_id: meta.parent_id ?? meta.parent_department_id ?? dept.parent_id ?? null,
     manager_id: meta.manager_id || dept.manager_id || null,
     cost_center: meta.cost_center || dept.cost_center || '',
     budget: meta.budget ?? dept.budget ?? null,
@@ -40,8 +42,8 @@ export const departmentService = {
       department_code: data.code,
       department_name: data.name,
       manager_id: data.manager_id,
-      parent_department_id: data.parent_id,
-      is_active: data.is_active ?? 1
+      parent_id: data.parent_id,
+      status: data.is_active ?? true
     };
     const response = await axiosClient.post('/departments', payload);
     return response.data;
@@ -59,8 +61,11 @@ export const departmentService = {
       delete payload.name;
     }
     if (payload.parent_id !== undefined) {
-      payload.parent_department_id = payload.parent_id;
-      delete payload.parent_id;
+      payload.parent_id = payload.parent_id || null;
+    }
+    if (payload.is_active !== undefined) {
+      payload.status = payload.is_active;
+      delete payload.is_active;
     }
     const response = await axiosClient.patch(`/departments/${id}`, payload);
     return response.data;

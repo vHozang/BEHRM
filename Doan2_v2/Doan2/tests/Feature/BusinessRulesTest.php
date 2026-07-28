@@ -27,6 +27,9 @@ class BusinessRulesTest extends TestCase
             'company_email' => 'test@company.com',
             'password_hash' => Hash::make('password'),
             'status' => 'ACTIVE',
+            'is_super_admin' => true,
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -53,6 +56,8 @@ class BusinessRulesTest extends TestCase
         DB::table('contracts')->insert([
             'employee_id' => $this->employeeId,
             'status' => 'ACTIVE',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -76,6 +81,8 @@ class BusinessRulesTest extends TestCase
         $periodId = DB::table('salary_periods')->insertGetId([
             'period_code' => 'T06-2026',
             'status' => 'OPEN',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -84,6 +91,8 @@ class BusinessRulesTest extends TestCase
             'period_id' => $periodId,
             'employee_id' => $this->employeeId,
             'transfer_status' => 'PENDING',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -105,6 +114,7 @@ class BusinessRulesTest extends TestCase
         $roleId = DB::table('roles')->insertGetId([
             'role_code' => 'MANAGER',
             'role_name' => 'Manager',
+            'tenant_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -113,6 +123,7 @@ class BusinessRulesTest extends TestCase
             'employee_id' => $this->employeeId,
             'role_id' => $roleId,
             'is_active' => true,
+            'tenant_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -135,6 +146,7 @@ class BusinessRulesTest extends TestCase
             'asset_id' => 1,
             'employee_id' => $this->employeeId,
             'status' => 'ASSIGNED',
+            'tenant_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -147,7 +159,7 @@ class BusinessRulesTest extends TestCase
         $this->assertStringContainsString('tài sản', $response->json('data.violations.0'));
     }
 
-    public function test_can_delete_employee_without_constraints(): void
+    public function test_employee_history_is_never_hard_deleted(): void
     {
         // Create a fresh employee with no dependencies
         $freeEmployeeId = DB::table('employees')->insertGetId([
@@ -156,6 +168,8 @@ class BusinessRulesTest extends TestCase
             'company_email' => 'free@company.com',
             'password_hash' => Hash::make('password'),
             'status' => 'ACTIVE',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -164,8 +178,8 @@ class BusinessRulesTest extends TestCase
             'Authorization' => "Bearer {$this->token}",
         ]);
 
-        $response->assertStatus(200);
-        $this->assertNull(DB::table('employees')->where('id', $freeEmployeeId)->first());
+        $response->assertStatus(409);
+        $this->assertNotNull(DB::table('employees')->where('id', $freeEmployeeId)->first());
     }
 
     public function test_cannot_delete_employee_with_multiple_violations(): void
@@ -178,6 +192,8 @@ class BusinessRulesTest extends TestCase
         DB::table('contracts')->insert([
             'employee_id' => $this->employeeId,
             'status' => 'ACTIVE',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -186,6 +202,7 @@ class BusinessRulesTest extends TestCase
         $roleId = DB::table('roles')->insertGetId([
             'role_code' => 'MGR_MULTI',
             'role_name' => 'Manager',
+            'tenant_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -194,6 +211,7 @@ class BusinessRulesTest extends TestCase
             'employee_id' => $this->employeeId,
             'role_id' => $roleId,
             'is_active' => true,
+            'tenant_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -222,6 +240,8 @@ class BusinessRulesTest extends TestCase
             'department_code' => 'DEPT_TEST',
             'department_name' => 'Test Department',
             'status' => true,
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -253,6 +273,7 @@ class BusinessRulesTest extends TestCase
             'role_code' => 'SYS_TEST',
             'role_name' => 'System Test Role',
             'is_system_role' => true,
+            'tenant_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -350,6 +371,8 @@ class BusinessRulesTest extends TestCase
             'company_email' => 'other@company.com',
             'password_hash' => Hash::make('password'),
             'status' => 'ACTIVE',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -375,6 +398,8 @@ class BusinessRulesTest extends TestCase
             'employee_id' => $this->employeeId,
             'start_date' => '2026-01-01',
             'status' => 'ACTIVE',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -409,6 +434,8 @@ class BusinessRulesTest extends TestCase
             'employee_id' => $this->employeeId,
             'start_date' => '2026-01-01',
             'status' => 'ACTIVE',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -450,6 +477,8 @@ class BusinessRulesTest extends TestCase
         $deptId = DB::table('departments')->insertGetId([
             'department_code' => 'D001',
             'department_name' => 'Dept 1',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -457,6 +486,7 @@ class BusinessRulesTest extends TestCase
         $posId = DB::table('positions')->insertGetId([
             'position_code' => 'P001',
             'position_name' => 'Position 1',
+            'tenant_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -465,6 +495,8 @@ class BusinessRulesTest extends TestCase
             'employee_id' => $this->employeeId,
             'start_date' => '2026-01-01',
             'status' => 'ACTIVE',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -519,13 +551,27 @@ class BusinessRulesTest extends TestCase
 
     public function test_department_hierarchy_and_manager_meta_merging(): void
     {
+        DB::table('employees')->where('id', $this->employeeId)->update([
+            'is_super_admin' => true,
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
+        ]);
+
+        $parentId = DB::table('departments')->insertGetId([
+            'department_code' => 'PARENT',
+            'department_name' => 'Parent Department',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         // 1. Create a department with hierarchy/manager
         $response = $this->postJson('/api/v1/departments', [
             'department_code' => 'ENG',
             'department_name' => 'Engineering',
-            'parent_id' => 10,
-            'parent_department_id' => 11,
-            'manager_id' => 12,
+            'parent_id' => $parentId,
+            'manager_id' => $this->employeeId,
         ], [
             'Authorization' => "Bearer {$this->token}",
         ]);
@@ -533,43 +579,56 @@ class BusinessRulesTest extends TestCase
         $response->assertStatus(201);
         $deptId = $response->json('data.id');
 
-        $this->assertEquals(10, $response->json('data.parent_id'));
-        $this->assertEquals(11, $response->json('data.parent_department_id'));
-        $this->assertEquals(12, $response->json('data.manager_id'));
+        $this->assertEquals($parentId, $response->json('data.parent_id'));
+        $this->assertEquals($parentId, $response->json('data.parent_department_id'));
+        $this->assertEquals($this->employeeId, $response->json('data.manager_id'));
 
         // Verify it was serialized into meta JSONB
         $dept = DB::table('departments')->where('id', $deptId)->first();
         $meta = json_decode($dept->meta, true);
-        $this->assertEquals(10, $meta['parent_id']);
-        $this->assertEquals(11, $meta['parent_department_id']);
-        $this->assertEquals(12, $meta['manager_id']);
+        $this->assertEquals($parentId, $meta['parent_id']);
+        $this->assertEquals($parentId, $meta['parent_department_id']);
+        $this->assertEquals($this->employeeId, $meta['manager_id']);
 
         // 2. Read department detail
         $showResponse = $this->getJson("/api/v1/departments/{$deptId}", [
             'Authorization' => "Bearer {$this->token}",
         ]);
         $showResponse->assertStatus(200);
-        $this->assertEquals(10, $showResponse->json('data.parent_id'));
-        $this->assertEquals(11, $showResponse->json('data.parent_department_id'));
-        $this->assertEquals(12, $showResponse->json('data.manager_id'));
+        $this->assertEquals($parentId, $showResponse->json('data.parent_id'));
+        $this->assertEquals($parentId, $showResponse->json('data.parent_department_id'));
+        $this->assertEquals($this->employeeId, $showResponse->json('data.manager_id'));
 
         // 3. Update department
         $updateResponse = $this->putJson("/api/v1/departments/{$deptId}", [
             'department_name' => 'Engineering Updated',
             'parent_id' => null,
-            'manager_id' => 99,
+            'manager_id' => $this->employeeId,
         ], [
             'Authorization' => "Bearer {$this->token}",
         ]);
         $updateResponse->assertStatus(200);
         $this->assertNull($updateResponse->json('data.parent_id'));
-        $this->assertEquals(99, $updateResponse->json('data.manager_id'));
+        $this->assertNull($updateResponse->json('data.parent_department_id'));
+        $this->assertEquals($this->employeeId, $updateResponse->json('data.manager_id'));
 
         // Verify updated in DB
         $dept = DB::table('departments')->where('id', $deptId)->first();
         $meta = json_decode($dept->meta, true);
         $this->assertNull($meta['parent_id'] ?? null);
-        $this->assertEquals(99, $meta['manager_id']);
+        $this->assertNull($meta['parent_department_id'] ?? null);
+        $this->assertEquals($this->employeeId, $meta['manager_id']);
+
+        // Nested meta must not bypass the shared validation chokepoint.
+        $this->patchJson("/api/v1/departments/{$deptId}", [
+            'meta' => ['parent_id' => 'xyz', 'manager_id' => 'abc'],
+        ], [
+            'Authorization' => "Bearer {$this->token}",
+        ])->assertStatus(422);
+
+        $meta = json_decode(DB::table('departments')->where('id', $deptId)->value('meta'), true);
+        $this->assertNull($meta['parent_id'] ?? null);
+        $this->assertEquals($this->employeeId, $meta['manager_id']);
     }
 
     public function test_contract_update_validates_employee_id_if_present(): void
@@ -582,6 +641,8 @@ class BusinessRulesTest extends TestCase
             'employee_id' => $this->employeeId,
             'start_date' => '2026-01-01',
             'status' => 'ACTIVE',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -604,6 +665,8 @@ class BusinessRulesTest extends TestCase
         $deptId = DB::table('departments')->insertGetId([
             'department_code' => 'D002',
             'department_name' => 'Dept 2',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -612,6 +675,8 @@ class BusinessRulesTest extends TestCase
             'employee_id' => $this->employeeId,
             'start_date' => '2026-01-01',
             'status' => 'INACTIVE',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -642,6 +707,8 @@ class BusinessRulesTest extends TestCase
         $deptId = DB::table('departments')->insertGetId([
             'department_code' => 'D003',
             'department_name' => 'Dept 3',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -651,6 +718,8 @@ class BusinessRulesTest extends TestCase
             'start_date' => '2026-01-01',
             'department_id' => $deptId,
             'status' => 'INACTIVE',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

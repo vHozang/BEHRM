@@ -103,6 +103,7 @@
       <BaseCard>
         <div class="flex flex-wrap items-center gap-4 text-xs">
           <span class="font-bold text-muted-foreground uppercase tracking-wider">Ký hiệu ca:</span>
+          <span v-if="!rosterShiftTypes.length" class="text-amber-600">Chưa cấu hình loại ca làm việc</span>
           <div v-for="shift in rosterShiftTypes" :key="shift.id" class="flex items-center gap-1.5">
             <span
               class="w-3.5 h-3.5 rounded-md border border-border"
@@ -193,9 +194,22 @@
       <div class="space-y-4">
         <BaseInput v-model="shiftForm.code" label="Mã ca" required />
         <BaseInput v-model="shiftForm.name" label="Tên ca" required />
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1">Nhãn màu ca (hiển thị trên lịch xếp ca)</label>
+          <div class="flex items-center gap-2">
+            <input v-model="shiftForm.color_code" type="color" class="h-9 w-14 rounded border border-input bg-background cursor-pointer" />
+            <span class="text-sm text-muted-foreground">{{ shiftForm.color_code }}</span>
+          </div>
+        </div>
         <BaseInput v-model="shiftForm.start_time" type="time" label="Giờ bắt đầu" required />
         <BaseInput v-model="shiftForm.end_time" type="time" label="Giờ kết thúc" required />
-        <BaseInput v-if="!splitShift" v-model.number="shiftForm.break_minutes" type="number" label="Giờ nghỉ (phút)" />
+        <BaseInput v-if="!splitShift" v-model.number="shiftForm.break_minutes" type="number" label="Giờ nghỉ giữa ca (phút)" />
+        <div v-if="!splitShift">
+          <label class="block text-sm font-medium text-foreground mb-1">Mô tả giờ nghỉ (nhân viên đọc)</label>
+          <textarea v-model="shiftForm.break_note" rows="2"
+            class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm"
+            placeholder="VD: Nghỉ 30 phút, chia 2 đợt 15 phút (giữa buổi sáng và giữa buổi chiều)"></textarea>
+        </div>
 
         <!-- Ca gãy (split shift): nhiều khung giờ -->
         <div class="border-t border-border pt-3">
@@ -329,7 +343,9 @@ const emptyShiftForm = () => ({
   name: '',
   start_time: '',
   end_time: '',
-  break_minutes: 0,
+  break_minutes: 30, // chuẩn chung các công ty VN: 30 phút/ca
+  break_note: '',
+  color_code: '#3b82f6', // nhãn màu ca — grid xếp ca đã đọc field này
   is_active: true,
 });
 const shiftForm = ref(emptyShiftForm());
@@ -355,6 +371,14 @@ const openCreateShift = () => {
 
 const editShift = (item) => {
   shiftForm.value = { ...item };
+  // Dữ liệu cũ lưu giờ nghỉ dạng break_start/break_end (khoảng thời gian) — suy ra
+  // số phút nếu form chưa có break_minutes, để ca cũ hiển thị đúng thay vì 0.
+  if (shiftForm.value.break_minutes == null && item.break_start && item.break_end) {
+    const [sh, sm] = String(item.break_start).split(':').map(Number);
+    const [eh, em] = String(item.break_end).split(':').map(Number);
+    shiftForm.value.break_minutes = Math.max(0, (eh * 60 + em) - (sh * 60 + sm));
+  }
+  if (shiftForm.value.break_minutes == null) shiftForm.value.break_minutes = 30;
   const segs = Array.isArray(item.segments) ? item.segments : null;
   splitShift.value = !!(segs && segs.length);
   segments.value = segs ? segs.map(s => ({ start: (s.start || '').slice(0, 5), end: (s.end || '').slice(0, 5) })) : [];
@@ -446,13 +470,6 @@ const currentStartDate = ref(new Date());
 const showAssignModal = ref(false);
 const activeAssignment = ref(null);
 const selectedShiftId = ref(null);
-
-const defaultShiftTypes = [
-  { id: 1, shift_code: 'HC', shift_name: 'Hành chính', start_time: '08:00:00', end_time: '17:00:00', color_code: '#3b82f6' },
-  { id: 2, shift_code: 'SA', shift_name: 'Ca Sáng', start_time: '06:00:00', end_time: '14:00:00', color_code: '#10b981' },
-  { id: 3, shift_code: 'CH', shift_name: 'Ca Chiều', start_time: '14:00:00', end_time: '22:00:00', color_code: '#f59e0b' },
-  { id: 4, shift_code: 'DE', shift_name: 'Ca Đêm', start_time: '22:00:00', end_time: '06:00:00', color_code: '#6366f1' },
-];
 
 const weekDays = computed(() => {
   const start = new Date(currentStartDate.value);
@@ -641,16 +658,16 @@ const loadRosterShiftTypes = async () => {
   try {
     const res = await workShiftService.getAll().catch(() => []);
     const shifts = res?.data || res || [];
-    rosterShiftTypes.value = shifts && shifts.length > 0 ? shifts : defaultShiftTypes;
+    rosterShiftTypes.value = Array.isArray(shifts) ? shifts : [];
   } catch (err) {
     console.error('Error loading roster shift types:', err);
-    rosterShiftTypes.value = defaultShiftTypes;
+    rosterShiftTypes.value = [];
   }
 };
 
 const loadEmployees = async () => {
   try {
-    const employeesRes = await employeeService.getAll();
+    const employeesRes = await employeeService.getLookup();
     let emps = employeesRes?.data || employeesRes || [];
     if (!Array.isArray(emps)) {
       emps = emps.items || emps.data || [];

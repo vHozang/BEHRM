@@ -19,13 +19,28 @@
     <!-- Server-side report engine (primary) -->
     <div v-if="mode === 'server'" class="space-y-6">
       <BaseCard class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-        <div class="sm:col-span-2">
+        <div :class="needsPeriod ? '' : 'sm:col-span-2'">
           <label class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Loại báo cáo</label>
           <select
             v-model="serverType"
+            data-testid="select-report-type"
             class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option v-for="t in serverReportTypes" :key="t.value" :value="t.value">{{ t.label }}</option>
+          </select>
+        </div>
+        <!-- Báo cáo theo kỳ (chi phí lao động, tờ khai BHXH, quyết toán thuế) -->
+        <div v-if="needsPeriod">
+          <label class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Kỳ lương</label>
+          <select
+            v-model="serverPeriodId"
+            data-testid="select-report-period"
+            class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">— Chọn kỳ —</option>
+            <option v-for="p in salaryPeriods" :key="p.id" :value="p.id">
+              {{ p.period_code }}{{ p.legal_entity_name ? ' · ' + p.legal_entity_name : '' }}
+            </option>
           </select>
         </div>
         <BaseButton class="w-full" :disabled="serverLoading" @click="generateServerReport">
@@ -34,11 +49,24 @@
       </BaseCard>
 
       <BaseCard>
-        <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <h3 class="font-bold text-lg text-foreground">Kết Quả Báo Cáo</h3>
-          <span v-if="serverRows.length" class="text-xs font-semibold px-2.5 py-1 bg-primary/10 text-primary rounded-full">
-            Tổng số dòng: {{ serverRows.length }}
-          </span>
+          <div class="flex items-center gap-2">
+            <span v-if="serverRows.length" class="text-xs font-semibold px-2.5 py-1 bg-primary/10 text-primary rounded-full">
+              Tổng số dòng: {{ serverRows.length }}
+            </span>
+            <BaseButton v-if="serverRows.length" variant="outline" size="sm" data-testid="button-export-server-report" @click="exportServerReport">
+              ⬇ Xuất CSV
+            </BaseButton>
+          </div>
+        </div>
+
+        <!-- Dòng tổng cộng của tờ khai BHXH / quyết toán thuế -->
+        <div v-if="serverTotals" class="mb-4 p-3 rounded-xl bg-muted/50 grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+          <div v-for="(v, k) in serverTotals" :key="k">
+            <p class="text-[11px] text-muted-foreground">{{ k }}</p>
+            <p class="font-semibold tabular-nums">{{ typeof v === 'number' ? v.toLocaleString('vi-VN') : v }}</p>
+          </div>
         </div>
 
         <div v-if="serverLoading" class="text-center py-12">
@@ -124,13 +152,10 @@
         <BaseCard class="space-y-3">
           <h3 class="font-bold text-base text-foreground pb-2 border-b">3. Xuất Báo Cáo</h3>
           <div class="space-y-2">
-            <BaseButton class="w-full" @click="exportReport('excel')">
+            <BaseButton class="w-full" @click="exportReport">
               <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              Xuất file Excel (.xlsx)
-            </BaseButton>
-            <BaseButton variant="outline" class="w-full" @click="exportReport('csv')">
               Xuất file CSV (.csv)
             </BaseButton>
           </div>
@@ -226,6 +251,7 @@ import { leaveService } from '../services/leaveService';
 import { salaryService } from '../services/salaryService';
 import { reportService } from '../services/reportService';
 import { useToast } from '../composables/useToast';
+import { downloadCsv } from '../utils/csv';
 
 const toast = useToast();
 const loading = ref(true);
@@ -233,14 +259,26 @@ const loading = ref(true);
 // --- Server-side report engine (primary mode) ---
 const mode = ref('server');
 const serverReportTypes = [
-  { value: 'headcount', label: 'Thống kê nhân sự' },
+  { value: 'hr-metrics', label: '★ Bảng chỉ số nhân sự (tỷ lệ đi muộn, vắng, phép, tuân thủ)' },
+  { value: 'headcount', label: 'Thống kê nhân sự theo phòng ban' },
+  { value: 'workforce-structure', label: 'Cơ cấu lao động (giới tính / tuổi / thâm niên / trình độ / HĐ)' },
   { value: 'leave-summary', label: 'Tổng hợp nghỉ phép' },
+  { value: 'leave-liability', label: 'Quỹ phép phải trả (trích trước chi phí)' },
+  { value: 'attendance-summary', label: 'Tổng hợp chấm công' },
   { value: 'payroll-summary', label: 'Tổng hợp bảng lương' },
-  { value: 'attendance-summary', label: 'Tổng hợp chấm công' }
+  { value: 'labor-cost', label: 'Chi phí lao động theo phòng ban (cần chọn kỳ)' },
+  { value: 'bhxh-declaration', label: 'Tờ khai BHXH theo kỳ (cần chọn kỳ)' },
+  { value: 'pit-finalization', label: 'Quyết toán thuế TNCN theo kỳ (cần chọn kỳ)' },
 ];
+// Các báo cáo tính theo 1 kỳ lương → bắt buộc chọn kỳ trước khi tạo.
+const PERIOD_REPORTS = ['labor-cost', 'bhxh-declaration', 'pit-finalization'];
 const serverType = ref('headcount');
 const serverLoading = ref(false);
 const serverRows = ref([]);
+const salaryPeriods = ref([]);
+const serverPeriodId = ref('');
+const serverTotals = ref(null);   // dòng tổng cộng của tờ khai BHXH / quyết toán thuế
+const needsPeriod = computed(() => PERIOD_REPORTS.includes(serverType.value));
 
 // Derive table columns from the union of keys across returned rows
 const serverColumns = computed(() => {
@@ -256,11 +294,19 @@ const serverColumns = computed(() => {
 });
 
 const generateServerReport = async () => {
+  if (needsPeriod.value && !serverPeriodId.value) {
+    toast.error('Vui lòng chọn kỳ lương cho báo cáo này');
+    return;
+  }
   try {
     serverLoading.value = true;
     serverRows.value = [];
-    const res = await reportService.generate(serverType.value);
-    const rows = res?.rows || res?.data?.rows || [];
+    const filters = needsPeriod.value ? { period_id: Number(serverPeriodId.value) } : {};
+    const res = await reportService.generate(serverType.value, filters);
+    // BHXH / quyết toán thuế trả { rows: { rows: [...], totals: {...} } } — bóc thêm 1 lớp.
+    let rows = res?.rows ?? res?.data?.rows ?? [];
+    serverTotals.value = (!Array.isArray(rows) && rows?.totals) ? rows.totals : null;
+    if (!Array.isArray(rows)) rows = rows?.rows ?? [];
     serverRows.value = Array.isArray(rows) ? rows : [];
     if (serverRows.value.length === 0) {
       toast.success('Báo cáo đã được tạo nhưng không có dữ liệu');
@@ -273,6 +319,24 @@ const generateServerReport = async () => {
   } finally {
     serverLoading.value = false;
   }
+};
+
+// Xuất CSV cho báo cáo hệ thống (trước đây chỉ chế độ "tự thiết kế" mới xuất được).
+const exportServerReport = () => {
+  if (!serverRows.value.length) return;
+  const cols = serverColumns.value;
+  const rows = serverRows.value.map(r => cols.map(c => r?.[c] ?? ''));
+  const label = serverReportTypes.find(t => t.value === serverType.value)?.label || serverType.value;
+  const period = needsPeriod.value
+    ? (salaryPeriods.value.find(p => String(p.id) === String(serverPeriodId.value))?.period_code || '')
+    : '';
+  const head = [[label + (period ? ` — kỳ ${period}` : '')], ['Ngày xuất', new Date().toLocaleString('vi-VN')], []];
+  const foot = serverTotals.value
+    ? [[], ['TỔNG CỘNG'], ...Object.entries(serverTotals.value).map(([k, v]) => [k, v])]
+    : [];
+  downloadCsv([...head, cols, ...rows, ...foot],
+    `bao_cao_${serverType.value}${period ? '_' + period : ''}_${new Date().toISOString().slice(0, 10)}.csv`);
+  toast.success('Đã xuất báo cáo ra CSV');
 };
 
 const sourceType = ref('employees');
@@ -296,6 +360,7 @@ const availableColumns = {
     { key: 'status', label: 'Trạng thái', type: 'status' }
   ],
   salaries: [
+    { key: 'period_code', label: 'Kỳ lương', type: 'text' },
     { key: 'employee_code', label: 'Mã nhân viên', type: 'text' },
     { key: 'full_name', label: 'Họ tên', type: 'text' },
     { key: 'department_name', label: 'Phòng ban', type: 'text' },
@@ -375,17 +440,10 @@ const loadSourceData = async () => {
       rawData.value = res?.data || res || [];
     } else if (sourceType.value === 'salaries') {
       const res = await salaryService.getAllSummaries().catch(() => []);
-      // Map salary summaries or mock
-      rawData.value = (res?.data || res || []).length > 0 ? (res?.data || res) : [
-        { id: 1, employee_code: 'NV001', full_name: 'Nguyễn Văn A', department_name: 'Phòng Phát triển phần mềm', basic_salary: 15000000, allowances: 2000000, net_salary: 17000000, pay_date: '2026-05-05', department_id: 1 },
-        { id: 2, employee_code: 'NV002', full_name: 'Trần Thị B', department_name: 'Phòng Nhân sự', basic_salary: 12000000, allowances: 1500000, net_salary: 13500000, pay_date: '2026-05-05', department_id: 2 }
-      ];
+      rawData.value = res?.data || res || [];
     } else if (sourceType.value === 'leaves') {
       const res = await leaveService.getAll().catch(() => []);
-      rawData.value = (res?.data || res || []).length > 0 ? (res?.data || res) : [
-        { id: 1, employee_code: 'NV001', full_name: 'Nguyễn Văn A', leave_type_name: 'Nghỉ phép năm', start_date: '2026-05-10', end_date: '2026-05-12', total_days: 3, status: 'Đã duyệt', department_id: 1 },
-        { id: 2, employee_code: 'NV002', full_name: 'Trần Thị B', leave_type_name: 'Nghỉ ốm', start_date: '2026-05-15', end_date: '2026-05-15', total_days: 1, status: 'Đã duyệt', department_id: 2 }
-      ];
+      rawData.value = res?.data || res || [];
     }
   } catch (err) {
     console.error('Error compiling report data:', err);
@@ -395,8 +453,8 @@ const loadSourceData = async () => {
   }
 };
 
-// Export report as downloadable CSV/Excel files client-side
-const exportReport = (format) => {
+// Export report as a UTF-8 CSV that opens cleanly in Excel.
+const exportReport = () => {
   if (filteredData.value.length === 0) {
     toast.error('Không có dữ liệu để xuất báo cáo');
     return;
@@ -411,22 +469,9 @@ const exportReport = (format) => {
     });
   });
 
-  // Assemble CSV text contents (UTF-8 BOM added for Excel compatibility)
-  const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n');
-  
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  
   const dateStr = new Date().toISOString().split('T')[0];
-  link.setAttribute('href', url);
-  link.setAttribute('download', `bao_cao_${sourceType.value}_${dateStr}.${format === 'excel' ? 'xlsx' : 'csv'}`);
-  link.style.visibility = 'hidden';
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  toast.success(`Đã xuất báo cáo ${format.toUpperCase()} thành công!`);
+  downloadCsv([headers, ...rows], `bao_cao_${sourceType.value}_${dateStr}.csv`);
+  toast.success('Đã xuất báo cáo CSV thành công!');
 };
 
 onMounted(async () => {
@@ -439,7 +484,15 @@ onMounted(async () => {
   } catch (err) {
     console.error('Error fetching departments:', err);
   }
-  
+
+  // Kỳ lương cho các báo cáo theo kỳ (chi phí lao động, BHXH, quyết toán thuế).
+  try {
+    const res = await salaryService.getPeriods({ per_page: 100 }).catch(() => []);
+    salaryPeriods.value = Array.isArray(res) ? res : (res?.items || res?.data || []);
+  } catch (err) {
+    console.error('Error fetching salary periods:', err);
+  }
+
   await loadSourceData();
 });
 </script>

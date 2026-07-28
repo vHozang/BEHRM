@@ -1,8 +1,31 @@
 import axiosClient from './axiosClient';
 
 export const salaryService = {
-  getAllSummaries: async (params) => {
-    return salaryService.getDetails(params);
+  getAllSummaries: async (params = {}) => {
+    const rows = [];
+    let page = 1;
+    let lastPage;
+
+    do {
+      const response = await axiosClient.get('/salary-details', {
+        params: { ...params, per_page: 100, page }
+      });
+      rows.push(...(Array.isArray(response.data) ? response.data : []));
+      lastPage = Number(response.pagination?.last_page || 1);
+      page++;
+    } while (page <= lastPage);
+
+    return rows.map(detail => ({
+      ...detail,
+      employee_code: detail.employee?.employee_code || detail.employee_code,
+      full_name: detail.employee?.full_name || detail.full_name,
+      department_id: detail.employee?.department_id || detail.department_id,
+      department_name: detail.employee?.department?.department_name || detail.department_name,
+      period_code: detail.period?.period_code || detail.period_code,
+      basic_salary: detail.base_salary ?? detail.basic_salary ?? 0,
+      allowances: detail.allowance_total ?? detail.allowances ?? 0,
+      pay_date: detail.period?.end_date || detail.pay_date || detail.updated_at,
+    }));
   },
 
   // Get all salary components
@@ -31,7 +54,7 @@ export const salaryService = {
 
   // --- Periods ---
   getPeriods: async () => {
-    const response = await axiosClient.get('/salary-periods');
+    const response = await axiosClient.get('/salary-periods', { params: { per_page: 100 } });
     return response.data;
   },
   createPeriod: async (data) => {
@@ -44,6 +67,30 @@ export const salaryService = {
   },
   closePeriod: async (id) => {
     const response = await axiosClient.post(`/salary-periods/${id}/close`);
+    return response.data;
+  },
+  // Maker–checker: kế toán trình chốt / thu hồi–trả về.
+  submitPeriod: async (id) => {
+    const response = await axiosClient.post(`/salary-periods/${id}/submit`);
+    return response.data;
+  },
+  reopenPeriod: async (id, comment) => {
+    const response = await axiosClient.post(`/salary-periods/${id}/reopen`, comment ? { comment } : {});
+    return response.data;
+  },
+  // Chạy engine tính lương VN cho một kỳ (idempotent với kỳ đang mở)
+  runPayroll: async (periodId) => {
+    const response = await axiosClient.post('/payroll/run', { salary_period_id: periodId });
+    return response.data;
+  },
+  // Poll tiến độ tính lương chạy nền (queue). Trả { run_status: PROCESSING|DONE|FAILED|IDLE, processed, total, error }.
+  runStatus: async (periodId) => {
+    const response = await axiosClient.get('/payroll/run-status', { params: { salary_period_id: periodId } });
+    return response.data;
+  },
+  // Phiếu lương chi tiết (salary_detail + breakdowns + công tháng)
+  getPayslip: async (detailId) => {
+    const response = await axiosClient.get(`/salary-details/${detailId}/payslip`);
     return response.data;
   },
 

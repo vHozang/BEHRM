@@ -248,7 +248,7 @@ const loadChecklists = async () => {
 
 const loadEmployees = async () => {
   try {
-    const data = await employeeService.getAll();
+    const data = await employeeService.getLookup();
     employees.value = Array.isArray(data) ? data : (data?.items || data?.data || []);
   } catch (err) {
     console.error('Error loading employees:', err);

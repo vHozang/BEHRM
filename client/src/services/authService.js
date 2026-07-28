@@ -1,8 +1,6 @@
 
 import axiosClient from './axiosClient';
 
-const ADMIN_EMAIL = 'admin.nguyen@congty.vn';
-
 export const authService = {
   // Login
   login: async (email, password) => {
@@ -14,12 +12,19 @@ export const authService = {
     // Doan2 trả { status, message, data: { access_token, employee, access } } NHƯNG
     // axiosClient đã BÓC 1 lớp `data` (response.data = payload). Phải đọc cả 2 dạng:
     // dạng đã-bóc (response.data.access) trước, dạng thô (response.data.data.access) sau —
-    // nếu chỉ đọc data.data thì với interceptor hiện tại luôn undefined → rơi default
-    // full:true → MỌI nhân viên bị coi là admin (bug đã gặp).
+    // nếu chỉ đọc data.data thì với interceptor hiện tại luôn undefined.
     const token = response.data?.data?.access_token || response.data?.access_token || response.data?.token;
     const user = response.data?.data?.employee || response.data?.employee || response.data?.user || response.data?.data?.user;
-    // Default full access chỉ khi server thực sự không gửi access (backward-safe, no lockout).
-    const access = response.data?.data?.access || response.data?.access || { full: true, modules: [] };
+    // Server không gửi access thì fail closed về portal nhân viên.
+    const access = response.data?.data?.access || response.data?.access || { full: false, modules: [] };
+
+    if (user) {
+      // Bản ghi login LÀ employee (id = employee_id) nhưng nhiều view đọc
+      // user.employee_id để self-scope API (RBAC 403 nếu thiếu) → gắn alias 1
+      // lần ở đây thay vì fallback rải rác từng view. Không lưu password_hash.
+      user.employee_id = user.employee_id || user.id;
+      delete user.password_hash;
+    }
 
     if (token) {
       localStorage.setItem('auth_token', token);
@@ -82,7 +87,7 @@ export const authService = {
         enabled: Array.isArray(a.enabled) ? a.enabled : null
       };
     } catch {
-      return { full: true, modules: [], enabled: null };
+      return { full: false, modules: [], enabled: null };
     }
   },
 
@@ -158,8 +163,10 @@ export const authService = {
   // Get current user data
   getUser: () => {
     try {
-      const user = localStorage.getItem('user');
-      return user ? JSON.parse(user) : null;
+      const raw = localStorage.getItem('user');
+      const user = raw ? JSON.parse(raw) : null;
+      if (user && !user.employee_id && user.id) user.employee_id = user.id; // session cũ chưa có alias
+      return user;
     } catch {
       return null;
     }

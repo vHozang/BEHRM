@@ -195,10 +195,12 @@ class LegacyDataSqlSeeder extends Seeder
                 $record['updated_at'] = $now;
             }
 
-            if (in_array('tenant_id', $tableColumns, true) && ! array_key_exists('tenant_id', $record)) {
+            // Dump legacy có TRƯỚC multitenant: stamp tenant/entity mặc định để
+            // qua ràng buộc NOT NULL khi seed trên schema mới (migrate:fresh).
+            if (in_array('tenant_id', $tableColumns, true) && empty($record['tenant_id'])) {
                 $record['tenant_id'] = 1;
             }
-            if (in_array('legal_entity_id', $tableColumns, true) && ! array_key_exists('legal_entity_id', $record)) {
+            if (in_array('legal_entity_id', $tableColumns, true) && empty($record['legal_entity_id'])) {
                 $record['legal_entity_id'] = 1;
             }
 

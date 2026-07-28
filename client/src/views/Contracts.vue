@@ -36,7 +36,7 @@
       <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
         <div>
           <label class="block text-sm font-medium text-foreground mb-2">Tìm kiếm</label>
-          <input v-model="filters.search" type="text" placeholder="Số HĐ / tên nhân viên" class="w-full px-4 py-2.5 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+          <input v-model="filters.search" @keyup.enter="applyFilters" type="text" placeholder="Số HĐ / tên nhân viên" class="w-full px-4 py-2.5 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
         </div>
         <div>
           <label class="block text-sm font-medium text-foreground mb-2">Loại hợp đồng</label>
@@ -56,7 +56,10 @@
           </select>
         </div>
         <div>
-          <BaseButton variant="ghost" @click="resetFilters">Xóa lọc</BaseButton>
+          <div class="flex gap-2">
+            <BaseButton @click="applyFilters">Áp dụng</BaseButton>
+            <BaseButton variant="ghost" @click="resetFilters">Xóa lọc</BaseButton>
+          </div>
         </div>
       </div>
     </BaseCard>
@@ -126,13 +129,19 @@
             <button @click="openTerminateModal(item)" title="Chấm dứt" class="w-8 h-8 inline-flex items-center justify-center rounded-md text-amber-600 hover:bg-amber-500/10 transition-colors">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
             </button>
-            <button @click="deleteItem(item.id)" title="Xóa" class="w-8 h-8 inline-flex items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-            </button>
           </div>
         </template>
       </BaseTable>
       <div v-if="filteredContracts.length === 0" class="text-center py-8 text-muted-foreground">Không có hợp đồng phù hợp bộ lọc.</div>
+      <div v-if="pagination && pagination.last_page > 1" class="flex items-center justify-between mt-4 pt-4 border-t border-border">
+        <span class="text-sm text-muted-foreground">
+          Trang {{ pagination.current_page }} / {{ pagination.last_page }} · {{ pagination.total }} hợp đồng
+        </span>
+        <div class="flex gap-2">
+          <BaseButton variant="outline" :disabled="page <= 1" @click="goTo(page - 1)">Trước</BaseButton>
+          <BaseButton variant="outline" :disabled="page >= pagination.last_page" @click="goTo(page + 1)">Sau</BaseButton>
+        </div>
+      </div>
     </BaseCard>
 
     <!-- Create/Edit Modal -->
@@ -353,6 +362,9 @@ const probationMaxDays = ref(60);
 const maxFixedTerm = ref(2);
 const expiryAlertDays = ref(30);
 const contracts = ref([]);
+const contractLookup = ref([]);
+const pagination = ref(null);
+const page = ref(1);
 const employees = ref([]);
 const contractTypes = ref([]);
 const showModal = ref(false);
@@ -442,7 +454,7 @@ const probationNote = (item) => {
 // Count an employee's fixed-term contracts (for the Điều 20 max-2 rule).
 const fixedTermCountByEmployee = computed(() => {
   const map = {};
-  contracts.value.forEach((c) => {
+  contractLookup.value.forEach((c) => {
     if (categoryOf(c) === 'FIXED_TERM') {
       map[c.employee_id] = (map[c.employee_id] || 0) + 1;
     }
@@ -453,7 +465,7 @@ const renewalCount = (item) => fixedTermCountByEmployee.value[item.employee_id] 
 
 const summary = computed(() => {
   let active = 0, expiring30 = 0, expired = 0, probation = 0;
-  contracts.value.forEach((c) => {
+  contractLookup.value.forEach((c) => {
     const s = lifecycleOf(c);
     if (s === 'terminated' || s === 'expired') expired++;
     else {
@@ -465,27 +477,12 @@ const summary = computed(() => {
   return { active, expiring30, expired, probation };
 });
 
-const filteredContracts = computed(() => {
-  const q = filters.value.search.trim().toLowerCase();
-  return contracts.value.filter((c) => {
-    if (q) {
-      const hay = `${c.contract_code || ''} ${c.employee_name || ''} ${c.employee_code || ''}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    if (filters.value.typeId && String(c.contract_type_id) !== String(filters.value.typeId)) return false;
-    if (filters.value.bucket) {
-      const s = lifecycleOf(c);
-      if (filters.value.bucket === 'active' && !(s === 'active' || s === 'expiring30' || s === 'expiring60')) return false;
-      if (filters.value.bucket === 'expiring30' && s !== 'expiring30') return false;
-      if (filters.value.bucket === 'expiring60' && !(s === 'expiring30' || s === 'expiring60')) return false;
-      if (filters.value.bucket === 'expired' && !(s === 'expired' || s === 'terminated')) return false;
-    }
-    return true;
-  });
-});
+const filteredContracts = computed(() => contracts.value);
 
-const toggleBucket = (b) => { filters.value.bucket = filters.value.bucket === b ? '' : b; };
-const resetFilters = () => { filters.value = { search: '', typeId: '', bucket: '' }; };
+const applyFilters = () => { page.value = 1; loadData(); };
+const goTo = (target) => { page.value = target; loadData(); };
+const toggleBucket = (b) => { filters.value.bucket = filters.value.bucket === b ? '' : b; applyFilters(); };
+const resetFilters = () => { filters.value = { search: '', typeId: '', bucket: '' }; applyFilters(); };
 
 // ── Create-form compliance hints ─────────────────────────
 const selectedTypeCategory = computed(() => {
@@ -526,15 +523,19 @@ const formProbationWarning = computed(() => {
 // ── Data loading ─────────────────────────────────────────
 const loadData = async () => {
   try {
-    const [conRes, typeRes, empRes] = await Promise.all([
-      contractService.getAll(),
+    const params = { page: page.value };
+    if (filters.value.search.trim()) params.search = filters.value.search.trim();
+    if (filters.value.typeId) params.contract_type_id = filters.value.typeId;
+    if (filters.value.bucket) params.bucket = filters.value.bucket;
+    const [conRes, lookupRes, typeRes, empRes] = await Promise.all([
+      contractService.getPage(params),
+      contractService.getLookup(),
       contractService.getTypes().catch(() => []),
-      employeeService.getAll().catch(() => [])
+      employeeService.getLookup().catch(() => [])
     ]);
-    let cons = conRes?.data || conRes || [];
-    if (!Array.isArray(cons)) cons = cons.items || cons.data || [];
-    if (!Array.isArray(cons)) cons = [];
-    contracts.value = cons;
+    contracts.value = conRes.items;
+    pagination.value = conRes.pagination;
+    contractLookup.value = lookupRes;
 
     let types = typeRes?.data || typeRes || [];
     if (!Array.isArray(types)) types = types.items || types.data || [];
@@ -655,19 +656,6 @@ const confirmTerminate = async () => {
   } catch (err) {
     console.error('Error terminating contract:', err);
     toast.error(err?.response?.data?.message || 'Có lỗi xảy ra khi chấm dứt hợp đồng');
-  }
-};
-
-const deleteItem = async (id) => {
-  if (!confirm('Bạn có chắc chắn muốn xóa hợp đồng lao động này?')) return;
-  try {
-    await contractService.delete(id);
-    toast.success('Xóa hợp đồng thành công');
-    await loadData();
-  } catch (err) {
-    console.error('Error deleting contract:', err);
-    const violations = err?.response?.data?.data?.violations;
-    toast.error(Array.isArray(violations) && violations.length ? violations[0] : (err?.response?.data?.message || 'Có lỗi xảy ra khi xóa hợp đồng'));
   }
 };
 

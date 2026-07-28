@@ -10,7 +10,7 @@
  * Cách chạy:
  *   cd tools/zk-bridge && npm install
  *   DEVICE_IP=192.168.1.201 API_BASE=http://localhost/api/v1 \
- *   INTERNAL_TOKEN=replace_with_internal_service_token node bridge.js
+ *   DEVICE_TOKEN=dev_token_cua_may node bridge.js
  *
  * Lưu ý ánh xạ: "User ID" đăng ký trên máy (enroll_id) phải khớp
  * employees.profile.enroll_id trong HRM (xem README).
@@ -23,14 +23,21 @@ const API_BASE = process.env.API_BASE || 'http://localhost/api/v1';
 // Ưu tiên DEVICE_TOKEN (token riêng của máy, đa-tenant — lấy khi đăng ký thiết
 // bị trong HRM). INTERNAL_TOKEN chỉ dùng cho 1 tenant/test.
 const DEVICE_TOKEN = process.env.DEVICE_TOKEN || '';
-const TOKEN = process.env.INTERNAL_TOKEN || 'replace_with_internal_service_token';
+const TOKEN = process.env.INTERNAL_TOKEN || '';
+if (!DEVICE_TOKEN && !TOKEN) {
+  console.error('Thiếu DEVICE_TOKEN hoặc INTERNAL_TOKEN để gọi HRM API');
+  process.exit(1);
+}
 const authHeader = DEVICE_TOKEN ? { 'x-device-token': DEVICE_TOKEN } : { 'x-internal-token': TOKEN };
 const POLL_MS = Number(process.env.POLL_MS || 30000); // 30s
 const DEVICE_ID = process.env.DEVICE_ID || 'wiseeye-3';
 
 let lastSent = null; // mốc thời gian punch cuối đã gửi (tránh gửi lặp)
+let isRunning = false;
 
 async function readAndForward() {
+  if (isRunning) return;
+  isRunning = true;
   const zk = new ZKLib(DEVICE_IP, DEVICE_PORT, 10000, 4000);
   try {
     await zk.createSocket();
@@ -66,9 +73,13 @@ async function readAndForward() {
       lastSent = punches.reduce((m, p) => (p.timestamp > m ? p.timestamp : m), lastSent || '');
     }
   } catch (e) {
-    console.error('Lỗi đọc/gửi:', e.message);
+    const message = typeof e?.toast === 'function'
+      ? e.toast()
+      : (e?.message || e?.err?.message || String(e));
+    console.error('Lỗi đọc/gửi:', message);
   } finally {
     try { await zk.disconnect(); } catch (_) {}
+    isRunning = false;
   }
 }
 

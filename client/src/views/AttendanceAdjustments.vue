@@ -460,7 +460,7 @@ const loadEmployees = async () => {
   try {
     // Lấy TẤT CẢ nhân viên (mặc định API phân trang 15 → thiếu NV id thấp,
     // khiến điền sẵn từ ô VẮNG không khớp option).
-    const data = await employeeService.getAll({ per_page: 500 });
+    const data = await employeeService.getLookup();
     employees.value = Array.isArray(data) ? data : (data?.items || data?.data || []);
   } catch (err) {
     console.error('Error loading employees:', err);

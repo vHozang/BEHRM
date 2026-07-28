@@ -158,7 +158,8 @@
 
           <template #actions="{ item }">
             <div class="flex items-center gap-2">
-              <template v-if="orgLens && item.status === 'pending'">
+              <!-- can_approve do backend tính theo CẤP duyệt hiện tại (đa cấp: Quản lý→HR…). -->
+              <template v-if="item.can_approve">
                 <button
                   @click="approveRequest(item)"
                   class="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900 text-green-600 dark:text-green-400"
@@ -715,8 +716,8 @@ const handleCreate = async () => {
 };
 
 const approveRequest = async (request) => {
-  if (processing.value || !isAdmin.value) return;
-  
+  if (processing.value || !request.can_approve) return;
+
   try {
     processing.value = true;
     const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -731,8 +732,8 @@ const approveRequest = async (request) => {
 };
 
 const rejectRequest = async (request) => {
-  if (processing.value || !isAdmin.value) return;
-  
+  if (processing.value || !request.can_approve) return;
+
   try {
     processing.value = true;
     const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -807,7 +808,7 @@ onMounted(async () => {
     ];
     
     if (isAdmin.value) {
-      promises.push(employeeService.getAll().catch(() => []));
+      promises.push(employeeService.getLookup().catch(() => []));
     }
     
     const results = await Promise.all(promises);

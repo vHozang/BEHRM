@@ -1,5 +1,9 @@
 
 import axiosClient from './axiosClient';
+import { buildEmployeeCreatePayload, normalizeStatusForApi } from './employeePayload';
+import { createEmployeeLookupCache } from './employeeLookupCache';
+
+const lookupCache = createEmployeeLookupCache();
 
 const mapEmployee = (emp) => {
   if (!emp) return emp;
@@ -66,9 +70,24 @@ const mapEmployee = (emp) => {
 };
 
 export const employeeService = {
+  getPage: async (params = {}) => {
+    const response = await axiosClient.get('/employees', { params: { per_page: 50, ...params } });
+    return {
+      items: Array.isArray(response.data) ? response.data.map(mapEmployee) : [],
+      pagination: response.pagination || null
+    };
+  },
+
+  getLookup: async (force = false) => {
+    return lookupCache.get(async () => {
+      const response = await axiosClient.get('/employees/lookup');
+      return Array.isArray(response.data) ? response.data.map(mapEmployee) : [];
+    }, force);
+  },
+
   // Get all employees
-  getAll: async (params) => {
-    const response = await axiosClient.get('/employees', { params });
+  getAll: async (params = {}) => {
+    const response = await axiosClient.get('/employees', { params: { ...params, per_page: 2000 } });
     const data = response.data || [];
     return Array.isArray(data) ? data.map(mapEmployee) : data;
   },
@@ -89,66 +108,17 @@ export const employeeService = {
   // Create new employee
   // IMPORTANT: Laravel backend requires employment data nested in 'employment' object
   create: async (data) => {
-    // Extract fields that belong to the profile JSONB column
-    const profile = {
-      ...(data.profile || {}),
-      address: data.address || '',
-      personal_phone: data.personal_phone || data.phone || '',
-      bank_name: data.bank_name || '',
-      bank_account: data.bank_account || '',
-      personal_email: data.personal_email || '',
-      id_number: data.id_number || '',
-      id_issue_date: data.id_issue_date || '',
-      id_issue_place: data.id_issue_place || '',
-      tax_number: data.tax_number || '',
-      insurance_number: data.insurance_number || '',
-      emergency_contact_name: data.emergency_contact_name || '',
-      emergency_contact_relationship: data.emergency_contact_relationship || data.relationship || '',
-      emergency_contact_phone: data.emergency_contact_phone || '',
-    };
-
-    // Flatten payload: department_id, position_id (job_title_id), and company_email (work_email) at root
-    const payload = {
-      employee_code: data.employee_code || data.code || '',
-      full_name: data.full_name || '',
-      gender: data.gender || null,
-      date_of_birth: data.date_of_birth || data.dob || null,
-      company_email: data.company_email || data.work_email || (data.employment && (data.employment.company_email || data.employment.work_email)) || '',
-      phone_number: data.phone_number || data.phone || data.personal_phone || '',
-      personal_email: data.personal_email || '',
-      status: typeof (data.status || (data.employment && data.employment.employment_status) || data.employment_status || 'ACTIVE') === 'string'
-        ? (data.status || (data.employment && data.employment.employment_status) || data.employment_status || 'ACTIVE').toUpperCase()
-        : 'ACTIVE',
-      hire_date: data.hire_date || (data.employment && data.employment.start_date) || data.start_date || new Date().toISOString().split('T')[0],
-      department_id: data.department_id || (data.employment && data.employment.department_id) || null,
-      position_id: data.position_id || data.job_title_id || (data.employment && (data.employment.position_id || data.employment.job_title_id)) || null,
-      profile: profile
-    };
+    const payload = buildEmployeeCreatePayload(data);
 
     const response = await axiosClient.post('/employees', payload);
+    lookupCache.invalidate();
     return response.data;
   },
 
   // Update employee
   update: async (id, data) => {
-    // 1. Fetch current employee to retrieve their existing profile and prevent overwrites
-    let currentEmployee = {};
-    try {
-      const response = await axiosClient.get(`/employees/${id}`);
-      currentEmployee = response.data || {};
-    } catch (e) {
-      console.warn('Failed to fetch current employee for profile merge', e);
-    }
-    
-    const existingProfileObj = typeof currentEmployee.profile === 'string'
-      ? JSON.parse(currentEmployee.profile || '{}')
-      : (currentEmployee.profile || {});
-
-    // 2. Extract and merge profile fields
-    const profile = {
-      ...existingProfileObj,
-      ...(data.profile || {})
-    };
+    // Backend merges this partial object atomically with the stored JSON profile.
+    const profile = { ...(data.profile || {}) };
     
     const profileKeys = [
       'address', 'personal_phone', 'bank_name', 'bank_account', 'personal_email',
@@ -178,7 +148,7 @@ export const employeeService = {
       }
     });
 
-    // 3. Extract and map flat properties
+    // Extract and map flat properties
     let deptId = data.department_id;
     let posId = data.position_id || data.job_title_id;
     let compEmail = data.company_email || data.work_email;
@@ -218,7 +188,7 @@ export const employeeService = {
       flatPayload.personal_email = data.personal_email;
     }
     if (statusVal !== undefined) {
-      flatPayload.status = typeof statusVal === 'string' ? statusVal.toUpperCase() : statusVal;
+      flatPayload.status = normalizeStatusForApi(statusVal);
     }
     if (hireDate !== undefined) {
       flatPayload.hire_date = hireDate;
@@ -243,6 +213,7 @@ export const employeeService = {
     flatPayload.profile = profile;
 
     const response = await axiosClient.patch(`/employees/${id}`, flatPayload);
+    lookupCache.invalidate();
     return response.data;
   },
 
@@ -259,12 +230,7 @@ export const employeeService = {
     const response = await axiosClient.patch(`/employees/${id}`, {
       manager_id: managerId === '' || managerId === null || managerId === undefined ? null : Number(managerId),
     });
-    return response.data;
-  },
-
-  // Delete employee
-  delete: async (id) => {
-    const response = await axiosClient.delete(`/employees/${id}`);
+    lookupCache.invalidate();
     return response.data;
   },
 
@@ -272,6 +238,7 @@ export const employeeService = {
   // mark them TERMINATED (safe — no hard delete). Used by the org chart.
   detachFromOrg: async (id) => {
     const response = await axiosClient.post(`/employees/${id}/detach-from-org`);
+    lookupCache.invalidate();
     return response.data;
   },
 
@@ -304,6 +271,18 @@ export const employeeService = {
   // Get employee salaries
   getSalaries: async (employeeId) => {
     const response = await axiosClient.get(`/salary-details`, { params: { employee_id: employeeId } });
+    return response.data;
+  },
+
+  // Phiếu lương chi tiết 1 kỳ: { salary_detail, breakdowns, attendance_summary }
+  getPayslip: async (detailId) => {
+    const response = await axiosClient.get(`/salary-details/${detailId}/payslip`);
+    return response.data;
+  },
+
+  // Import hàng loạt từ CSV (FE đã parse thành mảng object).
+  import: async (rows) => {
+    const response = await axiosClient.post('/employees/import', { rows });
     return response.data;
   },
 

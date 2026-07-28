@@ -252,7 +252,7 @@ const load = async () => {
 onMounted(async () => {
   const [shiftsRes, empRes] = await Promise.all([
     workShiftService.getAll().catch(() => []),
-    employeeService.getAll({ per_page: 500 }).catch(() => []),
+    employeeService.getLookup().catch(() => []),
   ]);
   shiftTypes.value = shiftsRes?.data || shiftsRes || [];
   shiftTypes.value.forEach((s) => { shiftMap.value[s.id] = s.shift_code; });

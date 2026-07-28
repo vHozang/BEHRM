@@ -40,6 +40,22 @@ class AttendanceController extends Controller
             $query->whereDate('work_date', '<=', $request->query('to'));
         }
 
+        // Lọc theo THÁNG (month + year): giới hạn work_date trong tháng đó. FE
+        // gửi month/year để chỉ lấy 1 tháng — trước đây backend bỏ qua nên FE phải
+        // tải TOÀN BỘ lịch sử (nhiều trang → chậm, tưởng lỗi khi công nhân nhiều
+        // bản ghi). year không kèm month → lọc cả năm.
+        $year = (int) $request->query('year', 0);
+        $month = (int) $request->query('month', 0);
+        if ($year >= 2000 && $year <= 2100) {
+            if ($month >= 1 && $month <= 12) {
+                $start = sprintf('%04d-%02d-01', $year, $month);
+                $end = date('Y-m-t', strtotime($start));
+                $query->whereBetween('work_date', [$start, $end]);
+            } else {
+                $query->whereBetween('work_date', ["{$year}-01-01", "{$year}-12-31"]);
+            }
+        }
+
         // Lọc các lượt cần xem xét (xác minh chống gian lận).
         if ($request->query('review') === 'needs_review') {
             $query->whereRaw("meta->>'review_status' = 'needs_review'");
@@ -477,6 +493,12 @@ class AttendanceController extends Controller
         $message = 'Đơn tăng ca đã được duyệt';
 
         DB::transaction(function () use ($ot, $compOff, $meta, &$message) {
+            // Chống double-credit: khoá hàng + xác nhận lại PENDING trong transaction.
+            // 2 duyệt song song với comp_off=true nếu không khoá sẽ cộng nghỉ bù 2 lần.
+            $locked = DB::table('overtime_requests')->where('id', $ot->id)->lockForUpdate()->first();
+            if (! $locked || ! in_array((string) $locked->status, ['PENDING', 'CHỜ_DUYỆT'], true)) {
+                return;
+            }
             if ($compOff && (bool) HrmConfig::get('overtime.comp_off_enabled', true)) {
                 $ot->update(['status' => 'APPROVED', 'meta' => $meta]);
                 $days = $this->creditCompOff($ot);
@@ -631,7 +653,7 @@ class AttendanceController extends Controller
     public function timesheet(Request $request, TimesheetService $service): JsonResponse
     {
         $month = (string) $request->query('month', now()->format('Y-m'));
-        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
+        if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
             return $this->validationError(['month' => ['Định dạng tháng phải là YYYY-MM']]);
         }
 
@@ -669,7 +691,7 @@ class AttendanceController extends Controller
         $end = $request->input('end');
         if ($request->filled('month')) {
             $month = (string) $request->input('month');
-            if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
+            if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
                 return $this->validationError(['month' => ['Định dạng tháng phải là YYYY-MM']]);
             }
             $start = \Carbon\Carbon::parse($month . '-01')->startOfMonth()->toDateString();
@@ -911,7 +933,9 @@ class AttendanceController extends Controller
         $shiftIds = array_values($request->input('shift_type_ids'));
         $weeks = (int) $request->input('weeks');
         $rotate = $request->boolean('rotate', true);
-        $startMonday = \Carbon\Carbon::parse($request->input('start_date'))->startOfDay();
+        // Snap về thứ Hai của tuần để các tuần xoay khớp nhau kể cả khi caller
+        // truyền ngày giữa tuần (không tin mỗi FE).
+        $startMonday = \Carbon\Carbon::parse($request->input('start_date'))->startOfWeek(\Carbon\Carbon::MONDAY);
 
         // Nhân viên: theo danh sách hoặc tất cả NV đang làm.
         $employees = DB::table('employees')

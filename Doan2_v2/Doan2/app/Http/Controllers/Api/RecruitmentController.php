@@ -18,6 +18,32 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RecruitmentController extends Controller
 {
+    public function publicPositions(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'tenant_code' => 'required|string|exists:tenants,code',
+        ]);
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
+        }
+
+        $tenantId = DB::table('tenants')
+            ->where('code', $request->input('tenant_code'))
+            ->where('status', 'ACTIVE')
+            ->value('id');
+        if (! $tenantId) {
+            return $this->notFound('Công ty không tồn tại hoặc đã ngừng hoạt động');
+        }
+
+        $positions = DB::table('recruitment_positions')
+            ->where('tenant_id', $tenantId)
+            ->where('status', 'OPEN')
+            ->orderBy('position_name')
+            ->get(['id', 'position_name', 'employment_type', 'required_skills_json']);
+
+        return $this->ok($positions, 'Open recruitment positions');
+    }
+
     public function index(Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
@@ -54,6 +80,23 @@ class RecruitmentController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $publicTenantId = null;
+        if (! TenantContext::hasTenant()) {
+            $publicValidator = Validator::make($request->all(), [
+                'tenant_code' => 'required|string|exists:tenants,code',
+            ]);
+            if ($publicValidator->fails()) {
+                return $this->validationError($publicValidator->errors()->toArray());
+            }
+            $publicTenantId = DB::table('tenants')
+                ->where('code', $request->input('tenant_code'))
+                ->where('status', 'ACTIVE')
+                ->value('id');
+            if (! $publicTenantId) {
+                return $this->notFound('Công ty không tồn tại hoặc đã ngừng hoạt động');
+            }
+        }
+
         $validator = Validator::make($request->all(), [
             'full_name' => 'required|string|max:255',
             'email' => 'required|email',
@@ -67,9 +110,20 @@ class RecruitmentController extends Controller
             return $this->validationError($validator->errors()->toArray());
         }
 
+        $tenantId = TenantContext::hasTenant() ? TenantContext::id() : (int) $publicTenantId;
+        if ($request->filled('recruitment_position_id') && ! DB::table('recruitment_positions')
+            ->where('id', $request->input('recruitment_position_id'))
+            ->where('tenant_id', $tenantId)
+            ->exists()) {
+            return $this->validationError([
+                'recruitment_position_id' => ['Vị trí tuyển dụng không thuộc công ty đã chọn'],
+            ]);
+        }
+
         $columns = Schema::getColumnListing('recruitment_candidates');
         $data = collect($request->all())->only($columns)->toArray();
         $data['application_status'] = $data['application_status'] ?? 'PENDING';
+        $data['tenant_id'] = $tenantId;
         $data['created_at'] = now();
         $data['updated_at'] = now();
 
@@ -79,6 +133,7 @@ class RecruitmentController extends Controller
         if ($candidate->recruitment_position_id && Schema::hasTable('recruitment_ai_scoring_jobs')) {
             DB::table('recruitment_ai_scoring_jobs')->insert(TenantContext::stamp([
                 'candidate_id' => $candidate->id,
+                'tenant_id' => $tenantId,
                 'status' => 'PENDING',
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -236,10 +291,7 @@ class RecruitmentController extends Controller
 
     /**
      * PATCH /recruitment-candidates/{id}/manager-review — Đánh giá ứng viên.
-     *
-     * Nếu ứng viên đã có ai_score và manager_score được gửi lên,
-     * tự động gửi feedback cho dịch vụ AI AutoRecruit để phân tích
-     * sự lệch điểm và giúp AI học lại.
+     * Gửi feedback về AutoRecruit khi có cả điểm AI và điểm quản lý.
      */
     public function managerReview(Request $request, int $id): JsonResponse
     {
@@ -259,83 +311,54 @@ class RecruitmentController extends Controller
             TenantContext::stamp($data + ['created_at' => now()])
         );
 
-        // ── AI Feedback Loop ─────────────────────────────────
-        // Nếu ứng viên đã có ai_score VÀ request gửi lên manager_score,
-        // tự động gửi feedback cho AutoRecruit để AI học lại.
         $managerScore = $request->input('manager_score');
         $aiScore = $candidate->ai_score;
-
         $feedbackAnalysis = null;
 
         if ($managerScore !== null && $aiScore !== null) {
             try {
-                // Thu thập dữ liệu về vị trí tuyển dụng
                 $position = $candidate->recruitment_position_id
-                    ? DB::table('recruitment_positions')
-                        ->where('id', $candidate->recruitment_position_id)
-                        ->first()
+                    ? DB::table('recruitment_positions')->where('id', $candidate->recruitment_position_id)->first()
                     : null;
-
-                $jdText = '';
-                $cvSkills = [];
-
-                if ($position) {
-                    $positionName = $position->position_name ?? 'Job Position';
-                    $requiredSkillsList = json_decode($position->required_skills_json ?? '[]', true) ?: [];
-                    $jdText = "Position: {$positionName}. Requirements: " . implode(', ', $requiredSkillsList);
-                }
-
-                // Kỹ năng từ meta của ứng viên
-                $candidateMeta = json_decode($candidate->meta ?? '{}', true) ?: [];
-                $cvSkills = is_array($candidateMeta['skills'] ?? null)
-                    ? $candidateMeta['skills']
+                $requiredSkills = $position
+                    ? (json_decode($position->required_skills_json ?? '[]', true) ?: [])
                     : [];
-
-                // Kỹ năng AI đã match / thiếu
+                $candidateMeta = json_decode($candidate->meta ?? '{}', true) ?: [];
                 $matchedSkills = json_decode($candidate->ai_matched_skills_json ?? '[]', true) ?: [];
                 $missingSkills = json_decode($candidate->ai_missing_skills_json ?? '[]', true) ?: [];
 
-                // Gửi feedback (fire-and-forget: không block nếu AI service lỗi)
-                $feedbackService = new AiFeedbackService();
-                $feedbackResult = $feedbackService->sendFeedback(
+                $feedbackResult = (new AiFeedbackService())->sendFeedback(
                     candidateId: $id,
                     aiScore: (int) $aiScore,
                     humanScore: (int) $managerScore,
-                    jdText: $jdText,
-                    cvSkills: $cvSkills,
+                    jdText: $position
+                        ? 'Position: ' . ($position->position_name ?? 'Job Position') . '. Requirements: ' . implode(', ', $requiredSkills)
+                        : '',
+                    cvSkills: is_array($candidateMeta['skills'] ?? null) ? $candidateMeta['skills'] : [],
                     matchedSkills: $matchedSkills,
                     missingSkills: $missingSkills
                 );
 
-                // Lưu phân tích AI vào meta của review
                 if ($feedbackResult && isset($feedbackResult['analysis'])) {
                     $feedbackAnalysis = $feedbackResult['analysis'];
                     $reviewMeta = json_decode(
-                        DB::table('recruitment_candidate_manager_reviews')
-                            ->where('candidate_id', $id)
-                            ->value('meta') ?? '{}',
+                        DB::table('recruitment_candidate_manager_reviews')->where('candidate_id', $id)->value('meta') ?? '{}',
                         true
                     ) ?: [];
-
                     $reviewMeta['ai_feedback_analysis'] = $feedbackAnalysis;
                     $reviewMeta['ai_feedback_sent_at'] = now()->toIso8601String();
-
                     DB::table('recruitment_candidate_manager_reviews')
                         ->where('candidate_id', $id)
                         ->update(['meta' => json_encode($reviewMeta, JSON_UNESCAPED_UNICODE)]);
                 }
             } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::error(
-                    "AI feedback failed for candidate #{$id}: " . $e->getMessage()
-                );
+                \Illuminate\Support\Facades\Log::error("AI feedback failed for candidate #{$id}: " . $e->getMessage());
             }
         }
 
-        $review = DB::table('recruitment_candidate_manager_reviews')
+        $responseData = (array) DB::table('recruitment_candidate_manager_reviews')
             ->where('candidate_id', $id)
             ->first();
-
-        $responseData = (array) $review;
         if ($feedbackAnalysis) {
             $responseData['ai_feedback_analysis'] = $feedbackAnalysis;
         }
@@ -558,27 +581,18 @@ class RecruitmentController extends Controller
 
     // ── Response Helpers ─────────────────────────────────
 
-    /**
-     * GET /recruitment-ai/feedback-stats — Thống kê feedback AI.
-     */
+    /** GET /recruitment-ai/feedback-stats — Thống kê feedback AI. */
     public function aiFeedbackStats(): JsonResponse
     {
-        $feedbackService = new AiFeedbackService();
-
-        $stats = $feedbackService->getStats();
-        $adjustments = $feedbackService->getAdjustments();
+        $service = new AiFeedbackService();
+        $stats = $service->getStats();
+        $adjustments = $service->getAdjustments();
 
         if ($stats === null && $adjustments === null) {
-            return $this->ok(
-                ['message' => 'Dịch vụ AI không khả dụng'],
-                'Không thể lấy thống kê feedback AI'
-            );
+            return $this->ok(['message' => 'Dịch vụ AI không khả dụng'], 'Không thể lấy thống kê feedback AI');
         }
 
-        return $this->ok([
-            'stats' => $stats,
-            'adjustments' => $adjustments,
-        ], 'Thống kê feedback AI');
+        return $this->ok(['stats' => $stats, 'adjustments' => $adjustments], 'Thống kê feedback AI');
     }
 
     private function ok(mixed $data, string $message): JsonResponse

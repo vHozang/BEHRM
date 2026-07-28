@@ -147,7 +147,7 @@ const loadData = async () => {
     const [assRes, astRes, empRes] = await Promise.all([
       assetService.getAllAssignments(),
       assetService.getAll().catch(() => ({ data: [] })),
-      employeeService.getAll().catch(() => ({ data: [] }))
+      employeeService.getLookup().catch(() => [])
     ]);
     assignments.value = assRes?.data || assRes || [];
     

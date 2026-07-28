@@ -27,6 +27,9 @@ class Milestone3VerificationTest extends TestCase
             'company_email' => 'verifier@company.com',
             'password_hash' => Hash::make('password'),
             'status' => 'ACTIVE',
+            'is_super_admin' => true,
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -46,6 +49,7 @@ class Milestone3VerificationTest extends TestCase
             'start_time' => '08:00:00',
             'end_time' => '17:00:00',
             'status' => true,
+            'tenant_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -58,6 +62,8 @@ class Milestone3VerificationTest extends TestCase
             'start_date' => '2026-06-01',
             'end_date' => '2026-06-30',
             'status' => 'OPEN',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -75,6 +81,8 @@ class Milestone3VerificationTest extends TestCase
             'check_in_time' => '08:00:00',
             'check_out_time' => null,
             'status' => 'ON_TIME',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -110,6 +118,8 @@ class Milestone3VerificationTest extends TestCase
             'work_date' => '2026-06-22',
             'check_in_time' => '08:00:00',
             'status' => 'ON_TIME',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'meta' => json_encode(['existing_key' => 'old_val']),
             'created_at' => now(),
             'updated_at' => now(),
@@ -142,6 +152,8 @@ class Milestone3VerificationTest extends TestCase
             'shift_type_id' => $this->shiftTypeId,
             'work_date' => '2026-06-22',
             'status' => 'ON_TIME',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -213,6 +225,8 @@ class Milestone3VerificationTest extends TestCase
             'gross_salary' => 5000,
             'net_salary' => 4500,
             'transfer_status' => 'PENDING',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'meta' => json_encode(['old_key' => 'old_val']),
             'created_at' => now(),
             'updated_at' => now(),

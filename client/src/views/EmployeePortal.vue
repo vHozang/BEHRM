@@ -388,9 +388,9 @@
         <BaseCard>
           <div class="mb-6">
             <h3 class="font-semibold mb-4">Số ngày nghỉ phép còn lại</h3>
-            <div v-if="leaveBalances.length === 0" class="text-sm text-muted-foreground">Chưa có thông tin số dư nghỉ phép.</div>
+            <div v-if="visibleLeaveBalances.length === 0" class="text-sm text-muted-foreground">Chưa có thông tin số dư nghỉ phép.</div>
             <div v-else class="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div v-for="balance in leaveBalances" :key="balance.id" class="p-4 border rounded-lg">
+              <div v-for="balance in visibleLeaveBalances" :key="balance.id" class="p-4 border rounded-lg">
                 <p class="font-medium text-sm">{{ balance.leave_type || balance.leave_type_name || 'Loại nghỉ' }}</p>
                 <p class="text-2xl font-bold text-primary">{{ balance.remaining ?? balance.total_entitled ?? 0 }}</p>
                 <p class="text-sm text-muted-foreground">ngày còn lại / {{ balance.entitlement ?? balance.total_entitled ?? balance.total_days ?? 0 }} ngày</p>
@@ -485,17 +485,17 @@
         <BaseCard>
           <div class="space-y-4">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <h3 class="font-semibold">Thông tin lương</h3>
+              <h3 class="font-semibold">Thông tin lương<span v-if="salaryPeriodLabel" class="text-sm font-normal text-muted-foreground"> — Kỳ {{ salaryPeriodLabel }}</span></h3>
               <div class="flex flex-wrap gap-2 w-full sm:w-auto justify-start sm:justify-end" v-if="salaryDetails.length > 0">
                 <button
-                  @click="exportSalaryExcel"
+                  @click="exportSalaryCsv"
                   class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
-                  title="Xuất file Excel (.xlsx)"
+                  title="Xuất file CSV mở được bằng Excel"
                 >
                   <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  Excel
+                  CSV
                 </button>
                 <button
                   @click="exportSalaryPDF"
@@ -599,7 +599,8 @@
             </div>
             <div>
               <p class="text-sm text-muted-foreground">Giới tính</p>
-              <p class="font-medium mt-1">{{ currentEmployee.gender === 'male' ? 'Nam' : currentEmployee.gender === 'female' ? 'Nữ' : '-' }}</p>
+              <!-- Canonical DB là MALE/FEMALE (hoa) — so sánh không phân biệt hoa thường. -->
+              <p class="font-medium mt-1">{{ String(currentEmployee.gender).toUpperCase() === 'MALE' ? 'Nam' : String(currentEmployee.gender).toUpperCase() === 'FEMALE' ? 'Nữ' : '-' }}</p>
             </div>
             <div class="md:col-span-2">
               <p class="text-sm text-muted-foreground">Địa chỉ</p>
@@ -619,8 +620,11 @@
             </div>
             <div>
               <p class="text-sm text-muted-foreground">Trạng thái</p>
-              <BaseBadge :variant="currentEmployee.is_active ? 'success' : 'destructive'">
-                {{ currentEmployee.is_active ? 'Đang làm việc' : 'Đã nghỉ' }}
+              <!-- Bảng employees KHÔNG có cột is_active (luôn undefined → ai cũng "Đã nghỉ").
+                   Đọc status thật: ACTIVE/PROBATION là đang làm. -->
+              <BaseBadge :variant="['ACTIVE','PROBATION'].includes(String(currentEmployee.status).toUpperCase()) ? 'success' : 'destructive'">
+                {{ String(currentEmployee.status).toUpperCase() === 'PROBATION' ? 'Thử việc'
+                  : String(currentEmployee.status).toUpperCase() === 'ACTIVE' ? 'Đang làm việc' : 'Đã nghỉ' }}
               </BaseBadge>
             </div>
           </div>
@@ -895,7 +899,7 @@ import { profileChangeService } from '../services/profileChangeService';
 import { contractService, printContractHtml } from '../services/contractService';
 import SignaturePad from '../components/SignaturePad.vue';
 import { useNotificationStore } from '../stores/notificationStore';
-import * as XLSX from 'xlsx';
+import { downloadCsv } from '../utils/csv';
 
 const notificationStore = useNotificationStore();
 const activeTab = ref('attendance');
@@ -1025,7 +1029,9 @@ const rosterDays = computed(() => {
       dayName: names[i % 7],
       isToday: dateStr === todayStr,
       isWeekend: i % 7 >= 5,
-      shift: resolveShiftFor(dateStr),
+      // Chủ nhật = ngày nghỉ toàn hệ thống (TimePolicy) — không hiện ca dù có
+      // phân ca cố định (assignment permanent áp mọi ngày).
+      shift: i % 7 === 6 ? null : resolveShiftFor(dateStr),
     });
   }
   return days;
@@ -1088,6 +1094,8 @@ const leaveFormLoading = ref(false);
 
 // ── Salary state ──
 const salaryDetails = ref([]);
+const salaryNet = ref(0);            // net thật từ salary_detail (chuẩn), không tự cộng lại
+const salaryPeriodLabel = ref('');   // mã kỳ của phiếu lương đang xem
 const salaryTotals = computed(() => {
   let basic = 0, allowances = 0, deductions = 0;
   salaryDetails.value.forEach(item => {
@@ -1104,7 +1112,8 @@ const salaryTotals = computed(() => {
       }
     }
   });
-  return { basic, allowances, deductions, net: basic + allowances - deductions };
+  const net = salaryNet.value || (basic + allowances - deductions);
+  return { basic, allowances, deductions, net };
 });
 
 // ── Onboarding / Offboarding (checklist của tôi) ──
@@ -1154,9 +1163,19 @@ const todayCheckedIn = computed(() => {
 const pendingLeaveCount = computed(() =>
   leaveRequests.value.filter((r) => String(r.status || '').toLowerCase() === 'pending').length
 );
-const remainingLeave = computed(() =>
-  leaveBalances.value.reduce((s, b) => s + (Number(b.remaining ?? b.total_entitled ?? 0) || 0), 0)
-);
+const remainingLeave = computed(() => {
+  const currentYear = new Date().getFullYear();
+  const annual = leaveBalances.value.find((b) =>
+    Number(b.year) === currentYear && String(b.leave_type_code || '').toUpperCase() === 'ANNUAL'
+  );
+  return Number(annual?.remaining ?? 0) || 0;
+});
+// Chỉ hiện số dư phép NĂM HIỆN TẠI — tránh lẫn số dư năm cũ (vd 2024) trông như trùng.
+const visibleLeaveBalances = computed(() => {
+  const y = new Date().getFullYear();
+  const current = leaveBalances.value.filter((b) => Number(b.year) === y);
+  return current.length ? current : leaveBalances.value;
+});
 
 // ── Profile edit state ──
 const editingProfile = ref(false);
@@ -1205,7 +1224,14 @@ const formatDate = (date) => {
 
 const formatTime = (dt) => {
   if (!dt) return '--:--';
-  return new Date(dt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  // check_in_time thường là chuỗi giờ-đơn "HH:MM[:SS]" → new Date() không parse
+  // được (ra "Invalid Date"). Lấy HH:MM trực tiếp; nếu là datetime đầy đủ thì parse.
+  const s = String(dt);
+  const m = s.match(/(\d{1,2}):(\d{2})/);
+  if (/^\d{1,2}:\d{2}/.test(s.trim()) && m) return `${m[1].padStart(2, '0')}:${m[2]}`;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? (m ? `${m[1].padStart(2, '0')}:${m[2]}` : '--:--')
+    : d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 };
 
 // ── Data loaders ──
@@ -1217,18 +1243,13 @@ const loadEmployeeInfo = async (userId) => {
     currentEmployee.value = stored;
     // Bổ sung phòng ban/chức danh từ danh sách employees (object login không kèm các field này).
     try {
-      const response = await employeeService.getAll();
-      const list = response.data || response || [];
-      const full = (Array.isArray(list) ? list : []).find((e) => String(e.id) === String(userId));
+      const full = await employeeService.getById(userId);
       if (full) currentEmployee.value = { ...stored, ...full };
     } catch (e) { /* giữ thông tin login nếu không lấy được danh sách */ }
     return stored.id;
   }
   try {
-    const response = await employeeService.getAll();
-    const allEmployees = response.data || response || [];
-    // user.id = employee id → khớp theo emp.id (employees không có user_id=id).
-    const me = allEmployees.find(emp => String(emp.id) === String(userId) || String(emp.user_id) === String(userId));
+    const me = await employeeService.getById(userId);
     if (me) {
       currentEmployee.value = me;
       return me.id;
@@ -1267,7 +1288,14 @@ const loadAttendanceData = async (empId) => {
       month: month,
       year: year
     });
-    const records = response.data || response || [];
+    const raw = Array.isArray(response) ? response
+      : (response?.items || response?.data?.items || response?.data || []);
+    // Backend hiện KHÔNG lọc theo month/year (không phải cột) → trả toàn bộ lịch sử.
+    // Lọc đúng tháng đang chọn ở client để "Tiến độ tháng này" + lịch sử khớp nhãn.
+    const records = raw.filter(r => {
+      const d = String(r.attendance_date || r.work_date || r.record_date || '').slice(0, 7);
+      return d === `${year}-${String(month).padStart(2, '0')}`;
+    });
     attendanceRecords.value = records;
 
     const stats = { present: 0, absent: 0, late: 0 };
@@ -1302,8 +1330,28 @@ const loadLeaveData = async (empId) => {
 
 const loadSalaryData = async (empId) => {
   try {
-    const response = await employeeService.getSalaries(empId);
-    salaryDetails.value = response.data || response || [];
+    // /salary-details trả DANH SÁCH kỳ (mới nhất trước) — KHÔNG phải thành phần lương.
+    // Lấy kỳ mới nhất rồi gọi payslip để có breakdown thật (BHXH, phụ cấp…).
+    const list = await employeeService.getSalaries(empId);
+    const rows = Array.isArray(list) ? list : (list?.items || list?.data || []);
+    if (!rows.length) {
+      salaryDetails.value = []; salaryNet.value = 0; salaryPeriodLabel.value = '';
+      return;
+    }
+    const latest = rows[0];
+    salaryPeriodLabel.value = latest.period?.period_code || '';
+    salaryNet.value = Number(latest.net_salary) || 0;
+    const payslip = await employeeService.getPayslip(latest.id);
+    const breakdowns = payslip?.breakdowns || payslip?.data?.breakdowns || [];
+    // Chỉ hiển thị khoản NV thực nhận/đóng (EARNING + DEDUCTION), bỏ chi phí DN/INFO/NET và dòng 0đ.
+    salaryDetails.value = breakdowns
+      .filter(b => ['EARNING', 'DEDUCTION'].includes(b.item_type) && Number(b.amount) !== 0)
+      .map(b => ({
+        id: b.id,
+        component_name: b.item_name,
+        type: b.item_type === 'DEDUCTION' ? 'deduction' : 'earning',
+        amount: Number(b.amount) || 0,
+      }));
   } catch (error) {
     console.error('Error loading salary data:', error);
   }
@@ -1562,7 +1610,7 @@ const saveProfile = async () => {
 const sanitizeFilename = (str) =>
   (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\s.-]/g, '_').trim();
 
-const exportSalaryExcel = () => {
+const exportSalaryCsv = () => {
   try {
     const emp = currentEmployee.value;
     const totals = salaryTotals.value;
@@ -1589,30 +1637,13 @@ const exportSalaryExcel = () => {
       ['LƯƠNG THỰC LĨNH', '', totals.net],
     ];
 
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    
-    // Add professional formatting
-    ws['!cols'] = [{ wch: 35 }, { wch: 20 }, { wch: 25 }]; // Set column widths
-    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }]; // Merge Title A1:C1
-    
-    // Auto-format numbers with thousands separators
-    Object.keys(ws).forEach(key => {
-      if (key.startsWith('!')) return;
-      if (typeof ws[key].v === 'number') {
-        ws[key].z = '#,##0';
-      }
-    });
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "PhieuLuong");
-
     const dateStr = new Date().toISOString().slice(0, 10);
-    const fileName = `PhieuLuong_${sanitizeFilename(emp.full_name || 'NhanVien')}_${dateStr}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    const fileName = `PhieuLuong_${sanitizeFilename(emp.full_name || 'NhanVien')}_${dateStr}.csv`;
+    downloadCsv(data, fileName);
     
-    notificationStore.addSuccess('Tải xuống file Excel thành công!');
+    notificationStore.addSuccess('Tải xuống file CSV thành công!');
   } catch (err) {
-    console.error('Excel export error:', err);
+    console.error('CSV export error:', err);
     notificationStore.addError('Khong the xuat file: ' + (err.message || 'Unknown error'));
   }
 };

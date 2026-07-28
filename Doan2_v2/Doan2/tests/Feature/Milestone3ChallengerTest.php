@@ -26,6 +26,9 @@ class Milestone3ChallengerTest extends TestCase
             'company_email' => 'm3.test@company.com',
             'password_hash' => Hash::make('password'),
             'status' => 'ACTIVE',
+            'is_super_admin' => true,
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -51,6 +54,8 @@ class Milestone3ChallengerTest extends TestCase
             'check_in_time' => '08:00:00',
             'check_out_time' => '17:00:00',
             'status' => 'PRESENT',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -87,6 +92,8 @@ class Milestone3ChallengerTest extends TestCase
             'employee_id' => $this->employeeId,
             'work_date' => '2026-06-22',
             'status' => 'PRESENT',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'meta' => json_encode(['original_key' => 'keep_me', 'notes' => 'old notes']),
             'created_at' => now(),
             'updated_at' => now(),
@@ -123,6 +130,8 @@ class Milestone3ChallengerTest extends TestCase
             'employee_id' => $this->employeeId,
             'work_date' => '2026-06-22',
             'status' => 'PRESENT',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -211,6 +220,8 @@ class Milestone3ChallengerTest extends TestCase
         $periodId = DB::table('salary_periods')->insertGetId([
             'period_code' => 'T07-2026',
             'status' => 'OPEN',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -22,6 +24,7 @@ class AnalyticsController extends Controller
         // ── Employees ────────────────────────────────────────
         $employeesByStatus = DB::table('employees')
             ->when($tenantId !== null, fn ($q) => $q->where('employees.tenant_id', $tenantId))
+            ->where(fn ($q) => $q->whereNull('profile->system_account')->orWhere('profile->system_account', false))
             ->select('status', DB::raw('COUNT(*) AS count'))
             ->groupBy('status')
             ->pluck('count', 'status');
@@ -29,6 +32,7 @@ class AnalyticsController extends Controller
         $employeesByDepartment = DB::table('employees AS e')
             ->leftJoin('departments AS d', 'd.id', '=', 'e.department_id')
             ->when($tenantId !== null, fn ($q) => $q->where('e.tenant_id', $tenantId))
+            ->where(fn ($q) => $q->whereNull('e.profile->system_account')->orWhere('e.profile->system_account', false))
             ->select(
                 'e.department_id',
                 DB::raw("COALESCE(d.department_name, 'Chưa phân bổ') AS department_name"),
@@ -187,12 +191,12 @@ class AnalyticsController extends Controller
             $trendRows = DB::table('attendances')
                 ->when($tenantId !== null, fn ($q) => $q->where('attendances.tenant_id', $tenantId))
                 ->select(
-                    DB::raw($attendanceDateColumn . '::date AS d'),
+                    $attendanceDateColumn.' AS d',
                     'status',
                     DB::raw('COUNT(*) AS count')
                 )
                 ->whereBetween($attendanceDateColumn, [$from->toDateString(), today()->toDateString()])
-                ->groupBy(DB::raw($attendanceDateColumn . '::date'), 'status')
+                ->groupBy($attendanceDateColumn, 'status')
                 ->get();
 
             // Pre-fill 30 day buckets so the chart always has a continuous axis.
@@ -247,8 +251,8 @@ class AnalyticsController extends Controller
                 ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
                 ->whereIn('status', $approved)
                 ->whereBetween('work_date', [$otFrom->toDateString(), today()->toDateString()])
-                ->select(DB::raw('work_date::date AS d'), DB::raw('SUM(total_hours) AS hours'))
-                ->groupBy(DB::raw('work_date::date'))
+                ->select('work_date AS d', DB::raw('SUM(total_hours) AS hours'))
+                ->groupBy('work_date')
                 ->get()
                 ->keyBy(fn ($r) => (string) $r->d);
 
@@ -270,7 +274,7 @@ class AnalyticsController extends Controller
             if ($stageColumn !== null) {
                 $byStage = DB::table('recruitment_candidates')
                     ->when($tenantId !== null, fn ($q) => $q->where('recruitment_candidates.tenant_id', $tenantId))
-                    ->select($stageColumn . ' AS stage', DB::raw('COUNT(*) AS count'))
+                    ->select($stageColumn.' AS stage', DB::raw('COUNT(*) AS count'))
                     ->groupBy($stageColumn)
                     ->get()
                     ->mapWithKeys(static fn ($row) => [(string) ($row->stage ?? 'UNKNOWN') => (int) $row->count]);
@@ -295,7 +299,7 @@ class AnalyticsController extends Controller
         // ── Upcoming (birthdays / anniversaries / new hires) ─
         $upcoming = $this->upcoming($tenantId);
 
-        return $this->ok([
+        $data = [
             'employees' => $employees,
             'leave_requests' => $leaveRequests,
             'attendances_today' => $attendancesToday,
@@ -306,7 +310,28 @@ class AnalyticsController extends Controller
                 'expiring_within_30_days' => $contractsExpiringSoon,
             ],
             'upcoming' => $upcoming,
-        ], 'Dashboard statistics');
+        ];
+
+        // Do not merely hide unrelated cards in Vue: trim tenant-wide aggregates
+        // at the API boundary too, so a partial role cannot inspect the raw JSON.
+        $access = (array) $request->attributes->get('access', []);
+        if (empty($access['full'])) {
+            $modules = $access['modules'] ?? [];
+            if (! in_array('recruitment', $modules, true)) {
+                unset($data['recruitment']);
+            }
+            if (! in_array('hr', $modules, true)) {
+                unset($data['contracts'], $data['upcoming']);
+            }
+            if (! in_array('time', $modules, true)) {
+                unset($data['leave_requests'], $data['attendances_today'], $data['attendance_trend'], $data['overtime']);
+            }
+            if (! array_intersect(['hr', 'time'], $modules)) {
+                unset($data['employees']);
+            }
+        }
+
+        return $this->ok($data, 'Dashboard statistics');
     }
 
     /**
@@ -328,7 +353,8 @@ class AnalyticsController extends Controller
         $windowDays = 14;
 
         $base = static fn () => DB::table('employees AS e')
-            ->where('e.status', 'ACTIVE');
+            ->where('e.status', 'ACTIVE')
+            ->where(fn ($q) => $q->whereNull('e.profile->system_account')->orWhere('e.profile->system_account', false));
 
         // ── Birthdays ────────────────────────────────────────
         $birthdays = [];
@@ -422,7 +448,7 @@ class AnalyticsController extends Controller
      * Next calendar occurrence (>= today) of a given month/day, handling year wrap.
      * Feb 29 in a non-leap year falls back to Feb 28. Returns null on invalid input.
      */
-    private function nextOccurrence(\Illuminate\Support\Carbon $today, int $month, int $day): ?\Illuminate\Support\Carbon
+    private function nextOccurrence(Carbon $today, int $month, int $day): ?Carbon
     {
         if ($month < 1 || $month > 12 || $day < 1 || $day > 31) {
             return null;
@@ -434,7 +460,7 @@ class AnalyticsController extends Controller
                 // e.g. Feb 29 on a non-leap year -> clamp to last valid day of month.
                 $d = (int) $today->copy()->setDate($year, $month, 1)->endOfMonth()->day;
             }
-            $candidate = \Illuminate\Support\Carbon::create($year, $month, $d)->startOfDay();
+            $candidate = Carbon::create($year, $month, $d)->startOfDay();
             if ($candidate->greaterThanOrEqualTo($today->copy()->startOfDay())) {
                 return $candidate;
             }
@@ -455,19 +481,21 @@ class AnalyticsController extends Controller
             $filters = [];
         }
 
-        $supported = ['headcount', 'leave-summary', 'payroll-summary', 'attendance-summary', 'bhxh-declaration', 'pit-finalization'];
+        $supported = ['headcount', 'leave-summary', 'payroll-summary', 'attendance-summary',
+            'bhxh-declaration', 'pit-finalization',
+            'workforce-structure', 'leave-liability', 'labor-cost', 'hr-metrics'];
         if (! is_string($type) || ! in_array($type, $supported, true)) {
             return $this->validationError([
-                'type' => ['Unknown report type. Supported: ' . implode(', ', $supported)],
+                'type' => ['Unknown report type. Supported: '.implode(', ', $supported)],
             ]);
         }
 
         // Period-scoped VN compliance reports require a period_id filter.
-        if (in_array($type, ['bhxh-declaration', 'pit-finalization'], true)) {
+        if (in_array($type, ['bhxh-declaration', 'pit-finalization', 'labor-cost'], true)) {
             $periodId = $filters['period_id'] ?? null;
             if ($periodId === null || $periodId === '' || ! is_numeric($periodId)) {
                 return $this->validationError([
-                    'filters.period_id' => ['period_id is required for ' . $type . '.'],
+                    'filters.period_id' => ['period_id is required for '.$type.'.'],
                 ]);
             }
         }
@@ -479,6 +507,10 @@ class AnalyticsController extends Controller
             'attendance-summary' => $this->attendanceSummaryRows(),
             'bhxh-declaration' => $this->bhxhDeclarationRows($filters),
             'pit-finalization' => $this->pitFinalizationRows($filters),
+            'workforce-structure' => $this->workforceStructureRows(),
+            'leave-liability' => $this->leaveLiabilityRows(),
+            'labor-cost' => $this->laborCostRows($filters),
+            'hr-metrics' => $this->hrMetricsRows($filters),
         };
 
         $authEmployeeId = $request->attributes->get('auth_employee_id');
@@ -503,13 +535,15 @@ class AnalyticsController extends Controller
 
     // ── Report builders ──────────────────────────────────────
 
-    private function headcountRows(): \Illuminate\Support\Collection
+    private function headcountRows(): Collection
     {
         $tenantId = TenantContext::hasTenant() ? TenantContext::id() : null;
 
         return DB::table('employees AS e')
             ->leftJoin('departments AS d', 'd.id', '=', 'e.department_id')
             ->when($tenantId !== null, fn ($q) => $q->where('e.tenant_id', $tenantId))
+            ->whereIn('e.status', ['ACTIVE', 'PROBATION'])
+            ->where(fn ($q) => $q->whereNull('e.profile->system_account')->orWhere('e.profile->system_account', false))
             ->select(
                 'e.department_id',
                 DB::raw("COALESCE(d.department_name, 'Chưa phân bổ') AS department_name"),
@@ -525,7 +559,7 @@ class AnalyticsController extends Controller
             ]);
     }
 
-    private function leaveSummaryRows(): \Illuminate\Support\Collection
+    private function leaveSummaryRows(): Collection
     {
         $hasLeaveTypes = Schema::hasTable('leave_types');
         $tenantId = TenantContext::hasTenant() ? TenantContext::id() : null;
@@ -557,7 +591,7 @@ class AnalyticsController extends Controller
         });
     }
 
-    private function payrollSummaryRows(): \Illuminate\Support\Collection
+    private function payrollSummaryRows(): Collection
     {
         if (! Schema::hasTable('salary_details')) {
             return collect();
@@ -598,7 +632,7 @@ class AnalyticsController extends Controller
         });
     }
 
-    private function attendanceSummaryRows(): \Illuminate\Support\Collection
+    private function attendanceSummaryRows(): Collection
     {
         if (! Schema::hasTable('attendances')) {
             return collect();
@@ -606,15 +640,324 @@ class AnalyticsController extends Controller
 
         $tenantId = TenantContext::hasTenant() ? TenantContext::id() : null;
 
+        $status = "CASE WHEN status IN ('PRESENT', 'CHECKED_IN', 'CHECKED_OUT', 'ĐÃ_DUYỆT', 'ĐÃ DUYỆT') THEN 'ON_TIME' ELSE status END";
+
         return DB::table('attendances')
             ->when($tenantId !== null, fn ($q) => $q->where('attendances.tenant_id', $tenantId))
-            ->select('status', DB::raw('COUNT(*) AS count'))
-            ->groupBy('status')
+            ->selectRaw("{$status} AS status, COUNT(*) AS count")
+            ->groupByRaw($status)
             ->get()
             ->map(static fn ($row) => [
                 'status' => $row->status,
                 'count' => (int) $row->count,
             ]);
+    }
+
+    /**
+     * Cơ cấu lao động — nền cho "Báo cáo tình hình sử dụng lao động" nộp Sở LĐ-TB&XH
+     * (Mẫu 01/PLI, Nghị định 145/2020): chia theo giới tính, nhóm tuổi, thâm niên,
+     * trình độ và loại hợp đồng. Mỗi dòng = 1 tiêu chí + 1 giá trị + số người + tỷ lệ.
+     */
+    private function workforceStructureRows(): Collection
+    {
+        $tenantId = TenantContext::hasTenant() ? TenantContext::id() : null;
+        $base = fn () => DB::table('employees AS e')
+            ->when($tenantId !== null, fn ($q) => $q->where('e.tenant_id', $tenantId))
+            ->whereIn('e.status', ['ACTIVE', 'PROBATION']);
+
+        $total = (int) $base()->count();
+        if ($total === 0) {
+            return collect();
+        }
+
+        $rows = collect();
+        $push = function (string $dim, string $value, int $count) use (&$rows, $total) {
+            $rows->push([
+                'tieu_chi' => $dim,
+                'phan_loai' => $value,
+                'so_nguoi' => $count,
+                'ty_le_phan_tram' => round($count * 100 / max(1, $total), 1),
+            ]);
+        };
+
+        $push('Tổng số lao động', 'Đang làm việc', $total);
+
+        foreach ($base()->selectRaw("COALESCE(NULLIF(e.gender,''),'Chưa khai báo') g, COUNT(*) c")
+            ->groupBy('g')->orderByDesc('c')->get() as $r) {
+            $push('Giới tính', ['MALE' => 'Nam', 'FEMALE' => 'Nữ'][$r->g] ?? $r->g, (int) $r->c);
+        }
+
+        $ageBands = "CASE WHEN e.date_of_birth IS NULL THEN 'Chưa khai báo'
+            WHEN EXTRACT(YEAR FROM AGE(e.date_of_birth)) < 25 THEN 'Dưới 25'
+            WHEN EXTRACT(YEAR FROM AGE(e.date_of_birth)) < 35 THEN 'Từ 25 đến 34'
+            WHEN EXTRACT(YEAR FROM AGE(e.date_of_birth)) < 45 THEN 'Từ 35 đến 44'
+            WHEN EXTRACT(YEAR FROM AGE(e.date_of_birth)) < 55 THEN 'Từ 45 đến 54'
+            ELSE 'Từ 55 trở lên' END";
+        foreach ($base()->selectRaw("{$ageBands} b, COUNT(*) c")->groupByRaw($ageBands)->orderBy('b')->get() as $r) {
+            $push('Nhóm tuổi', $r->b, (int) $r->c);
+        }
+
+        $seniority = "CASE WHEN e.hire_date IS NULL THEN 'Chưa khai báo'
+            WHEN EXTRACT(YEAR FROM AGE(e.hire_date)) < 1 THEN 'Dưới 1 năm'
+            WHEN EXTRACT(YEAR FROM AGE(e.hire_date)) < 3 THEN 'Từ 1 đến 3 năm'
+            WHEN EXTRACT(YEAR FROM AGE(e.hire_date)) < 5 THEN 'Từ 3 đến 5 năm'
+            WHEN EXTRACT(YEAR FROM AGE(e.hire_date)) < 10 THEN 'Từ 5 đến 10 năm'
+            ELSE 'Trên 10 năm' END";
+        foreach ($base()->selectRaw("{$seniority} b, COUNT(*) c")->groupByRaw($seniority)->orderBy('b')->get() as $r) {
+            $push('Thâm niên', $r->b, (int) $r->c);
+        }
+
+        foreach ($base()->selectRaw("COALESCE(NULLIF(e.profile->>'education_level',''),'Chưa khai báo') b, COUNT(*) c")
+            ->groupByRaw("COALESCE(NULLIF(e.profile->>'education_level',''),'Chưa khai báo')")
+            ->orderByDesc('c')->get() as $r) {
+            $push('Trình độ', $r->b, (int) $r->c);
+        }
+
+        if (Schema::hasTable('contracts') && Schema::hasTable('contract_types')) {
+            foreach (DB::table('contracts AS c')
+                ->join('employees AS e', 'e.id', '=', 'c.employee_id')
+                ->leftJoin('contract_types AS ct', 'ct.id', '=', 'c.contract_type_id')
+                ->when($tenantId !== null, fn ($q) => $q->where('c.tenant_id', $tenantId))
+                ->whereIn('c.status', ['ACTIVE', 'CÓ_HIỆU_LỰC', 'ĐANG_HIỆU_LỰC'])
+                ->whereIn('e.status', ['ACTIVE', 'PROBATION'])
+                ->selectRaw("COALESCE(ct.contract_type_name, 'Chưa phân loại') b, COUNT(*) c")
+                ->groupByRaw('COALESCE(ct.contract_type_name, \'Chưa phân loại\')')
+                ->orderByDesc('c')->get() as $r) {
+                $push('Loại hợp đồng', $r->b, (int) $r->c);
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * BẢNG CHỈ SỐ NHÂN SỰ (HR scorecard) — các TỶ LỆ để ban giám đốc đọc, khác với
+     * dashboard chỉ ĐẾM số lượng. Mỗi dòng: nhóm · chỉ số · giá trị · đơn vị · diễn giải.
+     * Kỳ mặc định = tháng hiện tại; truyền filters.from / filters.to để đổi.
+     *
+     * ponytail: mỗi chỉ số 1 truy vấn nhỏ, dễ đọc/sửa từng cái; gộp thành 1 query
+     * khổng lồ chỉ đáng làm nếu bảng chỉ số này bị gọi liên tục.
+     */
+    private function hrMetricsRows(array $filters): Collection
+    {
+        $tenantId = TenantContext::hasTenant() ? TenantContext::id() : null;
+        $from = ! empty($filters['from']) ? Carbon::parse($filters['from']) : Carbon::now()->startOfMonth();
+        $to = ! empty($filters['to']) ? Carbon::parse($filters['to']) : Carbon::now()->endOfMonth();
+        $fromS = $from->toDateString();
+        $toS = $to->toDateString();
+        $year = (int) $to->format('Y');
+
+        $rows = collect();
+        $add = function (string $nhom, string $chiSo, $giaTri, string $donVi, string $dienGiai = '') use (&$rows) {
+            $rows->push([
+                'nhom' => $nhom, 'chi_so' => $chiSo,
+                'gia_tri' => is_float($giaTri) ? round($giaTri, 1) : $giaTri,
+                'don_vi' => $donVi, 'dien_giai' => $dienGiai,
+            ]);
+        };
+        $pct = fn ($a, $b) => $b > 0 ? round($a * 100 / $b, 1) : 0.0;
+
+        $emp = fn () => DB::table('employees AS e')
+            ->when($tenantId !== null, fn ($q) => $q->where('e.tenant_id', $tenantId))
+            ->whereIn('e.status', ['ACTIVE', 'PROBATION']);
+
+        // ── 1. Nhân lực ──
+        $total = (int) $emp()->count();
+        $add('Nhân lực', 'Tổng lao động đang làm việc', $total, 'người', "Kỳ {$fromS} → {$toS}");
+        if ($total === 0) {
+            return $rows;
+        }
+        $avgSeniority = (float) ($emp()->whereNotNull('e.hire_date')
+            ->selectRaw('AVG(EXTRACT(YEAR FROM AGE(e.hire_date))) v')->value('v') ?? 0);
+        $add('Nhân lực', 'Thâm niên bình quân', $avgSeniority, 'năm', 'Càng cao càng ổn định');
+        $female = (int) $emp()->where('e.gender', 'FEMALE')->count();
+        $add('Nhân lực', 'Tỷ lệ lao động nữ', $pct($female, $total), '%', "{$female}/{$total} — số liệu cho báo cáo Sở LĐ-TB&XH");
+        $probation = (int) $emp()->where('e.status', 'PROBATION')->count();
+        $add('Nhân lực', 'Tỷ lệ đang thử việc', $pct($probation, $total), '%', "{$probation} người");
+        $newHire = (int) $emp()->whereBetween('e.hire_date', [$fromS, $toS])->count();
+        $add('Nhân lực', 'Tuyển mới trong kỳ', $newHire, 'người', '');
+
+        // Biến động & tỷ lệ nghỉ việc — mở khoá nhờ quyết định thôi việc ghi
+        // profile->termination_date (PersonnelDecisionController).
+        $leavers = (int) DB::table('employees')
+            ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
+            ->whereRaw("profile->>'termination_date' BETWEEN ? AND ?", [$fromS, $toS])
+            ->count();
+        $avgHeadcount = $total + $leavers / 2;   // xấp xỉ headcount bình quân kỳ
+        $add('Nhân lực', 'Nghỉ việc trong kỳ', $leavers, 'người', 'Theo quyết định chấm dứt HĐ đã duyệt');
+        $add('Nhân lực', 'Tỷ lệ nghỉ việc (turnover)', $pct($leavers, max(1, (int) round($avgHeadcount))), '%',
+            'Tham chiếu ngành sản xuất VN: 2–4%/tháng là bình thường');
+        $earlyLeavers = (int) DB::table('employees')
+            ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
+            ->whereRaw("profile->>'termination_date' BETWEEN ? AND ?", [$fromS, $toS])
+            ->whereRaw("(profile->>'termination_date')::date - hire_date < 90")
+            ->count();
+        if ($leavers > 0) {
+            $add('Nhân lực', 'Nghỉ trong 90 ngày đầu', $pct($earlyLeavers, $leavers), '%',
+                'Cao → chất lượng tuyển dụng hoặc hội nhập có vấn đề');
+        }
+
+        // ── 2. Chấm công (chỉ số kỷ luật lao động) ──
+        if (Schema::hasTable('attendances')) {
+            $att = fn () => DB::table('attendances AS a')
+                ->when($tenantId !== null, fn ($q) => $q->where('a.tenant_id', $tenantId))
+                ->whereBetween('a.work_date', [$fromS, $toS]);
+            $totalAtt = (int) $att()->count();
+            if ($totalAtt > 0) {
+                $late = (int) $att()->where('a.status', 'LATE')->count();
+                $absent = (int) $att()->where('a.status', 'ABSENT')->count();
+                $early = (int) $att()->where('a.status', 'EARLY_LEAVE')->count();
+                $add('Chấm công', 'Tỷ lệ đi muộn', $pct($late, $totalAtt), '%', "{$late}/{$totalAtt} lượt công");
+                $add('Chấm công', 'Tỷ lệ vắng không phép', $pct($absent, $totalAtt), '%', 'Chuẩn quản trị: nên dưới 3%');
+                $add('Chấm công', 'Tỷ lệ về sớm', $pct($early, $totalAtt), '%', "{$early} lượt");
+                $add('Chấm công', 'Ngày công bình quân', $totalAtt / max(1, $total), 'ngày/người', 'Trong kỳ báo cáo');
+            }
+        }
+
+        // ── 3. Tăng ca (rủi ro pháp lý Đ.107) ──
+        if (Schema::hasTable('overtime_requests')) {
+            $otBase = fn () => DB::table('overtime_requests AS o')
+                ->when($tenantId !== null, fn ($q) => $q->where('o.tenant_id', $tenantId))
+                ->whereIn('o.status', ['APPROVED', 'ĐÃ_DUYỆT']);
+            $otHours = (float) $otBase()->whereBetween('o.work_date', [$fromS, $toS])->sum('o.total_hours');
+            $otPeople = (int) $otBase()->whereBetween('o.work_date', [$fromS, $toS])->distinct()->count('o.employee_id');
+            $add('Tăng ca', 'Tổng giờ tăng ca trong kỳ', $otHours, 'giờ', "{$otPeople} người có tăng ca");
+            $add('Tăng ca', 'Giờ tăng ca bình quân', $otPeople > 0 ? $otHours / $otPeople : 0.0, 'giờ/người', 'Tính trên người CÓ tăng ca');
+
+            // Cảnh báo trần OT năm (Đ.107 BLLĐ, config overtime.yearly_max_hours).
+            $yMax = (float) \App\Support\HrmConfig::get('overtime.yearly_max_hours', 200);
+            // select tường minh: group theo employee_id mà để SELECT * sẽ lỗi 42803 (Postgres).
+            $nearCap = (int) $otBase()->whereRaw('EXTRACT(YEAR FROM o.work_date) = ?', [$year])
+                ->select('o.employee_id')
+                ->groupBy('o.employee_id')
+                ->havingRaw('SUM(o.total_hours) >= ?', [$yMax * 0.8])
+                ->get()->count();
+            $add('Tăng ca', 'Số người chạm ngưỡng 80% trần OT năm', $nearCap, 'người',
+                "Trần {$yMax}h/năm — vượt là vi phạm Điều 107 BLLĐ");
+        }
+
+        // ── 4. Phép năm ──
+        if (Schema::hasTable('leave_balances')) {
+            $lb = DB::table('leave_balances AS lb')
+                ->join('employees AS e', 'e.id', '=', 'lb.employee_id')
+                ->when($tenantId !== null, fn ($q) => $q->where('lb.tenant_id', $tenantId))
+                ->where('lb.year', (string) $year)
+                ->whereIn('e.status', ['ACTIVE', 'PROBATION'])
+                ->selectRaw('COALESCE(SUM(lb.total_days),0) t, COALESCE(SUM(lb.used_days),0) u, COALESCE(SUM(lb.remaining_days),0) r')
+                ->first();
+            if ($lb && (float) $lb->t > 0) {
+                $add('Phép năm', 'Tỷ lệ sử dụng phép', $pct((float) $lb->u, (float) $lb->t), '%',
+                    'Thấp quá → dồn phép cuối năm, tăng chi phí phải trả');
+                $add('Phép năm', 'Ngày phép còn lại bình quân', (float) $lb->r / max(1, $total), 'ngày/người', '');
+            }
+        }
+
+        // ── 5. Tuân thủ ──
+        if (Schema::hasTable('contracts')) {
+            $withContract = (int) DB::table('contracts AS c')
+                ->join('employees AS e', 'e.id', '=', 'c.employee_id')
+                ->when($tenantId !== null, fn ($q) => $q->where('c.tenant_id', $tenantId))
+                ->whereIn('c.status', ['ACTIVE', 'CÓ_HIỆU_LỰC', 'ĐANG_HIỆU_LỰC'])
+                ->whereIn('e.status', ['ACTIVE', 'PROBATION'])
+                ->distinct()->count('e.id');
+            $add('Tuân thủ', 'Tỷ lệ có hợp đồng hiệu lực', $pct($withContract, $total), '%',
+                $withContract < $total ? 'CẢNH BÁO: '.($total - $withContract).' người chưa có HĐ hiệu lực' : 'Đạt 100%');
+
+            $expiring = (int) DB::table('contracts')
+                ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
+                ->whereIn('status', ['ACTIVE', 'CÓ_HIỆU_LỰC', 'ĐANG_HIỆU_LỰC'])
+                ->whereBetween('end_date', [Carbon::today()->toDateString(), Carbon::today()->addDays(30)->toDateString()])
+                ->count();
+            $add('Tuân thủ', 'Hợp đồng hết hạn trong 30 ngày', $expiring, 'hợp đồng', 'Cần chuẩn bị gia hạn/ký mới');
+        }
+        if (Schema::hasTable('certificates')) {
+            $certTotal = (int) DB::table('certificates')->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))->count();
+            $certValid = (int) DB::table('certificates')->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
+                ->where(fn ($q) => $q->whereNull('expiry_date')->orWhere('expiry_date', '>=', Carbon::today()->toDateString()))
+                ->count();
+            if ($certTotal > 0) {
+                $add('Tuân thủ', 'Tỷ lệ chứng chỉ còn hiệu lực', $pct($certValid, $certTotal), '%',
+                    'Gồm chứng chỉ an toàn lao động (NĐ 44/2016)');
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Quỹ phép phải trả (leave liability) — số tiền doanh nghiệp đang "nợ" người lao
+     * động nếu họ nghỉ hết phép còn lại. Kế toán dùng để trích trước chi phí.
+     * Đơn giá ngày = lương cơ bản / số ngày công chuẩn (config payroll.standard_days).
+     */
+    private function leaveLiabilityRows(): Collection
+    {
+        if (! Schema::hasTable('leave_balances')) {
+            return collect();
+        }
+        $tenantId = TenantContext::hasTenant() ? TenantContext::id() : null;
+        $stdDays = max(1.0, (float) \App\Support\HrmConfig::get('payroll.standard_days', 26));
+
+        return DB::table('leave_balances AS lb')
+            ->join('employees AS e', 'e.id', '=', 'lb.employee_id')
+            ->leftJoin('departments AS d', 'd.id', '=', 'e.department_id')
+            ->when($tenantId !== null, fn ($q) => $q->where('lb.tenant_id', $tenantId))
+            ->where('lb.year', (string) now()->year)
+            ->whereIn('e.status', ['ACTIVE', 'PROBATION'])
+            ->selectRaw("COALESCE(d.department_name, 'Chưa phân bổ') AS phong_ban,
+                COUNT(DISTINCT e.id) AS so_nhan_vien,
+                COALESCE(SUM(lb.remaining_days), 0) AS tong_ngay_phep_con,
+                COALESCE(SUM(lb.remaining_days * COALESCE(e.base_salary, 0) / {$stdDays}), 0) AS tien_phai_tra")
+            ->groupByRaw("COALESCE(d.department_name, 'Chưa phân bổ')")
+            ->orderByDesc('tien_phai_tra')
+            ->get()
+            ->map(static fn ($r) => [
+                'phong_ban' => $r->phong_ban,
+                'so_nhan_vien' => (int) $r->so_nhan_vien,
+                'tong_ngay_phep_con' => round((float) $r->tong_ngay_phep_con, 1),
+                'tien_phai_tra' => round((float) $r->tien_phai_tra),
+            ]);
+    }
+
+    /**
+     * Chi phí lao động theo phòng ban cho 1 kỳ lương: quỹ lương (gross) + phần bảo
+     * hiểm DOANH NGHIỆP đóng (21,5%) = tổng chi phí thực của doanh nghiệp cho nhân sự.
+     * Nguồn: salary_details.gross_salary + meta->insurance_employer->total.
+     */
+    private function laborCostRows(array $filters): Collection
+    {
+        if (! Schema::hasTable('salary_details')) {
+            return collect();
+        }
+        $periodId = (int) ($filters['period_id'] ?? 0);
+        $tenantId = TenantContext::hasTenant() ? TenantContext::id() : null;
+
+        return DB::table('salary_details AS sd')
+            ->join('employees AS e', 'e.id', '=', 'sd.employee_id')
+            ->leftJoin('departments AS d', 'd.id', '=', 'e.department_id')
+            ->when($tenantId !== null, fn ($q) => $q->where('sd.tenant_id', $tenantId))
+            ->where('sd.period_id', $periodId)
+            ->selectRaw("COALESCE(d.department_name, 'Chưa phân bổ') AS phong_ban,
+                COUNT(*) AS so_nhan_vien,
+                COALESCE(SUM(sd.gross_salary), 0) AS quy_luong_gross,
+                COALESCE(SUM(sd.net_salary), 0) AS thuc_chi_cho_nv,
+                COALESCE(SUM((sd.meta->'insurance_employer'->>'total')::numeric), 0) AS bao_hiem_dn_dong")
+            ->groupByRaw("COALESCE(d.department_name, 'Chưa phân bổ')")
+            ->orderByDesc('quy_luong_gross')
+            ->get()
+            ->map(static function ($r) {
+                $gross = (float) $r->quy_luong_gross;
+                $er = (float) $r->bao_hiem_dn_dong;
+                $n = max(1, (int) $r->so_nhan_vien);
+
+                return [
+                    'phong_ban' => $r->phong_ban,
+                    'so_nhan_vien' => (int) $r->so_nhan_vien,
+                    'quy_luong_gross' => round($gross),
+                    'bao_hiem_dn_dong' => round($er),
+                    'tong_chi_phi' => round($gross + $er),
+                    'chi_phi_binh_quan' => round(($gross + $er) / $n),
+                ];
+            });
     }
 
     /**

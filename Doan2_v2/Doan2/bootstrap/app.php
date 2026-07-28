@@ -43,4 +43,26 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->shouldRenderJsonWhen(fn ($request, $e) => $request->is('api/*') || $request->expectsJson());
+
+        // Zero-trust: input rác (sai kiểu, quá dài) chạm tới query → Postgres ném
+        // QueryException → mặc định là 500 kèm cả câu SQL (crash + lộ schema). Quy
+        // về lỗi client sạch theo SQLSTATE, một chỗ áp cho MỌI endpoint:
+        //   22xxx = data exception (sai kiểu/quá dài/chia 0) → 422
+        //   23xxx = integrity constraint (trùng/FK/not-null) → 409
+        // Lỗi thật của server (08 mất kết nối, 42 sai cú pháp = bug ta) → giữ 500 + log.
+        $exceptions->render(function (\Illuminate\Database\QueryException $e, $request) {
+            if (! ($request->is('api/*') || $request->expectsJson())) {
+                return null;
+            }
+            // PDO errorInfo[0] = SQLSTATE (vd '22P02'); fallback getCode().
+            $c = substr((string) ($e->errorInfo[0] ?? $e->getCode() ?? ''), 0, 2);
+            if ($c === '22') {
+                return response()->json(['status' => 422, 'message' => 'Dữ liệu không hợp lệ', 'data' => null], 422);
+            }
+            if ($c === '23') {
+                return response()->json(['status' => 409, 'message' => 'Dữ liệu vi phạm ràng buộc (trùng lặp hoặc liên kết không hợp lệ)', 'data' => null], 409);
+            }
+
+            return null; // lỗi server thật → để Laravel log + trả 500
+        });
     })->create();

@@ -232,8 +232,12 @@
         </div>
         
         <div v-if="activeTab === 'salary'">
-          <h4 class="font-semibold mb-4">Thông tin lương</h4>
-          <div v-if="salaryInfo.length === 0" class="text-center py-8 text-muted-foreground">
+          <h4 class="font-semibold mb-4">Thông tin lương<span v-if="salaryPeriodLabel" class="text-sm font-normal text-muted-foreground"> — Kỳ {{ salaryPeriodLabel }}</span></h4>
+          <!-- RBAC: người xem không có module payroll bị 403 — nói rõ thay vì "chưa có dữ liệu". -->
+          <div v-if="salaryDenied" class="text-center py-8 text-muted-foreground">
+            Bạn không có quyền xem thông tin lương (cần quyền module Lương).
+          </div>
+          <div v-else-if="salaryInfo.length === 0" class="text-center py-8 text-muted-foreground">
             Chưa có thông tin lương
           </div>
           <div v-else class="space-y-3">
@@ -494,6 +498,8 @@ const employeeContract = ref(null); // HĐ đang hiệu lực (hoặc mới nh�
 const secondaryDepartments = ref([]); // phòng ban kiêm nhiệm (ma trận)
 const employmentHistory = ref([]);
 const salaryInfo = ref([]);
+const salaryDenied = ref(false);     // 403 module payroll — phân biệt với "chưa có dữ liệu"
+const salaryPeriodLabel = ref('');   // mã kỳ của phiếu lương đang xem
 const dependents = ref([]);
 const qualifications = ref([]);
 const certificates = ref([]);
@@ -817,9 +823,26 @@ onMounted(async () => {
     }
     
     try {
+      // /salary-details trả DANH SÁCH KỲ (không phải thành phần lương) — lấy kỳ mới
+      // nhất rồi gọi payslip để có breakdown thật (cùng pattern EmployeePortal).
       const salaryRes = await employeeService.getSalaries(employeeId);
-      salaryInfo.value = salaryRes?.data || salaryRes || [];
+      const rows = Array.isArray(salaryRes) ? salaryRes : (salaryRes?.data || salaryRes?.items || []);
+      if (rows.length) {
+        const latest = rows[0];
+        salaryPeriodLabel.value = latest.period?.period_code || '';
+        const payslip = await employeeService.getPayslip(latest.id);
+        const breakdowns = payslip?.breakdowns || payslip?.data?.breakdowns || [];
+        salaryInfo.value = breakdowns
+          .filter(b => ['EARNING', 'DEDUCTION', 'NET'].includes(b.item_type) && Number(b.amount) !== 0)
+          .map(b => ({
+            id: b.id,
+            component_name: b.item_name,
+            type: b.item_type === 'DEDUCTION' ? 'deduction' : 'earning',
+            amount: Number(b.amount) || 0,
+          }));
+      }
     } catch (e) {
+      salaryDenied.value = e?.response?.status === 403;
       console.log('Could not load salary info');
     }
 
@@ -834,7 +857,7 @@ onMounted(async () => {
     }
 
     try {
-      const emps = await employeeService.getAll();
+      const emps = await employeeService.getLookup();
       allEmployees.value = Array.isArray(emps) ? emps : (emps?.items || emps?.data || []);
     } catch (e) {
       console.log('Could not load employees for manager picker');

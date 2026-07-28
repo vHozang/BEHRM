@@ -1,290 +1,320 @@
 <template>
   <div class="space-y-6">
+    <!-- ═══ Header ═══ -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
-        <h1 class="text-2xl sm:text-3xl font-bold text-foreground">{{ isAdmin ? 'Quản lý Lương' : 'Phiếu lương của tôi' }}</h1>
-        <p class="text-sm sm:text-base text-muted-foreground mt-1">{{ isAdmin ? 'Cấu trúc và thành phần lương nhân viên' : 'Xem chi tiết lương cá nhân' }}</p>
+        <h1 class="text-2xl sm:text-3xl font-bold text-foreground">{{ isAdmin ? 'Tính lương' : 'Phiếu lương của tôi' }}</h1>
+        <p class="text-sm sm:text-base text-muted-foreground mt-1">
+          {{ isAdmin ? 'Bảng lương theo kỳ — engine lương luật Việt Nam' : 'Xem chi tiết lương theo kỳ' }}
+        </p>
       </div>
-      <div class="flex flex-wrap gap-2 items-center">
-        <!-- Single Export (only visible when a specific user or month is loaded) -->
-        <template v-if="salaryComponents.length > 0 && (selectedEmployee || !isAdmin)">
-          <button
-            @click="exportSalaryExcel"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
-            title="Xuất Excel"
-          >
-            <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Excel (Cá nhân)
-          </button>
-          <button
-            @click="exportSalaryPDF"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
-            title="Xuất PDF"
-          >
-            <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-            PDF (Cá nhân)
-          </button>
-        </template>
-        
-        <!-- Bulk Export (Admin only) -->
-        <template v-if="isAdmin">
-          <div class="w-px h-6 bg-border mx-1"></div>
-          <button
-            @click="bulkExportExcel"
-            :disabled="bulkExportLoading"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200 bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition-colors disabled:opacity-50"
-            title="Xuất Bảng Lương Tập Thể"
-          >
-            Excel (Tất cả)
-          </button>
-          <button
-            @click="bulkExportPDF"
-            :disabled="bulkExportLoading"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition-colors disabled:opacity-50"
-            title="In Phiếu Lương Tập Thể"
-          >
-            PDF (Tất cả)
-          </button>
-        </template>
+      <div v-if="isAdmin && details.length" class="flex flex-wrap gap-2 items-center">
+        <button
+          @click="bulkExportCsv"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200 bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition-colors"
+        >
+          CSV (Cả kỳ)
+        </button>
+        <button
+          @click="bulkExportPDF"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition-colors"
+        >
+          PDF (Cả kỳ)
+        </button>
+        <button
+          @click="exportBankFile"
+          data-testid="button-bank-file"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 transition-colors"
+        >
+          🏦 File ngân hàng
+        </button>
       </div>
     </div>
-    
-    <template v-if="isAdmin">
-      <BaseCard>
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          <BaseSelect
-            v-model="selectedEmployee"
-            label="Chọn nhân viên"
-            :options="employeeOptions"
-            data-testid="select-employee"
-          />
-          <BaseInput
-            v-model="selectedMonth"
-            type="month"
-            label="Tháng"
-            data-testid="input-month"
-          />
-          <div class="flex items-end gap-2">
-            <BaseButton
-              variant="outline"
-              @click="loadSalary"
-              data-testid="button-load-salary"
-            >
-              Xem chi tiết
+
+    <!-- ═══ Chọn kỳ + hành động ═══ -->
+    <BaseCard>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+        <BaseSelect
+          v-model="selectedPeriodId"
+          label="Kỳ lương"
+          :options="periodOptions"
+          data-testid="select-period"
+        />
+        <div v-if="selectedPeriod" class="pb-1">
+          <p class="text-xs text-muted-foreground mb-1">Trạng thái kỳ</p>
+          <span :class="periodBadgeClass(selectedPeriod.status)">
+            {{ periodStatusVN(selectedPeriod.status) }}
+          </span>
+          <span class="ml-2 text-xs text-muted-foreground">{{ selectedPeriod.start_date }} → {{ selectedPeriod.end_date }}</span>
+        </div>
+        <div v-if="isAdmin" class="flex gap-2 lg:col-span-2 lg:justify-end">
+          <BaseButton
+            :disabled="!selectedPeriodId || periodLocked || runLoading"
+            @click="runPayroll"
+            data-testid="button-run-payroll"
+          >
+            <span v-if="runLoading">{{ runProgress || 'Đang tính…' }}</span>
+            <span v-else>⚡ Tính lương kỳ này</span>
+          </BaseButton>
+          <!-- Maker–checker: kế toán TRÌNH → admin DUYỆT & chốt (không ai tự chốt 1 bước). -->
+          <BaseButton
+            v-if="!periodPendingClose"
+            variant="outline"
+            :disabled="!selectedPeriodId || periodLocked || !details.length"
+            @click="submitClose"
+            data-testid="button-submit-period"
+          >
+            📤 Trình chốt kỳ
+          </BaseButton>
+          <template v-else>
+            <BaseButton v-if="isFullAdmin" variant="outline" @click="approveClose" data-testid="button-close-period">
+              ✅ Duyệt &amp; chốt kỳ
             </BaseButton>
-            <BaseButton
-              v-if="selectedEmployee"
-              :variant="isEditing ? 'success' : 'outline'"
-              @click="toggleEdit"
-            >
-              {{ isEditing ? 'Lưu chỉnh sửa' : 'Hiệu chỉnh lương' }}
+            <BaseButton variant="outline" @click="reopenPeriodFn" data-testid="button-reopen-period">
+              ↩ Trả về / Thu hồi
             </BaseButton>
-          </div>
+          </template>
         </div>
-      </BaseCard>
-    </template>
-    <template v-else>
-      <BaseCard>
-        <div class="flex items-center gap-4">
-          <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-            <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-          </div>
-          <div>
-            <p class="text-sm text-muted-foreground">Nhân viên</p>
-            <p class="font-medium text-lg">{{ currentUser?.full_name || currentUser?.email || 'Bạn' }}</p>
-          </div>
-          <div class="ml-auto w-full sm:w-auto mt-4 sm:mt-0">
-            <BaseInput
-              v-model="selectedMonth"
-              type="month"
-              label="Tháng"
-              data-testid="input-month"
-            />
-          </div>
-        </div>
-      </BaseCard>
-    </template>
-    
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <BaseCard>
-        <div class="text-center">
-          <p class="text-sm text-muted-foreground">Tổng thu nhập</p>
-          <p class="text-3xl font-bold text-green-600 dark:text-green-400 mt-2">
-            {{ formatMoney(summary.totalEarnings) }}
-          </p>
-        </div>
-      </BaseCard>
-      <BaseCard>
-        <div class="text-center">
-          <p class="text-sm text-muted-foreground">Tổng khấu trừ</p>
-          <p class="text-3xl font-bold text-red-600 dark:text-red-400 mt-2">
-            {{ formatMoney(summary.totalDeductions) }}
-          </p>
-        </div>
-      </BaseCard>
-      <BaseCard>
-        <div class="text-center">
-          <p class="text-sm text-muted-foreground">Lương thực lĩnh</p>
-          <p class="text-3xl font-bold text-primary mt-2">
-            {{ formatMoney(summary.netSalary) }}
-          </p>
-        </div>
-      </BaseCard>
-    </div>
-    
-    <div v-if="selectedEmployee || !isAdmin" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <BaseCard title="Thu nhập">
-        <template #header-actions v-if="isEditing">
-          <button @click="addRow('earning')" class="text-xs font-semibold text-primary hover:underline">+ Thêm khoản</button>
-        </template>
-        <div class="space-y-3">
-          <div
-            v-for="(item, index) in earnings"
-            :key="item.id || index"
-            class="flex items-center justify-between py-3 border-b border-border last:border-0 gap-4"
-          >
-            <div class="flex-grow">
-              <input 
-                v-if="isEditing" 
-                v-model="item.component_name" 
-                type="text" 
-                class="w-full text-sm font-medium px-2 py-1 rounded border bg-background" 
-              />
-              <p v-else class="font-medium">{{ item.component_name || item.name }}</p>
-              
-              <div v-if="isEditing" class="mt-1">
-                <select v-model="item.category" class="text-xs text-muted-foreground bg-transparent border-none p-0 focus:ring-0">
-                  <option value="basic">Lương cơ bản</option>
-                  <option value="allowance">Phụ cấp</option>
-                  <option value="bonus">Thưởng</option>
-                </select>
-              </div>
-              <p v-else class="text-xs text-muted-foreground">{{ getCategoryLabel(item.category || item.type) }}</p>
-            </div>
-            
-            <div class="flex items-center gap-2">
-              <div v-if="isEditing" class="flex items-center gap-1">
-                <span class="text-xs text-muted-foreground">đ</span>
-                <input 
-                  v-model.number="item.amount" 
-                  type="number" 
-                  class="w-28 text-right text-sm font-semibold px-2 py-1 rounded border bg-background" 
-                />
-              </div>
-              <p v-else class="font-semibold text-green-600 dark:text-green-400">
-                +{{ formatMoney(item.amount || 0) }}
-              </p>
-              
-              <button 
-                v-if="isEditing" 
-                @click="removeRow(item)" 
-                class="text-red-500 hover:text-red-700 text-xs p-1"
-                title="Xóa dòng"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-          <div v-if="!earnings.length" class="text-center py-8 text-muted-foreground">
-            Chưa có dữ liệu
-          </div>
-        </div>
-      </BaseCard>
-      
-      <BaseCard title="Khấu trừ">
-        <template #header-actions v-if="isEditing">
-          <button @click="addRow('deduction')" class="text-xs font-semibold text-primary hover:underline">+ Thêm khoản</button>
-        </template>
-        <div class="space-y-3">
-          <div
-            v-for="(item, index) in deductions"
-            :key="item.id || index"
-            class="flex items-center justify-between py-3 border-b border-border last:border-0 gap-4"
-          >
-            <div class="flex-grow">
-              <input 
-                v-if="isEditing" 
-                v-model="item.component_name" 
-                type="text" 
-                class="w-full text-sm font-medium px-2 py-1 rounded border bg-background" 
-              />
-              <p v-else class="font-medium">{{ item.component_name || item.name }}</p>
-              
-              <div v-if="isEditing" class="mt-1">
-                <select v-model="item.category" class="text-xs text-muted-foreground bg-transparent border-none p-0 focus:ring-0">
-                  <option value="insurance">Bảo hiểm</option>
-                  <option value="tax">Thuế TNCN</option>
-                  <option value="deduction">Khấu trừ khác</option>
-                </select>
-              </div>
-              <p v-else class="text-xs text-muted-foreground">{{ getCategoryLabel(item.category || item.type) }}</p>
-            </div>
-            
-            <div class="flex items-center gap-2">
-              <div v-if="isEditing" class="flex items-center gap-1">
-                <span class="text-xs text-muted-foreground">đ</span>
-                <input 
-                  v-model.number="item.amount" 
-                  type="number" 
-                  class="w-28 text-right text-sm font-semibold px-2 py-1 rounded border bg-background" 
-                />
-              </div>
-              <p v-else class="font-semibold text-red-600 dark:text-red-400">
-                -{{ formatMoney(item.amount || 0) }}
-              </p>
-              
-              <button 
-                v-if="isEditing" 
-                @click="removeRow(item)" 
-                class="text-red-500 hover:text-red-700 text-xs p-1"
-                title="Xóa dòng"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-          <div v-if="!deductions.length" class="text-center py-8 text-muted-foreground">
-            Chưa có dữ liệu
-          </div>
-        </div>
-      </BaseCard>
-    </div>
-    
-    <BaseCard v-if="isAdmin && !selectedEmployee">
-      <div class="text-center py-8 text-muted-foreground">
-        <p>Vui lòng chọn nhân viên để xem chi tiết lương</p>
       </div>
+      <p v-if="isAdmin && periodPendingClose" class="mt-3 text-xs text-amber-600">
+        Kỳ đã trình chốt, đang chờ admin duyệt — tạm khóa tính lại. Người trình không thể tự duyệt.
+      </p>
+      <p v-else-if="isAdmin && periodLocked" class="mt-3 text-xs text-amber-600">
+        Kỳ đã {{ periodStatusVN(selectedPeriod?.status).toLowerCase() }} — không thể tính lại hoặc chỉnh sửa (bảo toàn lương đã trả).
+      </p>
+      <p v-else-if="isAdmin" class="mt-3 text-xs text-muted-foreground">
+        „Tính lương" sẽ tự tổng hợp lại bảng công tháng rồi tính: lương theo công → bảo hiểm → giảm trừ → thuế TNCN (5 bậc, luật 2026) → thực nhận.
+      </p>
     </BaseCard>
-    
-    <BaseCard title="Lịch sử lương">
-      <BaseTable
-        :columns="historyColumns"
-        :data="history"
-        data-testid="table-salary-history"
-      >
-        <template #cell-month="{ value }">
-          <span class="font-medium">{{ value }}</span>
+
+    <!-- ═══ Thẻ tổng hợp ═══ -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <BaseCard>
+        <div class="text-center">
+          <p class="text-xs sm:text-sm text-muted-foreground">Tổng thu nhập (Gross)</p>
+          <p class="text-xl sm:text-2xl font-bold text-green-600 dark:text-green-400 mt-1.5">{{ formatMoney(stats.gross) }}</p>
+        </div>
+      </BaseCard>
+      <BaseCard>
+        <div class="text-center">
+          <p class="text-xs sm:text-sm text-muted-foreground">Bảo hiểm + Thuế + Khấu trừ</p>
+          <p class="text-xl sm:text-2xl font-bold text-red-600 dark:text-red-400 mt-1.5">{{ formatMoney(stats.deductions) }}</p>
+        </div>
+      </BaseCard>
+      <BaseCard>
+        <div class="text-center">
+          <p class="text-xs sm:text-sm text-muted-foreground">Thực lĩnh (Net)</p>
+          <p class="text-xl sm:text-2xl font-bold text-primary mt-1.5">{{ formatMoney(stats.net) }}</p>
+        </div>
+      </BaseCard>
+      <BaseCard>
+        <div class="text-center">
+          <p class="text-xs sm:text-sm text-muted-foreground">{{ isAdmin ? 'Nhân viên đã tính' : 'Ngày công (thực tế/chuẩn)' }}</p>
+          <p class="text-xl sm:text-2xl font-bold text-foreground mt-1.5">
+            {{ isAdmin ? details.length : myWorkdays }}
+          </p>
+        </div>
+      </BaseCard>
+    </div>
+
+    <!-- ═══ Bảng lương kỳ (admin) ═══ -->
+    <BaseCard v-if="isAdmin" :title="`Bảng lương ${selectedPeriod?.period_code || ''}`">
+      <BaseSkeleton v-if="loading" type="table" />
+      <template v-else>
+        <div v-if="!details.length" class="text-center py-10 text-muted-foreground">
+          <p class="font-medium">Kỳ này chưa có dữ liệu lương</p>
+          <p class="text-sm mt-1">Bấm „⚡ Tính lương kỳ này" để chạy engine cho toàn bộ nhân viên.</p>
+        </div>
+        <div v-else class="overflow-x-auto">
+          <table class="w-full text-sm" data-testid="table-salary-details">
+            <thead>
+              <tr class="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                <th class="py-2.5 pr-3">Nhân viên</th>
+                <th class="py-2.5 px-3 text-right">Gross</th>
+                <th class="py-2.5 px-3 text-right">Khấu trừ</th>
+                <th class="py-2.5 px-3 text-right">Thực lĩnh</th>
+                <th class="py-2.5 px-3 text-center">Công</th>
+                <th class="py-2.5 px-3 text-center">Tăng ca</th>
+                <th class="py-2.5 px-3 text-center">Chuyển khoản</th>
+                <th class="py-2.5 pl-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="d in details"
+                :key="d.id"
+                class="border-b border-border/60 last:border-0 hover:bg-muted/40 transition-colors"
+              >
+                <td class="py-2.5 pr-3">
+                  <p class="font-medium text-foreground">{{ d.employee?.full_name || '—' }}</p>
+                  <p class="text-xs text-muted-foreground">{{ d.employee?.employee_code }}</p>
+                </td>
+                <td class="py-2.5 px-3 text-right font-medium text-green-600 dark:text-green-400">{{ formatMoney(d.gross_salary) }}</td>
+                <td class="py-2.5 px-3 text-right text-red-600 dark:text-red-400">−{{ formatMoney(d.gross_salary - d.net_salary) }}</td>
+                <td class="py-2.5 px-3 text-right font-semibold text-primary">{{ formatMoney(d.net_salary) }}</td>
+                <td class="py-2.5 px-3 text-center">
+                  <span v-if="prorationDays(d)" class="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200" :title="d.proration">
+                    {{ prorationDays(d) }}
+                  </span>
+                  <span v-else class="text-xs text-muted-foreground">Đủ công</span>
+                </td>
+                <td class="py-2.5 px-3 text-center text-xs">
+                  <span v-if="Number(d.overtime_hours) > 0" class="font-medium">{{ Number(d.overtime_hours) }}h</span>
+                  <span v-else class="text-muted-foreground">—</span>
+                </td>
+                <td class="py-2.5 px-3 text-center">
+                  <span :class="transferBadgeClass(d.transfer_status)">{{ transferStatusVN(d.transfer_status) }}</span>
+                </td>
+                <td class="py-2.5 pl-3 text-right">
+                  <button
+                    @click="openPayslip(d)"
+                    class="text-primary text-xs font-semibold hover:underline whitespace-nowrap"
+                    :data-testid="`button-payslip-${d.id}`"
+                  >
+                    Phiếu lương →
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </BaseCard>
+
+    <!-- ═══ Phiếu lương của tôi (nhân viên) ═══ -->
+    <BaseCard v-if="!isAdmin">
+      <BaseSkeleton v-if="loading" type="block" />
+      <template v-else>
+        <div v-if="!myDetail" class="text-center py-10 text-muted-foreground">
+          <p class="font-medium">Kỳ này chưa có phiếu lương của bạn</p>
+          <p class="text-sm mt-1">Lương sẽ hiển thị sau khi phòng nhân sự chạy tính lương kỳ.</p>
+        </div>
+        <div v-else class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <p class="font-semibold text-lg">{{ currentUser?.full_name }}</p>
+            <p class="text-sm text-muted-foreground">Kỳ {{ selectedPeriod?.period_code }} · Thực lĩnh
+              <span class="font-bold text-primary">{{ formatMoney(myDetail.net_salary) }}</span>
+            </p>
+          </div>
+          <BaseButton @click="openPayslip(myDetail)">Xem phiếu lương chi tiết</BaseButton>
+        </div>
+      </template>
+    </BaseCard>
+
+    <!-- ═══ Lịch sử lương (nhân viên) ═══ -->
+    <BaseCard v-if="!isAdmin && history.length" title="Lịch sử lương">
+      <BaseTable :columns="historyColumns" :data="history" data-testid="table-salary-history">
+        <template #cell-period="{ row }">
+          <span class="font-medium">{{ row.period?.period_code || row.period_id }}</span>
         </template>
-        
-        <template #cell-total_earnings="{ value }">
+        <template #cell-gross_salary="{ value }">
           <span class="text-green-600 dark:text-green-400">{{ formatMoney(value) }}</span>
         </template>
-        
-        <template #cell-total_deductions="{ value }">
-          <span class="text-red-600 dark:text-red-400">{{ formatMoney(value) }}</span>
+        <template #cell-deduction="{ row }">
+          <span class="text-red-600 dark:text-red-400">−{{ formatMoney(row.gross_salary - row.net_salary) }}</span>
         </template>
-        
         <template #cell-net_salary="{ value }">
           <span class="font-semibold text-primary">{{ formatMoney(value) }}</span>
         </template>
       </BaseTable>
     </BaseCard>
+
+    <!-- ═══ Modal phiếu lương chi tiết ═══ -->
+    <BaseModal v-model="payslipOpen" :title="`Phiếu lương — ${payslip?.salary_detail?.employee?.full_name || ''}`" size="lg">
+      <BaseSkeleton v-if="payslipLoading" type="block" />
+      <div v-else-if="payslip" class="space-y-5">
+        <!-- Header kiểu ADMS: công ty + tiêu đề config + kỳ từ→đến -->
+        <div class="text-center border-b border-border pb-3">
+          <p class="font-bold">{{ payslip.legal_entity?.name || '' }}</p>
+          <p class="font-extrabold text-primary mt-0.5">{{ payslipConfig.title || 'PHIẾU LƯƠNG THÁNG' }} {{ payslip.salary_detail?.period?.period_code }}</p>
+          <p class="text-xs text-muted-foreground" v-if="payslip.salary_detail?.period?.start_date">
+            Từ {{ new Date(payslip.salary_detail.period.start_date).toLocaleDateString('vi-VN') }}
+            đến {{ new Date(payslip.salary_detail.period.end_date).toLocaleDateString('vi-VN') }}
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 text-sm">
+          <span class="font-medium">{{ payslip.salary_detail?.employee?.full_name }}</span>
+          <span class="text-muted-foreground">· Mã NV {{ payslip.salary_detail?.employee?.employee_code }}</span>
+          <span class="text-muted-foreground" v-if="payslipMeta.base_salary">· Lương cơ bản {{ formatMoney(payslipMeta.base_salary) }}</span>
+          <span v-if="payslipMeta.engine" class="ml-auto text-xs text-muted-foreground">engine: {{ payslipMeta.engine }}</span>
+        </div>
+
+        <!-- Công tháng -->
+        <div v-if="payslip.attendance_summary" class="grid grid-cols-3 sm:grid-cols-5 gap-2 p-3 rounded-xl bg-muted/50 text-center">
+          <div><p class="text-[11px] text-muted-foreground">Công chuẩn</p><p class="font-semibold">{{ num(payslip.attendance_summary.standard_days) }}</p></div>
+          <div><p class="text-[11px] text-muted-foreground">Đi làm</p><p class="font-semibold">{{ num(payslip.attendance_summary.actual_working_days) }}</p></div>
+          <div><p class="text-[11px] text-muted-foreground">Nghỉ phép</p><p class="font-semibold">{{ num(payslip.attendance_summary.paid_leave_days) }}</p></div>
+          <div><p class="text-[11px] text-muted-foreground">Vắng</p><p class="font-semibold text-amber-600">{{ num(payslipMeta.proration_absent_days ?? summaryMeta.absent_days ?? 0) }}</p></div>
+          <div><p class="text-[11px] text-muted-foreground">Tăng ca</p><p class="font-semibold">{{ num(payslip.attendance_summary.overtime_hours) }}h</p></div>
+        </div>
+
+        <!-- Thu nhập -->
+        <div>
+          <h4 class="text-xs font-bold uppercase text-muted-foreground mb-2">Thu nhập</h4>
+          <div class="space-y-1.5">
+            <div v-for="b in earningRows" :key="b.item_code" class="flex justify-between text-sm py-1 border-b border-border/50 last:border-0">
+              <span>
+                {{ b.item_name }}
+                <span v-if="b.item_code === 'BASE' && payslipMeta.proration_factor < 1" class="ml-1 text-xs text-amber-600">({{ payslipMeta.proration }})</span>
+              </span>
+              <span class="font-medium text-green-600 dark:text-green-400">+{{ formatMoney(b.amount) }}</span>
+            </div>
+            <div v-if="Number(payslipMeta.overtime_premium_pay) > 0 && payslipMeta.overtime_premium_tax_exempt" class="flex justify-between text-xs text-muted-foreground pl-3">
+              <span>↳ trong đó phụ trội tăng ca <span class="text-green-600 font-medium">miễn thuế TNCN</span> (luật 01/07/2026)</span>
+              <span>{{ formatMoney(payslipMeta.overtime_premium_pay) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Khấu trừ -->
+        <div>
+          <h4 class="text-xs font-bold uppercase text-muted-foreground mb-2">Khấu trừ</h4>
+          <div class="space-y-1.5">
+            <div v-for="b in deductionRows" :key="b.item_code" class="flex justify-between text-sm py-1 border-b border-border/50 last:border-0">
+              <span>{{ b.item_name }}</span>
+              <span class="font-medium text-red-600 dark:text-red-400">−{{ formatMoney(b.amount) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Căn cứ thuế -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 text-center">
+          <div><p class="text-[11px] text-muted-foreground">Thu nhập chịu thuế</p><p class="font-semibold">{{ formatMoney(payslipMeta.taxable_income || 0) }}</p></div>
+          <div><p class="text-[11px] text-muted-foreground">Giảm trừ gia cảnh</p><p class="font-semibold">{{ formatMoney(payslipMeta.personal_relief || 0) }}</p></div>
+          <div><p class="text-[11px] text-muted-foreground">Người phụ thuộc</p><p class="font-semibold">{{ payslipMeta.dependents ?? 0 }}</p></div>
+        </div>
+
+        <!-- Nền BHXH (config) -->
+        <div v-if="payslipConfig.show_insurance_base !== false && infoRow('INS_BASE')" class="flex justify-between text-xs text-muted-foreground px-1">
+          <span>Nền đóng BHXH (lương + phụ cấp tính chất lương)</span>
+          <span class="font-medium">{{ formatMoney(infoRow('INS_BASE').amount) }}</span>
+        </div>
+
+        <!-- NET -->
+        <div class="flex justify-between items-center p-4 rounded-xl bg-primary/10 border border-primary/20">
+          <span class="font-bold">THỰC LĨNH (NET)</span>
+          <span class="text-2xl font-extrabold text-primary">{{ formatMoney(payslip.salary_detail?.net_salary) }}</span>
+        </div>
+
+        <!-- Lời cảm ơn custom theo công ty -->
+        <p v-if="payslipConfig.footer" class="text-center text-xs italic text-blue-600 dark:text-blue-400">{{ payslipConfig.footer }}</p>
+
+        <!-- Chi phí DN (config, mặc định ẩn) -->
+        <details v-if="employerRows.length && payslipConfig.show_employer_cost" class="text-sm">
+          <summary class="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">Chi phí doanh nghiệp đóng (BHXH/BHYT/BHTN) ▾</summary>
+          <div class="mt-2 space-y-1.5 pl-2">
+            <div v-for="b in employerRows" :key="b.item_code" class="flex justify-between py-0.5 text-muted-foreground">
+              <span>{{ b.item_name }}</span><span>{{ formatMoney(b.amount) }}</span>
+            </div>
+          </div>
+        </details>
+      </div>
+      <template #footer>
+        <BaseButton variant="outline" @click="exportPayslipCsv" :disabled="!payslip">Xuất CSV</BaseButton>
+        <BaseButton variant="outline" @click="exportPayslipPDF" :disabled="!payslip">In / PDF</BaseButton>
+        <BaseButton variant="ghost" @click="payslipOpen = false">Đóng</BaseButton>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -292,580 +322,478 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import BaseCard from '../components/BaseCard.vue';
 import BaseButton from '../components/BaseButton.vue';
-import BaseInput from '../components/BaseInput.vue';
 import BaseSelect from '../components/BaseSelect.vue';
 import BaseTable from '../components/BaseTable.vue';
+import BaseModal from '../components/BaseModal.vue';
+import BaseSkeleton from '../components/BaseSkeleton.vue';
 import { salaryService } from '../services/salaryService';
-import { employeeService } from '../services/employeeService';
 import { authService } from '../services/authService';
 import { useNotificationStore } from '../stores/notificationStore';
-import * as XLSX from 'xlsx';
+import { downloadCsv } from '../utils/csv';
 
 const notificationStore = useNotificationStore();
-
 const isAdmin = computed(() => authService.isAdmin());
 const currentUser = computed(() => authService.getUser());
+// user lưu trong localStorage chính là bản ghi employee → id = employee_id
+const selfEmployeeId = computed(() => currentUser.value?.employee_id || currentUser.value?.id || null);
 
-const selectedEmployee = ref('');
-const selectedMonth = ref('');
-const salaryComponents = ref([]);
-const history = ref([]);
-const employeeOptions = ref([{ label: 'Chọn nhân viên', value: '' }]);
+// ── State ──
+const periods = ref([]);
+const selectedPeriodId = ref('');
+const details = ref([]);        // salary_details của kỳ đang chọn (meta đã flatten)
+const history = ref([]);        // NV: chi tiết lương của mình qua các kỳ
+const loading = ref(false);
+const runLoading = ref(false);
+const runProgress = ref('');
 
-const bulkExportLoading = ref(false);
-const isEditing = ref(false);
+const payslipOpen = ref(false);
+const payslipLoading = ref(false);
+const payslip = ref(null);      // { salary_detail, breakdowns, attendance_summary }
 
-const toggleEdit = async () => {
-  if (isEditing.value) {
-    try {
-      notificationStore.addInfo('Đang lưu thay đổi...');
-      // Loop over salary components and save/update
-      for (const item of salaryComponents.value) {
-        const payload = {
-          component_name: item.component_name || item.name,
-          name: item.component_name || item.name,
-          type: item.type,
-          category: item.category,
-          amount: Number(item.amount) || 0,
-          employee_id: selectedEmployee.value,
-          month: selectedMonth.value
-        };
-        
-        if (item.id) {
-          await salaryService.updateDetail(item.id, payload).catch(async () => {
-            await salaryService.updateComponent(item.id, payload);
-          });
-        } else {
-          await salaryService.saveDetail(payload).catch(async () => {
-            await salaryService.createComponent(payload);
-          });
-        }
-      }
-      notificationStore.addSuccess('Cập nhật bảng lương thành công!');
-      isEditing.value = false;
-      await loadSalary();
-    } catch (err) {
-      console.error('Error saving payroll:', err);
-      notificationStore.addSuccess('Đã đồng bộ thay đổi lương (Offline Mode)');
-      isEditing.value = false;
-    }
-  } else {
-    isEditing.value = true;
-  }
-};
+// Trạng thái kỳ khóa tính lại (đồng bộ với PayrollRunService::LOCKED_PERIOD_STATUSES)
+const LOCKED_STATUSES = ['CLOSED', 'LOCKED', 'PAID', 'ĐÃ_ĐÓNG', 'DA_DONG', 'ĐÃ_TRẢ', 'DA_TRA', 'CHỜ_DUYỆT'];
 
-const addRow = (type) => {
-  salaryComponents.value.push({
-    id: null,
-    component_name: type === 'earning' ? 'Khoản thu nhập mới' : 'Khoản khấu trừ mới',
-    name: type === 'earning' ? 'Khoản thu nhập mới' : 'Khoản khấu trừ mới',
-    type: type,
-    category: type === 'earning' ? 'allowance' : 'insurance',
-    amount: 0
-  });
-};
+const selectedPeriod = computed(() => periods.value.find(p => String(p.id) === String(selectedPeriodId.value)) || null);
+const periodLocked = computed(() => selectedPeriod.value && LOCKED_STATUSES.includes(String(selectedPeriod.value.status)));
+// Maker–checker: kỳ đã trình chốt, chờ admin duyệt.
+const periodPendingClose = computed(() => String(selectedPeriod.value?.status) === 'CHỜ_DUYỆT');
+const isFullAdmin = computed(() => authService.getAccess().full === true);
 
-const removeRow = (item) => {
-  salaryComponents.value = salaryComponents.value.filter(c => c !== item);
-};
-
-const earnings = computed(() => {
-  return salaryComponents.value.filter(s => s.type === 'earning' || s.category === 'basic' || s.category === 'allowance' || s.category === 'bonus');
+const periodOptions = computed(() => {
+  // Đa pháp nhân: cùng mã kỳ lặp theo pháp nhân → chỉ thêm tên pháp nhân khi có nhiều pháp nhân.
+  const multiEntity = new Set(periods.value.map(p => p.legal_entity_id)).size > 1;
+  return [
+    { label: 'Chọn kỳ lương', value: '' },
+    ...periods.value.map(p => ({
+      label: `${p.period_code} — ${periodStatusVN(p.status)}`
+        + (multiEntity && p.legal_entity_name ? ` · ${p.legal_entity_name}` : ''),
+      value: String(p.id),
+    })),
+  ];
 });
 
-const deductions = computed(() => {
-  return salaryComponents.value.filter(s => s.type === 'deduction' || s.category === 'insurance' || s.category === 'tax');
+const stats = computed(() => {
+  const rows = isAdmin.value ? details.value : (myDetail.value ? [myDetail.value] : []);
+  const gross = rows.reduce((s, d) => s + Number(d.gross_salary || 0), 0);
+  const net = rows.reduce((s, d) => s + Number(d.net_salary || 0), 0);
+  return { gross, net, deductions: gross - net };
 });
 
-const summary = computed(() => {
-  const totalEarnings = earnings.value.reduce((sum, item) => sum + (item.amount || 0), 0);
-  const totalDeductions = deductions.value.reduce((sum, item) => sum + (item.amount || 0), 0);
-  return {
-    totalEarnings,
-    totalDeductions,
-    netSalary: totalEarnings - totalDeductions
-  };
+const myDetail = computed(() =>
+  isAdmin.value ? null : details.value.find(d => Number(d.employee_id) === Number(selfEmployeeId.value)) || details.value[0] || null
+);
+
+const myWorkdays = computed(() => {
+  const d = myDetail.value;
+  if (!d) return '—';
+  const std = Number(d.standard_days ?? 0);
+  // meta flatten: proration_absent_days có sẵn trên item
+  const absent = Number(d.proration_absent_days ?? 0);
+  if (!std && !absent) return '—';
+  return `${Math.max(0, std - absent)}/${std || '?'}`;
 });
 
 const historyColumns = [
-  { key: 'month', label: 'Tháng' },
-  { key: 'total_earnings', label: 'Thu nhập' },
-  { key: 'total_deductions', label: 'Khấu trừ' },
+  { key: 'period', label: 'Kỳ' },
+  { key: 'gross_salary', label: 'Thu nhập' },
+  { key: 'deduction', label: 'Khấu trừ' },
   { key: 'net_salary', label: 'Thực lĩnh' },
 ];
 
-const formatMoney = (amount) => {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND'
-  }).format(amount);
+// ── Payslip computed (breakdowns từ engine) ──
+const payslipMeta = computed(() => {
+  let m = payslip.value?.salary_detail?.meta;
+  if (typeof m === 'string') { try { m = JSON.parse(m); } catch { m = {}; } }
+  return m || {};
+});
+const summaryMeta = computed(() => {
+  let m = payslip.value?.attendance_summary?.meta;
+  if (typeof m === 'string') { try { m = JSON.parse(m); } catch { m = {}; } }
+  return m || {};
+});
+const breakdowns = computed(() => payslip.value?.breakdowns || []);
+// Config phiếu lương theo công ty (Settings → payslip.*); INFO row theo mã.
+const payslipConfig = computed(() => payslip.value?.config || {});
+const infoRow = (code) => breakdowns.value.find(b => b.item_type === 'INFO' && b.item_code === code && Number(b.amount) > 0);
+const earningRows = computed(() => breakdowns.value.filter(b => b.item_type === 'EARNING' && Number(b.amount) > 0));
+const deductionRows = computed(() => breakdowns.value.filter(b => b.item_type === 'DEDUCTION' && Number(b.amount) > 0));
+const employerRows = computed(() => breakdowns.value.filter(b => b.item_type === 'EMPLOYER_COST' && Number(b.amount) > 0));
+
+// ── Helpers hiển thị ──
+const formatMoney = (amount) =>
+  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(Number(amount) || 0);
+const num = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? (Number.isInteger(n) ? n : n.toFixed(1)) : '—';
 };
 
-const getCategoryLabel = (category) => {
-  const labels = {
-    'earning': 'Thu nhập',
-    'deduction': 'Khấu trừ',
-    'basic': 'Lương cơ bản',
-    'allowance': 'Phụ cấp',
-    'bonus': 'Thưởng',
-    'insurance': 'Bảo hiểm',
-    'tax': 'Thuế'
-  };
-  return labels[category] || category || '';
+const periodStatusVN = (s) => ({
+  OPEN: 'Đang mở', PAID: 'Đã trả lương', CLOSED: 'Đã chốt', LOCKED: 'Đã khóa',
+  'CHỜ_DUYỆT': 'Chờ duyệt chốt',
+}[String(s)] || s || '—');
+const periodBadgeClass = (s) => {
+  const base = 'inline-block px-2.5 py-1 rounded-full text-xs font-semibold ';
+  if (String(s) === 'OPEN') return base + 'bg-green-50 text-green-700 border border-green-200';
+  if (String(s) === 'PAID') return base + 'bg-blue-50 text-blue-700 border border-blue-200';
+  return base + 'bg-gray-100 text-gray-600 border border-gray-200';
+};
+const transferStatusVN = (s) => ({ PENDING: 'Chờ chuyển', PAID: 'Đã chuyển', TRANSFERRED: 'Đã chuyển', FAILED: 'Lỗi' }[String(s)] || s || '—');
+const transferBadgeClass = (s) => {
+  const base = 'inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ';
+  if (['PAID', 'TRANSFERRED'].includes(String(s))) return base + 'bg-green-50 text-green-700';
+  if (String(s) === 'FAILED') return base + 'bg-red-50 text-red-700';
+  return base + 'bg-amber-50 text-amber-700';
+};
+// "PRORATED 22/26 (…)" → "22/26" ; đủ công → null
+const prorationDays = (d) => {
+  const label = d.proration || '';
+  const m = /PRORATED\s+([\d.]+\/[\d.]+)/.exec(label);
+  return m ? m[1] : null;
 };
 
-// ── Export ──
-const getSelectedEmployeeName = () => {
-  if (!isAdmin.value) return currentUser.value?.full_name || currentUser.value?.email || 'Nhân viên';
-  const opt = employeeOptions.value.find(o => o.value === selectedEmployee.value);
-  return opt ? opt.label.replace(/\s*\(.*\)$/, '') : 'Nhân viên';
-};
-
-// Strip diacritics for safe filenames
-const sanitizeFilename = (str) =>
-  str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\s.-]/g, '_').trim();
-
-const exportSalaryExcel = () => {
-  try {
-    const empName = getSelectedEmployeeName();
-    const month = selectedMonth.value || 'N/A';
-    
-    // Create Excel worksheet data array
-    const data = [
-      ['PHIẾU LƯƠNG NHÂN VIÊN'],
-      [],
-      ['Họ tên', empName],
-      ['Tháng', month],
-      ['Ngày xuất', new Date().toLocaleDateString('vi-VN')],
-      [],
-      ['THÀNH PHẦN', 'LOẠI', 'SỐ TIỀN (VNĐ)'],
-      ...earnings.value.map(i => [i.component_name || i.name, 'Khoản thu', Number(i.amount || 0)]),
-      ...deductions.value.map(i => [i.component_name || i.name, 'Khấu trừ', -Number(i.amount || 0)]),
-      [],
-      ['Tổng thu nhập', '(Tổng)', summary.value.totalEarnings],
-      ['Tổng khấu trừ', '(Tổng)', -summary.value.totalDeductions],
-      ['LƯƠNG THỰC LĨNH', '(Thực nhận)', summary.value.netSalary],
-    ];
-
-    // Build the workbook
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    
-    // Add professional formatting
-    ws['!cols'] = [{ wch: 35 }, { wch: 20 }, { wch: 25 }]; // Set column widths
-    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }]; // Merge Title A1:C1
-    
-    // Auto-format numbers with thousands separators
-    Object.keys(ws).forEach(key => {
-      if (key.startsWith('!')) return;
-      if (typeof ws[key].v === 'number') {
-        ws[key].z = '#,##0';
-      }
-    });
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "PhieuLuong");
-
-    // Standard download via XLSX library (handles browser quirks perfectly)
-    const dateStr = new Date().toISOString().slice(0, 10);
-    const fileName = `PhieuLuong_${sanitizeFilename(empName)}_${dateStr}.xlsx`;
-    XLSX.writeFile(wb, fileName);
-
-    notificationStore.addSuccess('Tải xuống Excel thành công!');
-  } catch (err) {
-    console.error('Excel export error:', err);
-    notificationStore.addError('Khong the xuat file: ' + (err.message || 'Unknown error'));
+// ── Data loading ──
+const loadPeriods = async () => {
+  const res = await salaryService.getPeriods();
+  const list = Array.isArray(res) ? res : (res?.items || res?.data || []);
+  periods.value = list;
+  // Mặc định chọn kỳ mở gần nhất, không có thì kỳ mới nhất
+  if (!selectedPeriodId.value && list.length) {
+    const open = list.find(p => String(p.status) === 'OPEN');
+    selectedPeriodId.value = String((open || list[0]).id);
   }
 };
 
+const loadDetails = async () => {
+  if (!selectedPeriodId.value) { details.value = []; return; }
+  loading.value = true;
+  try {
+    const params = { period_id: selectedPeriodId.value, per_page: 100 };
+    if (!isAdmin.value) params.employee_id = selfEmployeeId.value;
+    const res = await salaryService.getDetails(params);
+    details.value = Array.isArray(res) ? res : (res?.items || []);
+  } catch (err) {
+    console.error('Error loading salary details:', err);
+    details.value = [];
+    notificationStore.addError('Không tải được bảng lương kỳ này');
+  } finally {
+    loading.value = false;
+  }
+};
 
-const exportSalaryPDF = () => {
-  const empName = getSelectedEmployeeName();
-  const month = selectedMonth.value || 'N/A';
-  const exportDate = new Date().toLocaleDateString('vi-VN');
-  const fmt = (n) => Number(n).toLocaleString('vi-VN') + ' ₫';
+const loadHistory = async () => {
+  if (isAdmin.value || !selfEmployeeId.value) return;
+  try {
+    const res = await salaryService.getDetails({ employee_id: selfEmployeeId.value, per_page: 24 });
+    history.value = Array.isArray(res) ? res : (res?.items || []);
+  } catch { history.value = []; }
+};
 
-  const earningRows = earnings.value.map(i => `
-    <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${i.component_name || i.name}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;color:#16a34a;font-weight:600">+${fmt(i.amount)}</td>
-    </tr>`).join('');
+// ── Actions ──
+const runPayroll = async () => {
+  if (!selectedPeriodId.value || periodLocked.value) return;
+  const periodId = Number(selectedPeriodId.value);
+  runLoading.value = true;
+  runProgress.value = 'Đang đưa vào hàng đợi…';
+  try {
+    // Tính lương chạy NỀN (queue): API trả về ngay (PROCESSING), rồi poll đến khi
+    // xong — tránh timeout khi số nhân viên lớn (công ty sản xuất).
+    const res = await salaryService.runPayroll(periodId);
+    const d = res?.data || res || {};
+    let final = d;
+    if ((d.run_status || 'PROCESSING') === 'PROCESSING') {
+      final = await pollPayrollStatus(periodId, d.total);
+    }
+    if (final.run_status === 'FAILED') {
+      notificationStore.addError('Tính lương thất bại: ' + (final.error || 'lỗi không xác định'));
+    } else {
+      notificationStore.addSuccess(`Đã tính lương cho ${final.processed ?? d.processed ?? '?'} nhân viên`);
+      await loadDetails();
+    }
+  } catch (err) {
+    notificationStore.addError(err.response?.data?.message || 'Không thể tính lương');
+  } finally {
+    runLoading.value = false;
+    runProgress.value = '';
+  }
+};
 
-  const deductionRows = deductions.value.map(i => `
-    <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${i.component_name || i.name}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;color:#dc2626;font-weight:600">-${fmt(i.amount)}</td>
-    </tr>`).join('');
+// Poll trạng thái tính lương nền mỗi 2.5s, tối đa 6 phút.
+const pollPayrollStatus = async (periodId, total) => {
+  const started = Date.now();
+  while (Date.now() - started < 6 * 60 * 1000) {
+    await new Promise((r) => setTimeout(r, 2500));
+    let d;
+    try {
+      const st = await salaryService.runStatus(periodId);
+      d = st?.data || st || {};
+    } catch {
+      continue; // lỗi mạng tạm thời → thử lại
+    }
+    // Backend báo PROCESSING (chưa đếm dần) → hiện thông báo chờ, không show "0/N" gây hiểu nhầm đứng máy.
+    runProgress.value = `Đang tính lương nền cho ${d.total ?? total ?? ''} nhân viên…`;
+    if (d.run_status === 'DONE' || d.run_status === 'FAILED') return d;
+  }
+  return { run_status: 'FAILED', error: 'Quá thời gian chờ tính lương' };
+};
 
-  const html = `<!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="UTF-8">
-  <title>Phiếu lương - ${empName} - ${month}</title>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Segoe UI',Arial,sans-serif;color:#111827;background:#fff}
-    .page{max-width:700px;margin:0 auto;padding:40px 32px}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;border-bottom:3px solid #2563eb;padding-bottom:20px}
-    .company{font-size:22px;font-weight:800;color:#2563eb}
-    .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-bottom:24px;padding:20px;background:#f9fafb;border-radius:10px}
-    .info-item label{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:2px}
-    .info-item span{font-size:14px;font-weight:600}
-    table{width:100%;border-collapse:collapse;margin-bottom:20px}
-    thead th{background:#f3f4f6;padding:10px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#6b7280}
-    thead th:last-child{text-align:right}
-    h4{font-size:13px;font-weight:700;color:#374151;margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid #e5e7eb}
-    .summary{background:#eff6ff;border:2px solid #bfdbfe;border-radius:10px;padding:16px 20px}
-    .summary-row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:#374151}
-    .summary-row.net{border-top:1px solid #93c5fd;margin-top:10px;padding-top:10px;font-size:16px;font-weight:800;color:#1d4ed8}
-    .footer{text-align:center;margin-top:32px;font-size:11px;color:#9ca3af}
-    @media print{.page{padding:20px}}
-  </style>
-</head>
-<body>
-  <div class="page">
-    <div class="header">
-      <div>
-        <div class="company">CODEDENNGU</div>
-        <div style="font-size:12px;color:#6b7280;margin-top:4px">Hệ thống Quản lý Nhân sự</div>
+// Maker–checker chốt kỳ: trình (kế toán) → duyệt & chốt (admin) / trả về.
+const submitClose = async () => {
+  if (!selectedPeriodId.value || periodLocked.value) return;
+  if (!window.confirm(`Trình chốt kỳ ${selectedPeriod.value?.period_code}? Kỳ sẽ tạm khóa tính lại cho tới khi được duyệt.`)) return;
+  try {
+    await salaryService.submitPeriod(Number(selectedPeriodId.value));
+    notificationStore.addSuccess('Đã trình chốt kỳ — chờ admin duyệt');
+    await loadPeriods();
+  } catch (err) {
+    notificationStore.addError(err.response?.data?.data?.errors?.status?.[0] || err.response?.data?.message || 'Không thể trình chốt kỳ');
+  }
+};
+
+const approveClose = async () => {
+  if (!selectedPeriodId.value) return;
+  if (!window.confirm(`Duyệt và CHỐT kỳ ${selectedPeriod.value?.period_code}? Sau khi chốt sẽ KHÔNG thể tính lại lương kỳ này.`)) return;
+  try {
+    await salaryService.closePeriod(Number(selectedPeriodId.value));
+    notificationStore.addSuccess('Đã duyệt và chốt kỳ lương');
+    await loadPeriods();
+    await loadDetails();
+  } catch (err) {
+    notificationStore.addError(err.response?.data?.data?.errors?.approver_id?.[0] || err.response?.data?.message || 'Không thể chốt kỳ');
+  }
+};
+
+const reopenPeriodFn = async () => {
+  if (!selectedPeriodId.value) return;
+  if (!window.confirm(`Trả kỳ ${selectedPeriod.value?.period_code} về Đang mở?`)) return;
+  try {
+    await salaryService.reopenPeriod(Number(selectedPeriodId.value));
+    notificationStore.addSuccess('Kỳ đã trả về Đang mở');
+    await loadPeriods();
+  } catch (err) {
+    notificationStore.addError(err.response?.data?.message || 'Không thể trả kỳ về');
+  }
+};
+
+const openPayslip = async (detail) => {
+  payslipOpen.value = true;
+  payslipLoading.value = true;
+  payslip.value = null;
+  try {
+    const res = await salaryService.getPayslip(detail.id);
+    payslip.value = res;
+  } catch (err) {
+    console.error('Error loading payslip:', err);
+    notificationStore.addError('Không tải được phiếu lương');
+    payslipOpen.value = false;
+  } finally {
+    payslipLoading.value = false;
+  }
+};
+
+// ── Exports (từ dữ liệu engine thật) ──
+const sanitizeFilename = (str) =>
+  String(str).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w\s.-]/g, '_').trim();
+
+const exportPayslipCsv = () => {
+  if (!payslip.value) return;
+  const d = payslip.value.salary_detail;
+  const name = d?.employee?.full_name || 'NV';
+  const data = [
+    ['PHIẾU LƯƠNG NHÂN VIÊN'],
+    [],
+    ['Họ tên', name],
+    ['Mã NV', d?.employee?.employee_code || ''],
+    ['Kỳ lương', d?.period?.period_code || ''],
+    ['Ngày xuất', new Date().toLocaleDateString('vi-VN')],
+    [],
+    ['KHOẢN MỤC', 'LOẠI', 'SỐ TIỀN (VNĐ)'],
+    ...earningRows.value.map(b => [b.item_name, 'Thu nhập', Number(b.amount)]),
+    ...deductionRows.value.map(b => [b.item_name, 'Khấu trừ', -Number(b.amount)]),
+    [],
+    ['Thu nhập chịu thuế', '', Number(payslipMeta.value.taxable_income || 0)],
+    ['Giảm trừ gia cảnh', '', Number(payslipMeta.value.personal_relief || 0)],
+    ['THỰC LĨNH (NET)', '', Number(d?.net_salary || 0)],
+  ];
+  downloadCsv(data, `PhieuLuong_${sanitizeFilename(name)}_${d?.period?.period_code || ''}.csv`);
+  notificationStore.addSuccess('Đã xuất CSV phiếu lương');
+};
+
+const payslipHTML = (d, rowsE, rowsD, meta, att) => {
+  const fmt = (n) => Number(n || 0).toLocaleString('vi-VN') + ' ₫';
+  const tr = (nm, amt, sign, color) =>
+    `<tr><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${nm}</td>
+     <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;color:${color};font-weight:600">${sign}${fmt(amt)}</td></tr>`;
+  const eRows = rowsE.map(b => tr(b.item_name, b.amount, '+', '#16a34a')).join('');
+  const dRows = rowsD.map(b => tr(b.item_name, b.amount, '−', '#dc2626')).join('');
+  const attLine = att
+    ? `<div style="font-size:12px;color:#6b7280;margin-bottom:16px">Công chuẩn ${att.standard_days} · Đi làm ${att.actual_working_days} · Nghỉ phép ${att.paid_leave_days} · Tăng ca ${att.overtime_hours}h</div>`
+    : '';
+  return `
+    <div class="page">
+      <div class="header">
+        <div><div class="company">CODEDENNGU</div><div style="font-size:12px;color:#6b7280;margin-top:4px">Hệ thống Quản lý Nhân sự</div></div>
+        <div style="text-align:right"><div style="font-size:20px;font-weight:700">PHIẾU LƯƠNG</div>
+        <div style="font-size:12px;color:#6b7280">Kỳ: ${d?.period?.period_code || ''} | Xuất: ${new Date().toLocaleDateString('vi-VN')}</div></div>
       </div>
-      <div style="text-align:right">
-        <div style="font-size:20px;font-weight:700">PHIẾU LƯƠNG</div>
-        <div style="font-size:12px;color:#6b7280">Tháng: ${month} | Xuất: ${exportDate}</div>
+      <div class="info-grid">
+        <div class="info-item"><label>Họ và tên</label><span>${d?.employee?.full_name || ''}</span></div>
+        <div class="info-item"><label>Mã nhân viên</label><span>${d?.employee?.employee_code || ''}</span></div>
       </div>
-    </div>
-    <div class="info-grid">
-      <div class="info-item"><label>Họ và tên</label><span>${empName}</span></div>
-      <div class="info-item"><label>Tháng lương</label><span>${month}</span></div>
-    </div>
-    <h4>Thu nhập</h4>
-    <table><thead><tr><th>Khoản mục</th><th style="text-align:right">Số tiền</th></tr></thead><tbody>${earningRows}</tbody></table>
-    <h4>Khấu trừ</h4>
-    <table><thead><tr><th>Khoản mục</th><th style="text-align:right">Số tiền</th></tr></thead><tbody>${deductionRows}</tbody></table>
-    <div class="summary">
-      <div class="summary-row"><span>Tổng thu nhập</span><span style="color:#16a34a">${fmt(summary.value.totalEarnings)}</span></div>
-      <div class="summary-row"><span>Tổng khấu trừ</span><span style="color:#dc2626">- ${fmt(summary.value.totalDeductions)}</span></div>
-      <div class="summary-row net"><span>Lương thực lĩnh</span><span>${fmt(summary.value.netSalary)}</span></div>
-    </div>
-    <div class="footer"><p>Phiếu lương được tạo tự động bởi hệ thống HRM — ${exportDate}</p></div>
-  </div>
-  <script>window.onload = () => window.print();<\/script>
-</body>
-</html>`;
+      ${attLine}
+      <h4>Thu nhập</h4>
+      <table><thead><tr><th>Khoản mục</th><th style="text-align:right">Số tiền</th></tr></thead><tbody>${eRows}</tbody></table>
+      <h4>Khấu trừ</h4>
+      <table><thead><tr><th>Khoản mục</th><th style="text-align:right">Số tiền</th></tr></thead><tbody>${dRows}</tbody></table>
+      <div class="summary">
+        <div class="summary-row"><span>Thu nhập chịu thuế</span><span>${fmt(meta.taxable_income)}</span></div>
+        <div class="summary-row"><span>Giảm trừ gia cảnh (${meta.dependents ?? 0} người phụ thuộc)</span><span>${fmt(meta.personal_relief)}</span></div>
+        <div class="summary-row net"><span>Lương thực lĩnh</span><span>${fmt(d?.net_salary)}</span></div>
+      </div>
+      <div class="footer"><p>Phiếu lương tạo tự động bởi engine lương (luật VN 2026) — ${new Date().toLocaleDateString('vi-VN')}</p></div>
+    </div>`;
+};
 
-  // Use Blob URL to preserve UTF-8 encoding (full Vietnamese support)
+const PAYSLIP_CSS = `
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#111827;background:#fff}
+  .page{max-width:700px;margin:0 auto;padding:40px 32px;page-break-after:always}
+  .page:last-child{page-break-after:avoid}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;border-bottom:3px solid #2563eb;padding-bottom:16px}
+  .company{font-size:22px;font-weight:800;color:#2563eb}
+  .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-bottom:16px;padding:16px 20px;background:#f9fafb;border-radius:10px}
+  .info-item label{font-size:11px;color:#6b7280;text-transform:uppercase;display:block;margin-bottom:2px}
+  .info-item span{font-size:14px;font-weight:600}
+  table{width:100%;border-collapse:collapse;margin-bottom:16px}
+  thead th{background:#f3f4f6;padding:9px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#6b7280}
+  thead th:last-child{text-align:right}
+  h4{font-size:13px;font-weight:700;color:#374151;margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid #e5e7eb}
+  .summary{background:#eff6ff;border:2px solid #bfdbfe;border-radius:10px;padding:14px 20px}
+  .summary-row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:#374151}
+  .summary-row.net{border-top:1px solid #93c5fd;margin-top:10px;padding-top:10px;font-size:16px;font-weight:800;color:#1d4ed8}
+  .footer{text-align:center;margin-top:24px;font-size:11px;color:#9ca3af}
+  @media print{.page{padding:20px}}`;
+
+const openPrintWindow = (title, bodyHTML) => {
+  const html = `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>${title}</title><style>${PAYSLIP_CSS}</style></head>
+<body>${bodyHTML}<scr` + `ipt>window.onload=()=>window.print();</scr` + `ipt></body></html>`;
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const w = window.open(url, '_blank', 'width=800,height=900');
   if (w) w.addEventListener('unload', () => URL.revokeObjectURL(url));
 };
 
-// ── Bulk Exports ──
-const bulkExportExcel = async () => {
-  if (!isAdmin.value) return;
-  try {
-    notificationStore.addInfo('Đang tổng hợp lương toàn công ty...');
-    bulkExportLoading.value = true;
-    
-    const empRes = await employeeService.getAll();
-    const employeesList = empRes?.data || empRes || [];
-    
-    // Create master headers
-    const data = [
-      ['BẢNG LƯƠNG TỔNG HỢP NHÂN VIÊN'],
-      ['Tháng', selectedMonth.value || 'N/A'],
-      ['Ngày xuất', new Date().toLocaleDateString('vi-VN')],
-      [],
-      ['STT', 'Mã NV', 'Họ tên', 'Phòng ban', 'Chức vụ', 'Tổng Lương CB', 'Tổng Phụ Cấp', 'Khấu Trừ', 'Lương Thực Lĩnh']
-    ];
-    
-    // Process all employees
-    for (let i = 0; i < employeesList.length; i++) {
-        const emp = employeesList[i];
-        let salaries = [];
-        try {
-            const salRes = await employeeService.getSalaries(emp.id);
-            salaries = salRes?.data || salRes || [];
-        } catch (e) { }
-        
-        let basic = 0;
-        let allowance = 0;
-        let deductions = 0;
-        
-        salaries.forEach(item => {
-            const amt = Number(item.amount) || 0;
-            if (item.type === 'deduction' || item.category === 'deduction') {
-                deductions += amt;
-            } else {
-                const name = (item.component_name || item.name || '').toLowerCase();
-                const cat = (item.category || '').toLowerCase();
-                if (name.includes('cơ bản') || name.includes('co ban') || cat === 'basic') {
-                    basic += amt;
-                } else {
-                    allowance += amt;
-                }
-            }
-        });
-        
-        const net = basic + allowance - deductions;
-        if (salaries.length > 0 || net > 0) { 
-            data.push([
-                data.length - 4, // STT 
-                emp.code || emp.employee_code || '-',
-                emp.full_name || '-',
-                emp.employment?.department_name || emp.department || emp.department_name || '-',
-                emp.employment?.job_title_name || emp.job_title || emp.job_title_name || '-',
-                basic,
-                allowance,
-                -deductions,
-                net
-            ]);
-        }
-    }
-    
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    
-    ws['!cols'] = [
-        { wch: 5 },  // STT
-        { wch: 15 }, // Code
-        { wch: 25 }, // Name
-        { wch: 20 }, // Dept
-        { wch: 20 }, // Job
-        { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 20 } // Money columns
-    ];
-    ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } }
-    ];
-    
-    Object.keys(ws).forEach(key => {
-      if (key.startsWith('!')) return;
-      if (typeof ws[key].v === 'number' && parseInt(key.replace(/[^\d]/g, '')) > 4) {
-        ws[key].z = '#,##0';
-      }
-    });
+const exportPayslipPDF = () => {
+  if (!payslip.value) return;
+  const d = payslip.value.salary_detail;
+  openPrintWindow(
+    `Phiếu lương - ${d?.employee?.full_name || ''}`,
+    payslipHTML(d, earningRows.value, deductionRows.value, payslipMeta.value, payslip.value.attendance_summary)
+  );
+};
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "BangLuongTongHop");
-    
-    const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `BangLuong_TongHop_${dateStr}.xlsx`);
-    
-    notificationStore.addSuccess('Xuất bảng lương tổng hợp thành công!');
-  } catch (err) {
-    console.error('Bulk excel export error:', err);
-    notificationStore.addError('Lỗi xuất file hàng loạt: ' + (err.message || 'Unknown error'));
-  } finally {
-    bulkExportLoading.value = false;
+// Bảng lương cả kỳ — MỘT nguồn dữ liệu (salary_details), không gọi N+1 API
+const bulkExportCsv = () => {
+  if (!details.value.length) return;
+  const data = [
+    ['BẢNG LƯƠNG TỔNG HỢP — KỲ ' + (selectedPeriod.value?.period_code || '')],
+    ['Ngày xuất', new Date().toLocaleDateString('vi-VN')],
+    [],
+    ['STT', 'Mã NV', 'Họ tên', 'Gross', 'Khấu trừ', 'Thực lĩnh', 'Công', 'Tăng ca (h)'],
+    ...details.value.map((d, i) => [
+      i + 1,
+      d.employee?.employee_code || '',
+      d.employee?.full_name || '',
+      Number(d.gross_salary || 0),
+      -Number((d.gross_salary || 0) - (d.net_salary || 0)),
+      Number(d.net_salary || 0),
+      prorationDays(d) || 'Đủ',
+      Number(d.overtime_hours || 0),
+    ]),
+    [],
+    ['', '', 'TỔNG CỘNG', stats.value.gross, -stats.value.deductions, stats.value.net, '', ''],
+  ];
+  downloadCsv(data, `BangLuong_${selectedPeriod.value?.period_code || 'ky'}.csv`);
+  notificationStore.addSuccess('Đã xuất bảng lương cả kỳ');
+};
+
+// File chuyển khoản ngân hàng (bulk): kế toán upload lên internet banking để trả
+// lương cả kỳ 1 lần. Cột theo mẫu chung VCB/BIDV/ACB; NV thiếu STK bị tách riêng
+// cuối file để HR bổ sung (không âm thầm bỏ sót người).
+const exportBankFile = async () => {
+  if (!details.value.length) return;
+  // Gom ĐỦ mọi trang của kỳ (bảng đang hiển thị chỉ là 1 trang) — file thiếu người
+  // là tai nạn trả lương thật.
+  let all = [];
+  for (let page = 1; page < 100; page++) {
+    const chunk = await salaryService.getDetails({ period_id: Number(selectedPeriodId.value), per_page: 100, page });
+    const rows = Array.isArray(chunk) ? chunk : (chunk?.items || []);
+    all = all.concat(rows);
+    if (rows.length < 100) break;
   }
+  const profileOf = (d) => {
+    const p = d.employee?.profile;
+    if (!p) return {};
+    if (typeof p === 'string') { try { return JSON.parse(p); } catch { return {}; } }
+    return p;
+  };
+  const withAcc = [], noAcc = [];
+  all.forEach(d => (profileOf(d).bank_account ? withAcc : noAcc).push(d));
+  const code = selectedPeriod.value?.period_code || '';
+  const data = [
+    ['STT', 'Số tài khoản', 'Tên người thụ hưởng', 'Ngân hàng', 'Số tiền', 'Diễn giải'],
+    ...withAcc.map((d, i) => {
+      const p = profileOf(d);
+      return [i + 1, p.bank_account, d.employee?.full_name || '', p.bank_name || '', Math.round(Number(d.net_salary || 0)), `Luong ${code} ${d.employee?.employee_code || ''}`];
+    }),
+  ];
+  if (noAcc.length) {
+    data.push([], [`CHƯA CÓ SỐ TÀI KHOẢN (${noAcc.length} NV — bổ sung hồ sơ rồi xuất lại)`]);
+    noAcc.forEach((d, i) => data.push([i + 1, '', d.employee?.full_name || '', '', Math.round(Number(d.net_salary || 0)), d.employee?.employee_code || '']));
+  }
+  downloadCsv(data, `ChuyenKhoan_${code || 'ky'}.csv`);
+  notificationStore.addSuccess(`File ngân hàng: ${withAcc.length} NV có STK${noAcc.length ? `, ${noAcc.length} NV thiếu STK` : ''}`);
 };
 
 const bulkExportPDF = async () => {
-  if (!isAdmin.value) return;
+  if (!details.value.length) return;
+  notificationStore.addInfo('Đang tạo phiếu lương cả kỳ…');
   try {
-    notificationStore.addInfo('Đang khởi tạo bản in Toàn công ty...');
-    bulkExportLoading.value = true;
-    
-    const empRes = await employeeService.getAll();
-    const employeesList = empRes?.data || empRes || [];
-    const exportDate = new Date().toLocaleDateString('vi-VN');
-    const fmt = (n) => Number(n).toLocaleString('vi-VN') + ' ₫';
-    
-    let allPagesHTML = '';
-    
-    for (const emp of employeesList) {
-        let salaries = [];
-        try {
-            const salRes = await employeeService.getSalaries(emp.id);
-            salaries = salRes?.data || salRes || [];
-        } catch (e) { }
-        
-        let basic = 0, allowance = 0, deductions = 0;
-        let earningRows = '', deductionRows = '';
-        
-        salaries.forEach(item => {
-            const amt = Number(item.amount) || 0;
-            const name = item.component_name || item.name || '';
-            if (item.type === 'deduction' || item.category === 'deduction') {
-                deductions += amt;
-                deductionRows += `<tr><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${name}</td>
-                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;color:#dc2626;font-weight:600">-${fmt(amt)}</td></tr>`;
-            } else {
-                basic += amt; // Simplified mapping for UI loop
-                earningRows += `<tr><td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${name}</td>
-                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;color:#16a34a;font-weight:600">+${fmt(amt)}</td></tr>`;
-            }
-        });
-        
-        const net = basic - deductions;
-        
-        if (salaries.length === 0 && net === 0) continue; // skip zero salaries
-        
-        allPagesHTML += `
-        <div class="page">
-          <div class="header">
-            <div>
-              <div class="company">CODEDENNGU</div>
-              <div style="font-size:12px;color:#6b7280;margin-top:4px">Hệ thống Quản lý Nhân sự</div>
-            </div>
-            <div style="text-align:right">
-              <div style="font-size:20px;font-weight:700">PHIẾU LƯƠNG</div>
-              <div style="font-size:12px;color:#6b7280">Tháng: ${selectedMonth.value || 'N/A'} | Xuất: ${exportDate}</div>
-            </div>
-          </div>
-          <div class="info-grid">
-            <div class="info-item"><label>Họ và tên</label><span>${emp.full_name}</span></div>
-            <div class="info-item"><label>Mã nhân viên</label><span>${emp.code || emp.employee_code || '-'}</span></div>
-            <div class="info-item"><label>Phòng ban</label><span>${emp.employment?.department_name || emp.department || emp.department_name || '-'}</span></div>
-            <div class="info-item"><label>Chức vụ</label><span>${emp.employment?.job_title_name || emp.job_title || emp.job_title_name || '-'}</span></div>
-          </div>
-          <h4>Thu nhập</h4>
-          <table><thead><tr><th>Khoản mục</th><th style="text-align:right">Số tiền</th></tr></thead><tbody>${earningRows}</tbody></table>
-          <h4>Khấu trừ</h4>
-          <table><thead><tr><th>Khoản mục</th><th style="text-align:right">Số tiền</th></tr></thead><tbody>${deductionRows}</tbody></table>
-          <div class="summary">
-            <div class="summary-row"><span>Tổng thu nhập</span><span style="color:#16a34a">${fmt(basic)}</span></div>
-            <div class="summary-row"><span>Tổng khấu trừ</span><span style="color:#dc2626">- ${fmt(deductions)}</span></div>
-            <div class="summary-row net"><span>Lương thực lĩnh</span><span>${fmt(net)}</span></div>
-          </div>
-          <div class="footer"><p>Phiếu lương tự động — ${exportDate}</p></div>
-        </div>`;
+    // Lấy payslip chi tiết từng NV từ engine (tuần tự để nhẹ server)
+    let pages = '';
+    for (const d of details.value) {
+      try {
+        const res = await salaryService.getPayslip(d.id);
+        let meta = res?.salary_detail?.meta;
+        if (typeof meta === 'string') { try { meta = JSON.parse(meta); } catch { meta = {}; } }
+        const bds = res?.breakdowns || [];
+        pages += payslipHTML(
+          res.salary_detail,
+          bds.filter(b => b.item_type === 'EARNING' && Number(b.amount) > 0),
+          bds.filter(b => b.item_type === 'DEDUCTION' && Number(b.amount) > 0),
+          meta || {},
+          res.attendance_summary
+        );
+      } catch { /* bỏ qua NV lỗi, in phần còn lại */ }
     }
-    
-    if (!allPagesHTML) {
-        notificationStore.addError('Không có dữ liệu lương của bất kỳ nhân viên nào mảng này!');
-        return;
-    }
-    
-    const html = `<!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="UTF-8">
-  <title>Phiếu lương tổng hợp - ${selectedMonth.value || 'N/A'}</title>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Segoe UI',Arial,sans-serif;color:#111827;background:#fff}
-    .page{max-width:700px;margin:0 auto;padding:40px 32px; page-break-after: always;}
-    .page:last-child { page-break-after: avoid; }
-    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;border-bottom:3px solid #2563eb;padding-bottom:20px}
-    .company{font-size:22px;font-weight:800;color:#2563eb}
-    .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 32px;margin-bottom:24px;padding:20px;background:#f9fafb;border-radius:10px}
-    .info-item label{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:2px}
-    .info-item span{font-size:14px;font-weight:600}
-    table{width:100%;border-collapse:collapse;margin-bottom:20px}
-    thead th{background:#f3f4f6;padding:10px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:#6b7280}
-    thead th:last-child{text-align:right}
-    h4{font-size:13px;font-weight:700;color:#374151;margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid #e5e7eb}
-    .summary{background:#eff6ff;border:2px solid #bfdbfe;border-radius:10px;padding:16px 20px}
-    .summary-row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:#374151}
-    .summary-row.net{border-top:1px solid #93c5fd;margin-top:10px;padding-top:10px;font-size:16px;font-weight:800;color:#1d4ed8}
-    .footer{text-align:center;margin-top:32px;font-size:11px;color:#9ca3af}
-    @media print{.page{padding:20px;margin:0;box-shadow:none}}
-  </style>
-</head>
-<body>${allPagesHTML}<script>window.onload = () => window.print();<\/script></body>
-</html>`;
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const w = window.open(url, '_blank');
-    if (w) w.addEventListener('unload', () => URL.revokeObjectURL(url));
-  } catch (err) {
-    console.error('Bulk pdf export error:', err);
-    notificationStore.addError('Lỗi tải tệp PDF hàng loạt!');
-  } finally {
-    bulkExportLoading.value = false;
-  }
+    if (!pages) { notificationStore.addError('Không có phiếu lương nào để in'); return; }
+    openPrintWindow(`Phiếu lương kỳ ${selectedPeriod.value?.period_code || ''}`, pages);
+  } finally { /* noop */ }
 };
 
-const loadSalary = async () => {
-  const empId = isAdmin.value ? selectedEmployee.value : (currentUser.value?.employee_id || '');
-  if (!empId) return;
-  
-  try {
-    const response = await employeeService.getSalaries(empId);
-    const data = response?.data || response || [];
-    salaryComponents.value = data.length > 0 ? data : generateDemoSalaryData();
-  } catch (err) {
-    console.error('Error loading salary:', err);
-    salaryComponents.value = generateDemoSalaryData();
-  }
-};
-
-const loadEmployees = async () => {
-  try {
-    const response = await employeeService.getAll();
-    const employees = response?.data || response || [];
-    employeeOptions.value = [
-      { label: 'Chọn nhân viên', value: '' },
-      ...employees.map((emp) => ({
-        label: `${emp.full_name} (${emp.code})`,
-        value: String(emp.id)
-      }))
-    ];
-  } catch (err) {
-    console.error('Error loading employees:', err);
-  }
-};
-
-watch(selectedMonth, () => {
-  if (!isAdmin.value || selectedEmployee.value) {
-    loadSalary();
-  }
-});
-
-const generateDemoSalaryData = () => {
-  return [
-    { id: 1, component_name: 'Lương cơ bản', name: 'Lương cơ bản', type: 'earning', category: 'basic', amount: 15000000 },
-    { id: 2, component_name: 'Phụ cấp ăn trưa', name: 'Phụ cấp ăn trưa', type: 'earning', category: 'allowance', amount: 1000000 },
-    { id: 3, component_name: 'Phụ cấp xăng xe', name: 'Phụ cấp xăng xe', type: 'earning', category: 'allowance', amount: 500000 },
-    { id: 4, component_name: 'Thưởng hiệu suất', name: 'Thưởng hiệu suất', type: 'earning', category: 'bonus', amount: 2000000 },
-    { id: 5, component_name: 'Bảo hiểm xã hội (8%)', name: 'BHXH', type: 'deduction', category: 'insurance', amount: 1200000 },
-    { id: 6, component_name: 'Bảo hiểm y tế (1.5%)', name: 'BHYT', type: 'deduction', category: 'insurance', amount: 225000 },
-    { id: 7, component_name: 'Thuế TNCN', name: 'Thuế TNCN', type: 'deduction', category: 'tax', amount: 850000 }
-  ];
-};
-
-const generateDemoHistory = () => {
-  const now = new Date();
-  const history = [];
-  for (let i = 0; i < 6; i++) {
-    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    history.push({
-      id: i + 1,
-      month: monthStr,
-      total_earnings: 18500000 + Math.floor(Math.random() * 2000000),
-      total_deductions: 2275000 + Math.floor(Math.random() * 500000),
-      net_salary: 16225000 + Math.floor(Math.random() * 1500000)
-    });
-  }
-  return history;
-};
+// ── Wiring ──
+watch(selectedPeriodId, loadDetails);
 
 onMounted(async () => {
-  const now = new Date();
-  selectedMonth.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  
-  if (isAdmin.value) {
-    await loadEmployees();
-  } else {
-    const user = currentUser.value;
-    if (user?.employee_id) {
-      selectedEmployee.value = String(user.employee_id);
-      await loadSalary();
-    }
-  }
-  
+  loading.value = true;
   try {
-    const response = await salaryService.getComponents();
-    if (!salaryComponents.value.length) {
-      const data = response?.data || response || [];
-      salaryComponents.value = data.length > 0 ? data : generateDemoSalaryData();
-    }
+    await loadPeriods();
+    await loadDetails();
+    await loadHistory();
   } catch (err) {
-    console.error('Error loading salary components:', err);
-    salaryComponents.value = generateDemoSalaryData();
+    console.error('Salary page init error:', err);
+    notificationStore.addError('Không tải được dữ liệu lương');
+  } finally {
+    loading.value = false;
   }
-  
-  history.value = generateDemoHistory();
 });
 </script>

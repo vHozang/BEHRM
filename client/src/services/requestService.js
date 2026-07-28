@@ -39,5 +39,24 @@ export const requestService = {
   cancel: async (id) => {
     const response = await axiosClient.post(`/requests/${id}/cancel`);
     return response.data;
+  },
+
+  // ── Chứng từ đính kèm ──
+  getAttachments: async (id) => {
+    const response = await axiosClient.get(`/requests/${id}/attachments`);
+    return response.data;
+  },
+
+  uploadAttachment: async (id, file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const response = await axiosClient.post(`/requests/${id}/attachments`, fd);
+    return response.data;
+  },
+
+  // responseType blob: đây là tệp nhị phân, KHÔNG để interceptor bóc như JSON.
+  downloadAttachment: async (id, attachmentId) => {
+    const response = await axiosClient.get(`/requests/${id}/attachments/${attachmentId}`, { responseType: 'blob' });
+    return response.data;
   }
 };

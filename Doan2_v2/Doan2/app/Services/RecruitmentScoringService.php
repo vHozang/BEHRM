@@ -31,51 +31,6 @@ class RecruitmentScoringService
      */
     public function score($candidate, $position): array
     {
-        // 1. Cố gắng gửi CV sang dịch vụ AI AutoRecruit để chấm điểm
-        try {
-            $cv = \Illuminate\Support\Facades\DB::table('recruitment_candidate_cvs')
-                ->where('candidate_id', $this->prop($candidate, 'id'))
-                ->first();
-
-            if ($cv && \Illuminate\Support\Facades\Storage::exists($cv->storage_path)) {
-                $fileContent = \Illuminate\Support\Facades\Storage::get($cv->storage_path);
-                $originalFilename = $cv->original_filename ?? 'cv.pdf';
-
-                $positionName = $this->prop($position, 'position_name') ?? 'Job Position';
-                $requiredSkillsList = json_decode($this->prop($position, 'required_skills_json') ?? '[]', true) ?: [];
-                $skillsStr = implode(', ', $requiredSkillsList);
-                $jdText = "Position: {$positionName}. Requirements: {$skillsStr}";
-
-                $url = env('AUTORECRUIT_URL', 'http://resume-backend:8000');
-
-                $response = \Illuminate\Support\Facades\Http::timeout(30)
-                    ->attach('file', $fileContent, $originalFilename)
-                    ->post($url . '/screen', [
-                        'jd_text' => $jdText,
-                    ]);
-
-                if ($response->successful()) {
-                    $resData = $response->json();
-                    $scores = $resData['candidate']['scores'] ?? [];
-                    // final_score từ Python (0..1) -> chuyển đổi sang (0..100)
-                    $finalScore = (int) round(($scores['final_score'] ?? 0.5) * 100);
-                    $matchedSkills = $scores['matched_skills'] ?? [];
-                    $missingSkills = $scores['missing_skills'] ?? [];
-
-                    return [
-                        'score' => $finalScore,
-                        'matched_skills' => $matchedSkills,
-                        'missing_skills' => $missingSkills,
-                    ];
-                }
-
-                \Illuminate\Support\Facades\Log::warning("AutoRecruit API call failed: " . $response->status() . " - " . $response->body());
-            }
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error("Failed to score CV with AutoRecruit AI service: " . $e->getMessage());
-        }
-
-        // 2. Dự phòng (Fallback): Tính điểm bằng thuật toán cục bộ nếu không dùng được AI hoặc không có file CV
         $candidateMeta = $this->decodeJson($this->prop($candidate, 'meta'));
         $positionMeta = $this->decodeJson($this->prop($position, 'meta'));
 

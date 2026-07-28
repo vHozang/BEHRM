@@ -3,25 +3,32 @@
 use App\Http\Controllers\Api\AiAssistantController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\AttendanceController;
+use App\Http\Controllers\Api\AttendanceDeviceController;
 use App\Http\Controllers\Api\AttendanceRegularizationController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ContractController;
 use App\Http\Controllers\Api\ContractTemplateController;
 use App\Http\Controllers\Api\DepartmentController;
+use App\Http\Controllers\Api\DeviceAttendanceController;
 use App\Http\Controllers\Api\EmployeeController;
 use App\Http\Controllers\Api\GenericResourceController;
 use App\Http\Controllers\Api\HolidayController;
 use App\Http\Controllers\Api\LeaveController;
-use App\Http\Controllers\Api\OnboardingController;
 use App\Http\Controllers\Api\LegalEntityController;
+use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\OnboardingController;
 use App\Http\Controllers\Api\PayrollController;
+use App\Http\Controllers\Api\PieceRateController;
 use App\Http\Controllers\Api\PlatformController;
 use App\Http\Controllers\Api\ProfileChangeRequestController;
 use App\Http\Controllers\Api\RecruitmentController;
 use App\Http\Controllers\Api\RecruitmentPostController;
+use App\Http\Controllers\Api\PersonnelDecisionController;
 use App\Http\Controllers\Api\RequestApprovalController;
 use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\ShiftCoverageController;
+use App\Services\RecruitmentScoringService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -31,32 +38,35 @@ Route::get('/', [GenericResourceController::class, 'root']);
 Route::prefix('v1')->group(function (): void {
     Route::get('/', [GenericResourceController::class, 'root']);
     Route::get('/health', [GenericResourceController::class, 'health']);
-    Route::post('/auth/login', [AuthController::class, 'login']);
-    Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
-    Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
+    // Rate-limit các endpoint xác thực (chống brute-force mật khẩu / dò token).
+    Route::middleware('throttle:10,1')->group(function (): void {
+        Route::post('/auth/login', [AuthController::class, 'login']);
+        Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+        Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
+    });
 
     // ─── Public Routes ───────────────────────────────────
-    Route::get('/public/positions', [GenericResourceController::class, 'index'])->defaults('resource', 'positions');
+    Route::get('/public/positions', [RecruitmentController::class, 'publicPositions']);
     Route::post('/public/recruitment/applications', [RecruitmentController::class, 'store']);
     Route::get('/public/recruitment-posts', [RecruitmentPostController::class, 'publicListing']);
     Route::get('/public/recruitment-posts/{slug}', [RecruitmentPostController::class, 'publicShow']);
-    Route::get('/recruitment-candidates/{id}/cv', [RecruitmentController::class, 'downloadCv'])->whereNumber('id');
 
     // Máy chấm công (vân tay/khuôn mặt/thẻ) — token nội bộ, gọi bởi bridge thiết bị.
-    Route::post('/internal/attendance/device-punch', [\App\Http\Controllers\Api\DeviceAttendanceController::class, 'punch']);
+    Route::post('/internal/attendance/device-punch', [DeviceAttendanceController::class, 'punch']);
 
     // ─── Internal API ────────────────────────────────────
     Route::post('/internal/recruitment-ai-jobs/process', function (Request $request) {
         $provided = $request->header('x-internal-token') ?: $request->bearerToken();
+        $expected = config('hrm.internal_service_token');
 
-        abort_if($provided !== env('INTERNAL_SERVICE_TOKEN'), 403, 'Invalid internal token');
+        abort_if(! is_string($expected) || $expected === '' || ! is_string($provided) || ! hash_equals($expected, $provided), 403, 'Invalid internal token');
 
         $jobs = DB::table('recruitment_ai_scoring_jobs')
             ->whereIn('status', ['PENDING', 'FAILED'])
             ->limit((int) $request->integer('limit', 10))
             ->get();
 
-        $scorer = new \App\Services\RecruitmentScoringService();
+        $scorer = new RecruitmentScoringService;
         $processed = 0;
         $failed = 0;
 
@@ -65,7 +75,7 @@ Route::prefix('v1')->group(function (): void {
                 $candidate = DB::table('recruitment_candidates')->where('id', $job->candidate_id)->first();
 
                 if (! $candidate) {
-                    throw new \RuntimeException("Candidate {$job->candidate_id} not found");
+                    throw new RuntimeException("Candidate {$job->candidate_id} not found");
                 }
 
                 $position = $candidate->recruitment_position_id
@@ -101,7 +111,7 @@ Route::prefix('v1')->group(function (): void {
                 ]);
 
                 $processed++;
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 DB::table('recruitment_ai_scoring_jobs')->where('id', $job->id)->update([
                     'status' => 'FAILED',
                     'last_error' => $e->getMessage(),
@@ -148,8 +158,15 @@ Route::prefix('v1')->group(function (): void {
 
         // ─── Employees ───────────────────────────────────
         Route::get('/employees/org-chart', [EmployeeController::class, 'orgChart']);
+        Route::get('/employees/lookup', [EmployeeController::class, 'lookup']);
         Route::get('/employees', [EmployeeController::class, 'index']);
         Route::post('/employees', [EmployeeController::class, 'store']);
+        Route::post('/employees/import', [EmployeeController::class, 'import']);
+        // Quyết định nhân sự: đề xuất → duyệt (khác người đề xuất) → mới áp dụng.
+        Route::get('/personnel-decisions', [PersonnelDecisionController::class, 'index']);
+        Route::post('/personnel-decisions', [PersonnelDecisionController::class, 'store']);
+        Route::post('/personnel-decisions/{id}/approve', [PersonnelDecisionController::class, 'approve'])->whereNumber('id');
+        Route::post('/personnel-decisions/{id}/reject', [PersonnelDecisionController::class, 'reject'])->whereNumber('id');
         Route::get('/employees/{id}', [EmployeeController::class, 'show'])->whereNumber('id');
         Route::put('/employees/{id}', [EmployeeController::class, 'update'])->whereNumber('id');
         Route::patch('/employees/{id}', [EmployeeController::class, 'update'])->whereNumber('id');
@@ -166,6 +183,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/employees/{id}/leave-balances', [LeaveController::class, 'balance'])->whereNumber('id');
 
         // ─── Contracts ───────────────────────────────────
+        Route::get('/contracts/lookup', [ContractController::class, 'lookup']);
         Route::get('/contracts', [ContractController::class, 'index']);
         Route::post('/contracts', [ContractController::class, 'store']);
         Route::get('/contracts/{id}', [ContractController::class, 'show'])->whereNumber('id');
@@ -209,11 +227,11 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/attendances/check-out', [AttendanceController::class, 'checkOut']);
         Route::post('/attendances/{id}/verify', [AttendanceController::class, 'verifyAttendance'])->whereNumber('id');
         // Quản lý máy chấm công (đa-tenant device registry).
-        Route::get('/attendance-devices', [\App\Http\Controllers\Api\AttendanceDeviceController::class, 'index']);
-        Route::post('/attendance-devices', [\App\Http\Controllers\Api\AttendanceDeviceController::class, 'store']);
-        Route::patch('/attendance-devices/{id}', [\App\Http\Controllers\Api\AttendanceDeviceController::class, 'update'])->whereNumber('id');
-        Route::delete('/attendance-devices/{id}', [\App\Http\Controllers\Api\AttendanceDeviceController::class, 'destroy'])->whereNumber('id');
-        Route::post('/attendance-devices/{id}/rotate-token', [\App\Http\Controllers\Api\AttendanceDeviceController::class, 'rotateToken'])->whereNumber('id');
+        Route::get('/attendance-devices', [AttendanceDeviceController::class, 'index']);
+        Route::post('/attendance-devices', [AttendanceDeviceController::class, 'store']);
+        Route::patch('/attendance-devices/{id}', [AttendanceDeviceController::class, 'update'])->whereNumber('id');
+        Route::delete('/attendance-devices/{id}', [AttendanceDeviceController::class, 'destroy'])->whereNumber('id');
+        Route::post('/attendance-devices/{id}/rotate-token', [AttendanceDeviceController::class, 'rotateToken'])->whereNumber('id');
         Route::get('/overtime-requests', [AttendanceController::class, 'overtimeIndex']);
         Route::get('/overtime-requests/usage', [AttendanceController::class, 'overtimeUsage']);
         Route::post('/attendance/summary/run', [AttendanceController::class, 'summaryRun']);
@@ -226,17 +244,17 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/shift-swaps/{id}/approve', [AttendanceController::class, 'approveShiftSwap'])->whereNumber('id');
 
         // Phủ ca khi vắng đột xuất (coverage / điều người tăng ca + chuỗi giao ca)
-        Route::get('/shift-coverage-requests', [\App\Http\Controllers\Api\ShiftCoverageController::class, 'index']);
-        Route::post('/shift-coverage-requests', [\App\Http\Controllers\Api\ShiftCoverageController::class, 'store']);
-        Route::post('/shift-coverage-requests/{id}/offer', [\App\Http\Controllers\Api\ShiftCoverageController::class, 'offer'])->whereNumber('id');
-        Route::post('/shift-coverage-requests/{id}/cancel', [\App\Http\Controllers\Api\ShiftCoverageController::class, 'cancel'])->whereNumber('id');
-        Route::get('/shift-coverage-offers', [\App\Http\Controllers\Api\ShiftCoverageController::class, 'myOffers']);
-        Route::post('/shift-coverage-offers/{id}/respond', [\App\Http\Controllers\Api\ShiftCoverageController::class, 'respond'])->whereNumber('id');
+        Route::get('/shift-coverage-requests', [ShiftCoverageController::class, 'index']);
+        Route::post('/shift-coverage-requests', [ShiftCoverageController::class, 'store']);
+        Route::post('/shift-coverage-requests/{id}/offer', [ShiftCoverageController::class, 'offer'])->whereNumber('id');
+        Route::post('/shift-coverage-requests/{id}/cancel', [ShiftCoverageController::class, 'cancel'])->whereNumber('id');
+        Route::get('/shift-coverage-offers', [ShiftCoverageController::class, 'myOffers']);
+        Route::post('/shift-coverage-offers/{id}/respond', [ShiftCoverageController::class, 'respond'])->whereNumber('id');
 
         // Thông báo cá nhân (chuông) — receiver = NV đang đăng nhập
-        Route::get('/notifications', [\App\Http\Controllers\Api\NotificationController::class, 'index']);
-        Route::post('/notifications/read-all', [\App\Http\Controllers\Api\NotificationController::class, 'markAllRead']);
-        Route::post('/notifications/{id}/read', [\App\Http\Controllers\Api\NotificationController::class, 'markRead'])->whereNumber('id');
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+        Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead'])->whereNumber('id');
 
         // Attendance regularization (đơn điều chỉnh công)
         Route::get('/attendance-adjustments', [AttendanceRegularizationController::class, 'index']);
@@ -262,12 +280,17 @@ Route::prefix('v1')->group(function (): void {
         Route::put('/salary-periods/{id}', [PayrollController::class, 'update'])->whereNumber('id');
         Route::patch('/salary-periods/{id}', [PayrollController::class, 'update'])->whereNumber('id');
         Route::delete('/salary-periods/{id}', [PayrollController::class, 'destroy'])->whereNumber('id');
+        // Maker–checker chốt kỳ: kế toán submit → admin close (hoặc reopen trả về).
+        Route::post('/salary-periods/{id}/submit', [PayrollController::class, 'submitPeriod'])->whereNumber('id');
+        Route::post('/salary-periods/{id}/reopen', [PayrollController::class, 'reopenPeriod'])->whereNumber('id');
         Route::post('/salary-periods/{id}/close', [PayrollController::class, 'closePeriod'])->whereNumber('id');
         Route::post('/payroll/run', [PayrollController::class, 'run']);
+        Route::post('/payroll/bonus-run', [PayrollController::class, 'bonusRun']);
+        Route::get('/payroll/run-status', [PayrollController::class, 'runStatus']);
         // Công khoán theo sản phẩm (piece-rate).
-        Route::get('/piece-rate-entries', [\App\Http\Controllers\Api\PieceRateController::class, 'index']);
-        Route::post('/piece-rate-entries', [\App\Http\Controllers\Api\PieceRateController::class, 'store']);
-        Route::delete('/piece-rate-entries/{id}', [\App\Http\Controllers\Api\PieceRateController::class, 'destroy'])->whereNumber('id');
+        Route::get('/piece-rate-entries', [PieceRateController::class, 'index']);
+        Route::post('/piece-rate-entries', [PieceRateController::class, 'store']);
+        Route::delete('/piece-rate-entries/{id}', [PieceRateController::class, 'destroy'])->whereNumber('id');
         Route::get('/salary-details', [PayrollController::class, 'salaryDetails']);
         Route::post('/salary-details', [PayrollController::class, 'storeSalaryDetail']);
         Route::put('/salary-details/{id}', [PayrollController::class, 'updateSalaryDetail'])->whereNumber('id');
@@ -283,6 +306,7 @@ Route::prefix('v1')->group(function (): void {
         Route::patch('/recruitment-candidates/{id}', [RecruitmentController::class, 'update'])->whereNumber('id');
         Route::delete('/recruitment-candidates/{id}', [RecruitmentController::class, 'destroy'])->whereNumber('id');
         Route::post('/recruitment-candidates/{id}/cv', [RecruitmentController::class, 'uploadCv'])->whereNumber('id');
+        Route::get('/recruitment-candidates/{id}/cv', [RecruitmentController::class, 'downloadCv'])->whereNumber('id');
         Route::post('/recruitment-candidates/{id}/advance', [RecruitmentController::class, 'advanceStage'])->whereNumber('id');
         Route::patch('/recruitment-candidates/{id}/manager-review', [RecruitmentController::class, 'managerReview'])->whereNumber('id');
         Route::post('/recruitment-candidates/{id}/ai-score/retry', [RecruitmentController::class, 'retryAiScore'])->whereNumber('id');
@@ -317,6 +341,10 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/requests/{id}/approve', [RequestApprovalController::class, 'approve'])->whereNumber('id');
         Route::post('/requests/{id}/reject', [RequestApprovalController::class, 'reject'])->whereNumber('id');
         Route::post('/requests/{id}/cancel', [RequestApprovalController::class, 'cancel'])->whereNumber('id');
+        // Chứng từ đính kèm đơn (giấy bác sĩ, đăng ký kết hôn, vé xe công tác…).
+        Route::get('/requests/{id}/attachments', [RequestApprovalController::class, 'attachments'])->whereNumber('id');
+        Route::post('/requests/{id}/attachments', [RequestApprovalController::class, 'uploadAttachment'])->whereNumber('id');
+        Route::get('/requests/{id}/attachments/{attachmentId}', [RequestApprovalController::class, 'downloadAttachment'])->whereNumber('id')->whereNumber('attachmentId');
 
         // ─── Policies (special actions, CRUD via generic) ─
         Route::post('/policies/{id}/acknowledge', [GenericResourceController::class, 'update'])->defaults('resource', 'policies')->defaults('child', 'acknowledge');

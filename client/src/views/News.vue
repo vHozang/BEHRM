@@ -116,7 +116,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { authService } from '../services/authService';
 import BaseButton from '../components/BaseButton.vue';
 import BaseCard from '../components/BaseCard.vue';
 import BaseModal from '../components/BaseModal.vue';
@@ -127,7 +128,9 @@ import { useToast } from '../composables/useToast';
 
 const toast = useToast();
 const newsList = ref([]);
-const isAdmin = ref(false);
+// isAdmin phải theo authService (user_role) — user.is_admin KHÔNG tồn tại trên
+// bản ghi employee (chỉ có is_super_admin) nên admin không bao giờ thấy nút quản lý.
+const isAdmin = computed(() => authService.canAccessModule('communications'));
 
 const showReadModal = ref(false);
 const showEditModal = ref(false);
@@ -220,14 +223,5 @@ const deleteItem = async (id) => {
   }
 };
 
-onMounted(async () => {
-  // Check admin role from localstorage user info
-  try {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    isAdmin.value = user && user.is_admin;
-  } catch (e) {
-    isAdmin.value = false;
-  }
-  await loadData();
-});
+onMounted(loadData);
 </script>

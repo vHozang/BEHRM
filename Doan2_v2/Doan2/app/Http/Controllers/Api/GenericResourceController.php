@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Generic Resource Controller — xử lý CRUD đơn giản cho các bảng cơ bản / danh mục.
@@ -51,6 +52,10 @@ class GenericResourceController extends Controller
             $query->where($table.'.tenant_id', TenantContext::id());
         }
 
+        if ($table === 'service_tickets' && ! $this->canManageServiceTickets($request)) {
+            $query->where('requester_id', $request->attributes->get('auth_employee_id'));
+        }
+
         foreach ($request->query() as $key => $value) {
             if (Schema::hasColumn($table, $key) && ! in_array($key, ['page', 'per_page'], true)) {
                 $query->where($key, $value);
@@ -63,6 +68,34 @@ class GenericResourceController extends Controller
             return $this->unpackMeta($item, $table);
         }, $page->items());
 
+        // Policies: đính trạng thái ĐÃ KÝ của chính người xem + số lượt ký THẬT.
+        // Thiếu cái này thì NV ký xong (POST acknowledge 200) list vẫn "Chưa xác
+        // nhận" mãi — và acknowledgments_count chỉ là số demo tĩnh trong meta.
+        if ($table === 'policies' && $items) {
+            $empId = $request->attributes->get('auth_employee_id');
+            $ids = array_column($items, 'id');
+            $mine = $empId
+                ? DB::table('policy_acknowledgments')->whereIn('policy_id', $ids)
+                    ->where('employee_id', $empId)->pluck('acknowledged_at', 'policy_id')
+                : collect();
+            $counts = DB::table('policy_acknowledgments')->whereIn('policy_id', $ids)
+                ->selectRaw('policy_id, count(*) n')->groupBy('policy_id')->pluck('n', 'policy_id');
+            foreach ($items as &$it) {
+                $pid = is_array($it) ? $it['id'] : $it->id;
+                $ack = $mine[$pid] ?? null;
+                if (is_array($it)) {
+                    $it['is_acknowledged'] = $ack !== null;
+                    $it['acknowledged_at'] = $ack;
+                    $it['acknowledgments_count'] = (int) ($counts[$pid] ?? 0);
+                } else {
+                    $it->is_acknowledged = $ack !== null;
+                    $it->acknowledged_at = $ack;
+                    $it->acknowledgments_count = (int) ($counts[$pid] ?? 0);
+                }
+            }
+            unset($it);
+        }
+
         return $this->ok([
             'items' => $items,
             'pagination' => [
@@ -74,7 +107,7 @@ class GenericResourceController extends Controller
         ], Str::headline($resource).' list');
     }
 
-    public function show(string $resource, int $id): JsonResponse
+    public function show(Request $request, string $resource, int $id): JsonResponse
     {
         $table = $this->tableOrFail($resource);
         $query = DB::table($table)->where('id', $id);
@@ -86,6 +119,12 @@ class GenericResourceController extends Controller
         $record = $query->first();
 
         if (! $record) {
+            return $this->notFound();
+        }
+
+        if ($table === 'service_tickets'
+            && ! $this->canManageServiceTickets($request)
+            && (int) $record->requester_id !== (int) $request->attributes->get('auth_employee_id')) {
             return $this->notFound();
         }
 
@@ -117,6 +156,11 @@ class GenericResourceController extends Controller
 
         $table = $this->tableOrFail($resource);
         $payload = $this->payloadFor($request, $table);
+
+        if ($table === 'service_tickets') {
+            $payload['requester_id'] = (int) $request->attributes->get('auth_employee_id');
+            $payload['status'] = 'pending';
+        }
 
         // Validate business rules before creating
         $validation = ResourceBusinessRules::validateStore($table, $payload);
@@ -169,22 +213,46 @@ class GenericResourceController extends Controller
 
         $table = $this->tableOrFail($resource);
 
-        // Department hierarchy: reject a parent that would create a cycle
-        // (parent is stored in departments.meta, not a column).
-        if ($table === 'departments') {
-            $newParent = $request->input('parent_id', $request->input('parent_department_id'));
-            if ($newParent !== null && $newParent !== '') {
-                $newParent = (int) $newParent;
-                if ($newParent === (int) $id) {
-                    return $this->validationError(['parent_id' => ['Phòng ban không thể là cha của chính nó']]);
-                }
-                if ($this->departmentAncestryContains($newParent, (int) $id)) {
-                    return $this->validationError(['parent_id' => ['Không thể chọn phòng ban con/cháu làm phòng ban cha (tạo vòng lặp)']]);
-                }
+        if ($table === 'service_tickets' && ! $this->canManageServiceTickets($request)) {
+            $ticket = DB::table($table)->where('id', $id)
+                ->when(TenantContext::hasTenant(), fn ($q) => $q->where('tenant_id', TenantContext::id()))
+                ->first(['requester_id', 'status']);
+            $fields = array_keys($request->except(['id']));
+            if (! $ticket
+                || (int) $ticket->requester_id !== (int) $request->attributes->get('auth_employee_id')
+                || strtolower((string) $ticket->status) !== 'pending'
+                || $fields !== ['status'] || strtolower((string) $request->input('status')) !== 'cancelled') {
+                return response()->json(['status' => 403, 'message' => 'Bạn chỉ có thể hủy ticket đang chờ của mình', 'data' => null], 403);
             }
         }
 
+        if ($table === 'departments' && DB::getDriverName() === 'pgsql') {
+            return DB::transaction(function () use ($request, $resource, $table, $id) {
+                DB::select('SELECT pg_advisory_xact_lock(483072, CAST(? AS integer))', [(int) TenantContext::id()]);
+
+                return $this->updateRecord($request, $resource, $table, $id);
+            });
+        }
+
+        return $this->updateRecord($request, $resource, $table, $id);
+    }
+
+    private function updateRecord(Request $request, string $resource, string $table, int $id): JsonResponse
+    {
+
         $payload = $this->payloadFor($request, $table, $id);
+
+        // parent_id may arrive either flat or inside meta; payloadFor normalizes both.
+        if ($table === 'departments' && isset($payload['meta'])) {
+            $departmentMeta = json_decode($payload['meta'], true) ?: [];
+            $newParent = (int) ($departmentMeta['parent_id'] ?? 0);
+            if ($newParent === (int) $id) {
+                return $this->validationError(['parent_id' => ['Phòng ban không thể là cha của chính nó']]);
+            }
+            if ($newParent && $this->departmentAncestryContains($newParent, (int) $id)) {
+                return $this->validationError(['parent_id' => ['Không thể chọn phòng ban con/cháu làm phòng ban cha (tạo vòng lặp)']]);
+            }
+        }
 
         // Validate business rules before updating
         $validation = ResourceBusinessRules::validateUpdate($table, $id, $payload);
@@ -224,9 +292,13 @@ class GenericResourceController extends Controller
         return $this->ok($this->unpackMeta($afterRow, $table), Str::headline($resource).' updated');
     }
 
-    public function destroy(string $resource, int $id): JsonResponse
+    public function destroy(Request $request, string $resource, int $id): JsonResponse
     {
         $table = $this->tableOrFail($resource);
+
+        if ($table === 'service_tickets') {
+            return $this->conflict(['Ticket cần được chuyển trạng thái hủy để giữ lịch sử xử lý'], Str::headline($resource));
+        }
 
         $scoped = TenantContext::hasTenant() && Schema::hasColumn($table, 'tenant_id');
         $tenantId = TenantContext::id();
@@ -263,6 +335,13 @@ class GenericResourceController extends Controller
     // PRIVATE HELPERS
     // ═══════════════════════════════════════════════════════
 
+    private function canManageServiceTickets(Request $request): bool
+    {
+        $access = (array) $request->attributes->get('access', []);
+
+        return ! empty($access['full']) || in_array('communications', $access['modules'] ?? [], true);
+    }
+
     private function payloadFor(Request $request, string $table, ?int $id = null): array
     {
         $columns = Schema::getColumnListing($table);
@@ -278,14 +357,6 @@ class GenericResourceController extends Controller
                 }
             } else {
                 $meta[$key] = $value;
-            }
-        }
-
-        if ($table === 'departments') {
-            foreach (['parent_id', 'parent_department_id', 'manager_id'] as $deptKey) {
-                if ($request->has($deptKey)) {
-                    $meta[$deptKey] = $request->input($deptKey);
-                }
             }
         }
 
@@ -311,8 +382,23 @@ class GenericResourceController extends Controller
                 }
             }
 
-            // Merge everything
-            $mergedMeta = array_merge($existingMeta, $meta, $requestMeta);
+            $incomingMeta = array_merge($meta, $requestMeta);
+
+            if ($table === 'departments') {
+                if (array_key_exists('parent_id', $incomingMeta) || array_key_exists('parent_department_id', $incomingMeta)) {
+                    $parent = array_key_exists('parent_id', $incomingMeta)
+                        ? $incomingMeta['parent_id']
+                        : $incomingMeta['parent_department_id'];
+                    $parent = $this->departmentReferenceId($parent, 'parent_id', 'departments');
+                    $incomingMeta['parent_id'] = $parent;
+                    $incomingMeta['parent_department_id'] = $parent;
+                }
+                if (array_key_exists('manager_id', $incomingMeta)) {
+                    $incomingMeta['manager_id'] = $this->departmentReferenceId($incomingMeta['manager_id'], 'manager_id', 'employees');
+                }
+            }
+
+            $mergedMeta = array_merge($existingMeta, $incomingMeta);
 
             if (! empty($mergedMeta)) {
                 $payload['meta'] = json_encode($mergedMeta);
@@ -320,6 +406,20 @@ class GenericResourceController extends Controller
         }
 
         return $payload;
+    }
+
+    private function departmentReferenceId(mixed $value, string $field, string $table): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $id = is_bool($value) ? false : filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($id === false || ! TenantContext::ownsRow($table, $id)) {
+            throw ValidationException::withMessages([$field => ['Giá trị tham chiếu không hợp lệ']]);
+        }
+
+        return $id;
     }
 
     /**

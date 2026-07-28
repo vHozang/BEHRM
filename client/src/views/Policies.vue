@@ -139,7 +139,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import BaseButton from '../components/BaseButton.vue';
 import BaseCard from '../components/BaseCard.vue';
 import BaseTable from '../components/BaseTable.vue';
@@ -148,11 +148,13 @@ import BaseInput from '../components/BaseInput.vue';
 import BaseBadge from '../components/BaseBadge.vue';
 import SignaturePad from '../components/SignaturePad.vue';
 import { communicationService } from '../services/communicationService';
+import { authService } from '../services/authService';
 import { useToast } from '../composables/useToast';
 
 const toast = useToast();
 const policies = ref([]);
-const isAdmin = ref(false);
+// isAdmin theo authService (user_role); user.is_admin không tồn tại trên employee.
+const isAdmin = computed(() => authService.canAccessModule('communications'));
 
 const showReadModal = ref(false);
 const showCreateModal = ref(false);
@@ -243,13 +245,5 @@ const deleteItem = async (id) => {
   }
 };
 
-onMounted(async () => {
-  try {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    isAdmin.value = user && user.is_admin;
-  } catch (e) {
-    isAdmin.value = false;
-  }
-  await loadData();
-});
+onMounted(loadData);
 </script>

@@ -34,8 +34,25 @@ class LeaveController extends Controller
 
         $page = $query->paginate($perPage);
 
+        // can_approve theo CẤP duyệt hiện tại của từng đơn (đa cấp: Quản lý→HR…). FE chỉ
+        // hiện nút Duyệt/Từ chối cho đúng người duyệt cấp này (backend vẫn chặn nếu sai).
+        // ponytail: cannotApprove() có truy vấn role — N+1 nhỏ (list ≤100, không hot path).
+        $approverId = $request->attributes->get('auth_employee_id');
+        $items = $page->items();
+        foreach ($items as $item) {
+            $pending = in_array($item->status, ['PENDING', 'CHỜ_DUYỆT'], true);
+            $notSelf = $approverId !== null && (int) $item->employee_id !== (int) $approverId;
+            if ($pending && $notSelf) {
+                $meta = is_string($item->meta) ? (json_decode($item->meta, true) ?: []) : (array) ($item->meta ?? []);
+                $meta = ApprovalFlow::ensure($meta, 'leave');
+                $item->can_approve = ApprovalFlow::cannotApprove($meta, $approverId) === null;
+            } else {
+                $item->can_approve = false;
+            }
+        }
+
         return $this->ok([
-            'items' => $page->items(),
+            'items' => $items,
             'pagination' => [
                 'current_page' => $page->currentPage(),
                 'per_page' => $page->perPage(),
@@ -171,7 +188,9 @@ class LeaveController extends Controller
         $columns = Schema::getColumnListing('leave_requests');
         $data = collect($request->all())->only($columns)->toArray();
         $data['total_days'] = $totalDays;
-        $data['status'] = $data['status'] ?? 'PENDING';
+        // Đơn tạo mới LUÔN ở PENDING — không cho client tự set APPROVED để bỏ qua
+        // duyệt + né trừ số dư phép (chỉ approve() mới chuyển trạng thái + trừ quota).
+        $data['status'] = 'PENDING';
 
         // Persist classification + reason in meta (payroll reads `paid`; no `reason` column).
         $meta = [];
@@ -231,8 +250,10 @@ class LeaveController extends Controller
             ]);
         }
 
+        // 'status' bị loại: sửa đơn KHÔNG được đổi trạng thái (duyệt/từ chối/hủy
+        // đi qua approve/reject/cancel riêng) — tránh tự duyệt qua PATCH.
         $columns = Schema::getColumnListing('leave_requests');
-        $data = collect($request->except(['id', 'created_at', 'updated_at']))->only($columns)->toArray();
+        $data = collect($request->except(['id', 'created_at', 'updated_at', 'status']))->only($columns)->toArray();
 
         $leave->update($data);
 
@@ -299,6 +320,15 @@ class LeaveController extends Controller
         }
 
         DB::transaction(function () use ($leave, $approverId, $meta) {
+            // Chống double-spend (TOCTOU): khoá hàng đơn + xác nhận lại PENDING BÊN
+            // TRONG transaction. Hai request duyệt đồng thời sẽ nối tiếp nhau qua
+            // lockForUpdate; request thứ 2 thấy đã APPROVED → thoát, không trừ quota
+            // lần nữa. (Đã kiểm chứng: trước fix, 3 duyệt song song trừ 3× số ngày.)
+            $locked = DB::table('leave_requests')->where('id', $leave->id)->lockForUpdate()->first();
+            if (! $locked || ! in_array((string) $locked->status, ['PENDING', 'CHỜ_DUYỆT'], true)) {
+                return;
+            }
+
             $meta['approved_by'] = $approverId;
             $meta['approved_at'] = now()->toIso8601String();
 
@@ -444,6 +474,22 @@ class LeaveController extends Controller
             return $this->validationError(['status' => ['Đơn không ở trạng thái chờ duyệt']]);
         }
 
+        $approverId = $request->attributes->get('auth_employee_id');
+
+        // Người tạo đơn không tự từ chối (muốn bỏ thì dùng Hủy đơn).
+        if ($approverId !== null && (int) $leave->employee_id === (int) $approverId) {
+            return $this->validationError(['approver_id' => ['Người tạo đơn không thể tự từ chối đơn của mình']]);
+        }
+
+        // Từ chối cũng là quyết định của CẤP duyệt hiện tại → phải giữ đúng vai trò cấp này,
+        // giống approve(). Trước đây reject KHÔNG kiểm tra gì → bất kỳ ai chạm endpoint cũng
+        // từ chối được đơn của người khác, bỏ qua toàn bộ duyệt đa cấp.
+        $rmeta = is_string($leave->meta) ? (json_decode($leave->meta, true) ?: []) : (array) ($leave->meta ?? []);
+        $rmeta = ApprovalFlow::ensure($rmeta, 'leave');
+        if ($err = ApprovalFlow::cannotApprove($rmeta, $approverId)) {
+            return $this->validationError(['approver_id' => [$err]]);
+        }
+
         // rejection_reason has no column — preserve it (and the approver) in meta.
         $leave->update([
             'status' => 'REJECTED',
@@ -545,6 +591,9 @@ class LeaveController extends Controller
     public function accrualRun(Request $request): JsonResponse
     {
         $year = (int) ($request->input('year') ?: now()->year);
+        if ($year < 2000 || $year > 2100) {
+            return $this->validationError(['year' => ['Năm không hợp lệ (2000–2100)']]);
+        }
 
         $summary = $this->leavePolicy->recomputeBalances(TenantContext::id(), $year);
 
@@ -591,9 +640,12 @@ class LeaveController extends Controller
 
         // Resolve the EXACT request-year balance row — no cross-year fallback, so
         // a deduction/refund can never land on a different year's balance.
+        // lockForUpdate: khoá hàng số dư trong suốt transaction để read-modify-write
+        // không bị mất cập nhật khi 2 đơn KHÁC nhau của cùng NV được duyệt song song.
         $balance = LeaveBalance::where('employee_id', $leave->employee_id)
             ->where('leave_type_id', $leave->leave_type_id)
             ->where('year', $year)
+            ->lockForUpdate()
             ->first();
 
         $before = $balance ? (float) $balance->remaining_days : 0.0;

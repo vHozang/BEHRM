@@ -453,7 +453,7 @@ onMounted(async () => {
     ];
 
     if (isAdmin.value) {
-      promises.push(employeeService.getAll().catch(() => []));
+      promises.push(employeeService.getLookup().catch(() => []));
     }
 
     const results = await Promise.all(promises);

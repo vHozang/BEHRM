@@ -11,8 +11,11 @@ use App\Support\ContractRenderer;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
@@ -20,7 +23,7 @@ class ContractController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
+        $perPage = min(max((int) $request->query('per_page', 50), 1), 100);
 
         $query = Contract::with([
             'employee:id,full_name,employee_code',
@@ -31,6 +34,33 @@ class ContractController extends Controller
         foreach (['employee_id', 'status', 'contract_type_id', 'department_id'] as $field) {
             if ($request->filled($field)) {
                 $query->where($field, $request->query($field));
+            }
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->query('search');
+            $operator = DB::connection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+            $query->where(function ($query) use ($search, $operator) {
+                $query->where('contract_number', $operator, "%{$search}%")
+                    ->orWhereHas('employee', fn ($employee) => $employee
+                        ->where('full_name', $operator, "%{$search}%")
+                        ->orWhere('employee_code', $operator, "%{$search}%"));
+            });
+        }
+
+        $terminated = ['TERMINATED', 'INACTIVE', 'HẾT_HIỆU_LỰC', 'ĐÃ_CHẤM_DỨT', 'CANCELLED'];
+        $today = now()->toDateString();
+        if ($request->filled('bucket')) {
+            $bucket = $request->query('bucket');
+            if ($bucket === 'active') {
+                $query->whereNotIn('status', $terminated)
+                    ->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>=', $today));
+            } elseif (in_array($bucket, ['expiring30', 'expiring60'], true)) {
+                $days = $bucket === 'expiring30' ? 30 : 60;
+                $query->whereNotIn('status', $terminated)
+                    ->whereBetween('end_date', [$today, now()->addDays($days)->toDateString()]);
+            } elseif ($bucket === 'expired') {
+                $query->where(fn ($q) => $q->whereIn('status', $terminated)->orWhere('end_date', '<', $today));
             }
         }
 
@@ -47,12 +77,26 @@ class ContractController extends Controller
         ], 'Contracts list');
     }
 
+    /** Lightweight lifecycle data used by summary cards and renewal checks. */
+    public function lookup(): JsonResponse
+    {
+        $contracts = DB::table('contracts as contracts')
+            ->leftJoin('contract_types as contract_type', 'contract_type.id', '=', 'contracts.contract_type_id')
+            ->when(TenantContext::hasTenant(), fn ($query) => $query->where('contracts.tenant_id', TenantContext::id()))
+            ->select(['contracts.employee_id', 'contracts.status', 'contracts.end_date', 'contract_type.contract_type_name'])
+            ->orderByDesc('contracts.id')
+            ->get();
+
+        return $this->ok($contracts, 'Contract lookup');
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
             'employee_id' => 'required|exists:employees,id',
             'start_date' => 'required|date',
             'contract_type_id' => 'nullable|exists:contract_types,id',
+            'meta' => 'nullable|array',
         ], [
             'employee_id.required' => 'Mã nhân viên là bắt buộc',
             'employee_id.exists' => 'Nhân viên không tồn tại',
@@ -154,6 +198,7 @@ class ContractController extends Controller
             'contract_type_id' => 'nullable|exists:contract_types,id',
             'department_id' => 'nullable|exists:departments,id',
             'position_id' => 'nullable|exists:positions,id',
+            'meta' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
@@ -171,6 +216,10 @@ class ContractController extends Controller
 
         $columns = Schema::getColumnListing('contracts');
         $data = collect($request->except(['id', 'created_at', 'updated_at']))->only($columns)->toArray();
+
+        if (isset($data['meta']) && is_array($data['meta'])) {
+            $data['meta'] = array_replace($contract->meta ?? [], $data['meta']);
+        }
 
         $contract->update($data);
 
@@ -253,15 +302,9 @@ class ContractController extends Controller
             return $this->notFound();
         }
 
-        $violations = $contract->deletionViolations();
-
-        if (! empty($violations)) {
-            return $this->conflict($violations, 'Hợp đồng');
-        }
-
-        $contract->delete();
-
-        return $this->ok(['id' => $id], 'Hợp đồng đã được xóa');
+        return $this->conflict([
+            'Hợp đồng lao động là hồ sơ lịch sử; hãy dùng chức năng Chấm dứt thay vì xóa',
+        ], 'Hợp đồng');
     }
 
     /**
@@ -475,11 +518,26 @@ class ContractController extends Controller
         ];
         $contract->update(['meta' => $meta]);
 
-        return $this->ok([
+        // Gửi OTP qua email của nhân viên chủ hợp đồng. Driver 'log' (dev) ghi
+        // vào laravel.log; production dùng SMTP. dev_otp trong response chỉ còn
+        // khi APP_DEBUG=true (đã siết trước đó).
+        $email = DB::table('employees')->where('id', $contract->employee_id)->value('company_email');
+        if ($email) {
+            try {
+                Mail::raw(
+                    "Mã OTP xác nhận ký hợp đồng của bạn là: {$otp}\nMã có hiệu lực trong 10 phút.\n\n— Hệ thống HRM",
+                    fn ($m) => $m->to($email)->subject('Mã OTP ký hợp đồng HRM')
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Gửi OTP hợp đồng thất bại: '.$e->getMessage());
+            }
+        }
+
+        return $this->ok(array_merge([
             'sent' => true,
             'expires_in' => 600,
-            'dev_otp' => $otp, // DEMO: production sẽ gửi qua email/SMS, không trả về đây
-        ], 'Đã gửi mã OTP xác nhận');
+            // DEV only: production (APP_DEBUG=false) gửi OTP qua email/SMS, không trả về response.
+        ], config('app.debug') ? ['dev_otp' => $otp] : []), 'Đã gửi mã OTP xác nhận');
     }
 
     /**
@@ -510,7 +568,7 @@ class ContractController extends Controller
         if (! is_array($otpRec) || empty($otpRec['hash'])) {
             return $this->validationError(['otp' => ['Chưa yêu cầu mã OTP hoặc mã đã hết hiệu lực']]);
         }
-        if (now()->greaterThan(\Illuminate\Support\Carbon::parse($otpRec['expires_at']))) {
+        if (now()->greaterThan(Carbon::parse($otpRec['expires_at']))) {
             return $this->validationError(['otp' => ['Mã OTP đã hết hạn, vui lòng yêu cầu lại']]);
         }
         if (! Hash::check($request->input('otp'), $otpRec['hash'])) {

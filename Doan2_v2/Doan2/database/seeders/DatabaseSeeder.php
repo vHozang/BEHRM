@@ -15,24 +15,50 @@ class DatabaseSeeder extends Seeder
         DB::table('roles')->updateOrInsert(
             ['role_code' => 'ADMIN'],
             [
-                'tenant_id' => 1,
                 'role_name' => 'Administrator',
                 'description' => 'System administrator',
                 'is_system_role' => 'true',
+                'tenant_id' => 1,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
         );
 
+        // RBAC access theo role (roles.meta). BẮT BUỘC set — AccessControl fail-OPEN
+        // khi meta thiếu key 'modules' (coi như full admin), nên role không cấu hình
+        // = mọi nhân viên thành admin. Set tường minh để đóng lỗ hổng đó.
+        $roleMeta = [
+            'ADMIN' => ['is_admin' => true],
+            'HR' => ['modules' => ['hr', 'time', 'recruitment', 'communications']],
+            'MANAGER' => ['modules' => ['time']],
+            'ACCOUNTANT' => ['modules' => ['payroll']],
+            'EMPLOYEE' => ['modules' => []],
+        ];
+        foreach ($roleMeta as $code => $meta) {
+            DB::table('roles')->where('role_code', $code)
+                ->update(['meta' => json_encode($meta), 'updated_at' => now()]);
+        }
+
+        // An (NV0001) = tài khoản admin demo → cần role ADMIN (org phẳng nên không
+        // tự có quyền admin sau khi meta được cấu hình đúng).
+        $adminRoleId = DB::table('roles')->where('role_code', 'ADMIN')->value('id');
+        $an = DB::table('employees')->where('company_email', 'an.nguyen@company.com')->value('id');
+        if ($adminRoleId && $an) {
+            DB::table('employee_roles')->updateOrInsert(
+                ['employee_id' => $an, 'role_id' => $adminRoleId],
+                ['is_active' => 'true', 'tenant_id' => 1, 'created_at' => now(), 'updated_at' => now()],
+            );
+        }
+
         DB::table('employees')->updateOrInsert(
             ['company_email' => 'admin@company.com'],
             [
-                'tenant_id' => 1,
-                'legal_entity_id' => 1,
                 'employee_code' => 'AD0001',
                 'full_name' => 'System Administrator',
                 'password_hash' => Hash::make('password'),
                 'status' => 'ACTIVE',
+                'tenant_id' => 1,
+                'legal_entity_id' => 1,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -44,13 +70,58 @@ class DatabaseSeeder extends Seeder
         DB::table('employee_roles')->updateOrInsert(
             ['employee_id' => $employeeId, 'role_id' => $roleId],
             [
-                'tenant_id' => 1,
                 'is_active' => 'true',
+                'tenant_id' => 1,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
         );
 
+        // Demo passwords (nút đăng nhập nhanh ở Login.vue) — bền qua reseed.
+        foreach ([
+            'an.nguyen@company.com' => 'test1234',
+            'cuong.le@company.com' => 'demo1234',
+            'mai.tran@company.com' => 'demo1234',
+            'huong.pham@company.com' => 'demo1234',
+        ] as $email => $pw) {
+            DB::table('employees')->where('company_email', $email)
+                ->update(['password_hash' => Hash::make($pw), 'updated_at' => now()]);
+        }
+
+        $this->call(SeedDepartmentMetaSeeder::class);
+        $this->call(LeaveTypeStatutorySeeder::class);
+        $this->call(DemoCoverageSeeder::class);
         $this->call(DashboardDemoSeeder::class);
+        $this->call(ScaleWorkerSeeder::class);
+        $this->call(EnrichWorkerProfilesSeeder::class);
+        $this->call(StandardizeAttendanceSeeder::class);
+        $this->call(LiveTodayAttendanceSeeder::class);
+        $this->call(SeedDemoOvertimeSeeder::class);
+        $this->call(BackfillEmployeeProfilesSeeder::class);
+        $this->call(FixDemoDataConsistencySeeder::class);
+        $this->call(BackfillEmployeeBaseSalarySeeder::class);
+        $this->call(StandardizePayrollSeeder::class);
+
+        // Tài khoản demo KẾ TOÁN (role ACCOUNTANT → chỉ module payroll). phuc.trinh
+        // (NV0013) do DemoCoverageSeeder tạo nên gán ở đây, sau khi seeder đã chạy.
+        $accountantRoleId = DB::table('roles')->where('role_code', 'ACCOUNTANT')->value('id');
+        $phuc = DB::table('employees')->where('company_email', 'phuc.trinh@company.com')->value('id');
+        if ($accountantRoleId && $phuc) {
+            DB::table('employee_roles')->updateOrInsert(
+                ['employee_id' => $phuc, 'role_id' => $accountantRoleId],
+                ['is_active' => 'true', 'tenant_id' => 1, 'created_at' => now(), 'updated_at' => now()],
+            );
+            DB::table('employees')->where('id', $phuc)
+                ->update(['password_hash' => Hash::make('ketoan1234'), 'updated_at' => now()]);
+        }
+
+        // Cấp/đối soát số dư phép năm HIỆN TẠI cho mọi nhân viên của từng tenant.
+        // BẮT BUỘC: thiếu balance năm N thì nhân viên KHÔNG xin nghỉ phép năm được
+        // (LeaveController::store chặn "chưa có số dư phép cho năm N") → hỏng luồng
+        // self-service ngay ngày đầu deploy. Đây là dữ liệu, không phải cấu hình.
+        $leavePolicy = app(\App\Services\LeavePolicyService::class);
+        foreach (DB::table('tenants')->pluck('id') as $tenantId) {
+            $leavePolicy->recomputeBalances((int) $tenantId, (int) now()->year);
+        }
     }
 }

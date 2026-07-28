@@ -93,7 +93,6 @@ class HrmTables
 
             // ─── Tuyển dụng (phụ) ────────────────────────────
             'recruitment-positions' => 'recruitment_positions',
-            'recruitment-posts' => 'recruitment_posts',
 
             // ─── IAM ─────────────────────────────────────────
             'employee-roles' => 'employee_roles',

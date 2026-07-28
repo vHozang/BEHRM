@@ -1,39 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
 
-const ADMIN_ONLY_ROUTES = [
-  '/employees',
-  '/departments',
-  '/roles',
-  '/job-titles',
-  '/job-families',
-  '/employment-history',
-  '/dependents',
-  '/onboarding',
-  '/salary-components',
-  '/recruitment',
-  '/recruitment-positions',
-  '/interviews',
-  '/contracts',
-  '/assets',
-  '/asset-assignments',
-  '/shift-roster',
-  '/timesheet',
-  '/piece-rate',
-  '/report-builder',
-  '/requests',
-  '/overtime-requests',
-  '/shift-swaps',
-  '/shifts',
-  '/shift-coverage',
-  '/attendance-adjustments',
-  '/holidays',
-  '/legal-entities',
-  '/audit-logs',
-  '/platform/tenants',
-  '/settings',
-  '/attendance-devices'
-];
-
 const routes = [
   {
     path: '/',
@@ -125,9 +91,15 @@ const routes = [
         meta: { title: 'Đơn đổi thông tin nhân sự', adminOnly: true }
       },
       {
+        path: 'personnel-decisions',
+        name: 'personnel-decisions',
+        component: () => import('../views/PersonnelDecisions.vue'),
+        meta: { title: 'Quyết định nhân sự', adminOnly: true }
+      },
+      {
         path: 'work-shifts',
         name: 'work-shifts',
-        component: () => import('../views/WorkShifts.vue'),
+        redirect: '/shifts',
         meta: { title: 'Ca làm việc', adminOnly: true }
       },
       {
@@ -307,6 +279,20 @@ const routes = [
     ]
   },
   {
+    // Mobile shell (T8, Grab-style) — self-service cho nhân viên, tái dùng
+    // service/API hiện có; bottom-tab 5 mục.
+    path: '/m',
+    component: () => import('../views/mobile/MobileLayout.vue'),
+    meta: { requiresAuth: true },
+    children: [
+      { path: '', name: 'm-home', component: () => import('../views/mobile/MHome.vue'), meta: { title: 'Trang chủ' } },
+      { path: 'attendance', name: 'm-attendance', component: () => import('../views/mobile/MAttendance.vue'), meta: { title: 'Chấm công' } },
+      { path: 'requests', name: 'm-requests', component: () => import('../views/mobile/MRequests.vue'), meta: { title: 'Đơn từ' } },
+      { path: 'salary', name: 'm-salary', component: () => import('../views/mobile/MSalary.vue'), meta: { title: 'Phiếu lương' } },
+      { path: 'me', name: 'm-me', component: () => import('../views/mobile/MProfile.vue'), meta: { title: 'Tôi' } }
+    ]
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('../views/Login.vue')
@@ -314,8 +300,7 @@ const routes = [
   {
     path: '/employee/info',
     name: 'EmployeeInfo',
-    component: () => import('../views/EmployeeInfo.vue'),
-    meta: { title: 'Thông tin Nhân viên' }
+    redirect: '/employee-portal'
   }
 ];
 
@@ -346,16 +331,35 @@ router.beforeEach((to, from, next) => {
       return;
     }
 
+    if (to.path.startsWith('/platform/')) {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const isSuperAdmin = user?.is_super_admin === true || user?.is_super_admin === 1 || user?.is_super_admin === 't';
+      if (!isSuperAdmin) {
+        next('/');
+        return;
+      }
+    }
+
+    // Màn hình nhỏ → nhân viên vào portal được chuyển sang bản mobile /m
+    // (trừ khi đã chọn "Dùng bản đầy đủ"). Admin giữ desktop shell.
+    if (to.path === '/employee-portal' && !isAdmin && window.innerWidth < 768
+        && !localStorage.getItem('prefer_desktop')) {
+      next('/m');
+      return;
+    }
+
     // Module-based access (role-based RBAC): block admin pages whose module the
     // user's roles don't grant. Mirrors the backend ModuleAccess middleware.
     const ROUTE_MODULE = [
       ['/employees', 'hr'], ['/organization-chart', 'hr'], ['/contracts', 'hr'], ['/onboarding', 'hr'],
-      ['/employment-history', 'hr'], ['/dependents', 'hr'], ['/departments', 'hr'],
-      ['/attendance', 'time'], ['/timesheet', 'time'], ['/shifts', 'time'], ['/attendance-adjustments', 'time'], ['/leaves', 'time'],
+      ['/employment-history', 'hr'], ['/profile-change-requests', 'hr'], ['/dependents', 'hr'], ['/departments', 'hr'],
+      ['/personnel-decisions', 'hr'],
+      ['/assets', 'hr'], ['/asset-assignments', 'hr'],
+      ['/attendance', 'time'], ['/timesheet', 'time'], ['/shifts', 'time'], ['/shift-roster', 'time'], ['/work-schedules', 'time'],
+      ['/attendance-adjustments', 'time'], ['/leaves', 'time'],
       ['/overtime-requests', 'time'], ['/shift-swaps', 'time'], ['/shift-coverage', 'time'], ['/requests', 'time'], ['/holidays', 'time'],
       ['/salaries', 'payroll'], ['/salary-components', 'payroll'], ['/report-builder', 'payroll'], ['/piece-rate', 'payroll'],
       ['/recruitment', 'recruitment'], ['/recruitment-positions', 'recruitment'], ['/interviews', 'recruitment'],
-      ['/news', 'communications'], ['/policies', 'communications'],
       ['/job-families', 'settings'], ['/job-titles', 'settings'], ['/legal-entities', 'settings'],
       ['/audit-logs', 'settings'], ['/roles', 'settings'], ['/settings', 'settings'],
       ['/attendance-devices', 'settings']
@@ -366,6 +370,11 @@ router.beforeEach((to, from, next) => {
         const a = JSON.parse(localStorage.getItem('access') || '{}');
         access = { full: a.full === true, modules: Array.isArray(a.modules) ? a.modules : [], enabled: Array.isArray(a.enabled) ? a.enabled : null };
       } catch {}
+      const canUseDashboard = access.full || access.modules.some(m => ['hr', 'time', 'recruitment'].includes(m));
+      if (to.path === '/' && !canUseDashboard) {
+        next(access.modules.includes('payroll') ? '/salaries' : '/employee-portal');
+        return;
+      }
       const match = ROUTE_MODULE.find(([p]) => to.path === p || to.path.startsWith(p + '/'));
       if (match) {
         const mod = match[1];

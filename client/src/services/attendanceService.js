@@ -16,14 +16,16 @@ const attendanceStatusMap = {
   'VỀ SỚM': 'early',
   ABSENT: 'absent',
   'VẮNG': 'absent',
-  'NGHỈ': 'absent'
+  'NGHỈ': 'absent',
+  HALF_DAY: 'half_day'
 };
 
 const toBackendAttendanceStatus = {
   present: 'ON_TIME',
   late: 'LATE',
   early: 'EARLY_LEAVE',
-  absent: 'ABSENT'
+  absent: 'ABSENT',
+  half_day: 'HALF_DAY'
 };
 
 function normalizeAttendance(record) {
@@ -73,9 +75,23 @@ export const attendanceService = {
     return attendanceService.getRecords(params);
   },
 
-  getRecords: async (params) => {
-    const response = await axiosClient.get('/attendances', { params });
-    return normalizeAttendanceList(response.data);
+  getRecords: async (params = {}) => {
+    const records = [];
+    const query = { ...params };
+    if (query.status) query.status = toBackendAttendanceStatus[query.status] || query.status;
+    let page = 1;
+    let lastPage;
+
+    do {
+      const response = await axiosClient.get('/attendances', {
+        params: { ...query, per_page: 100, page }
+      });
+      records.push(...(Array.isArray(response.data) ? response.data : []));
+      lastPage = Number(response.pagination?.last_page || 1);
+      page++;
+    } while (page <= lastPage);
+
+    return normalizeAttendanceList(records);
   },
 
   checkIn: async (employee_id, geo = {}) => {

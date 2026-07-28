@@ -75,7 +75,7 @@
               {{ isAdmin ? 'Xử lý' : 'Xem chi tiết' }}
             </button>
             <button 
-              v-if="isAdmin || item.status === 'pending'"
+              v-if="item.status === 'pending'"
               @click="deleteItem(item.id)" 
               class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
             >
@@ -196,11 +196,12 @@ import BaseInput from '../components/BaseInput.vue';
 import BaseBadge from '../components/BaseBadge.vue';
 import ApprovalTimeline from '../components/ApprovalTimeline.vue';
 import { serviceTicketService } from '../services/serviceTicketService';
+import { authService } from '../services/authService';
 import { useToast } from '../composables/useToast';
 
 const toast = useToast();
 const tickets = ref([]);
-const isAdmin = ref(false);
+const isAdmin = computed(() => authService.canAccessModule('communications'));
 
 const showCreateModal = ref(false);
 const showDetailModal = ref(false);
@@ -243,7 +244,9 @@ const form = ref({
 
 const loadData = async () => {
   try {
-    const res = await serviceTicketService.getAllTickets();
+    const user = authService.getUser();
+    const params = isAdmin.value ? { per_page: 100 } : { requester_id: user?.id, per_page: 100 };
+    const res = await serviceTicketService.getAllTickets(params);
     tickets.value = res?.data || res || [];
   } catch (err) {
     console.error('Error loading tickets:', err);
@@ -272,10 +275,9 @@ const submitCreateTicket = async () => {
     return;
   }
   try {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
     const data = {
       ...form.value,
-      employee_id: user.employee_id || user.id || 1,
+      requester_id: authService.getUser()?.id,
       ticket_code: `TK${Date.now().toString().slice(-6)}`,
       status: 'pending'
     };
@@ -313,7 +315,7 @@ const submitHandleTicket = async () => {
 const deleteItem = async (id) => {
   if (!confirm('Bạn có chắc chắn muốn hủy yêu cầu hỗ trợ này?')) return;
   try {
-    await serviceTicketService.deleteTicket(id);
+    await serviceTicketService.updateTicket(id, { status: 'cancelled' });
     toast.success('Đã hủy yêu cầu hỗ trợ');
     await loadData();
   } catch (err) {
@@ -383,6 +385,7 @@ const getStatusLabel = (status) => {
     case 'pending': return 'Chờ tiếp nhận';
     case 'processing': return 'Đang xử lý';
     case 'completed': return 'Đã xong';
+    case 'cancelled': return 'Đã hủy';
     default: return 'Chờ';
   }
 };
@@ -392,17 +395,10 @@ const getStatusVariant = (status) => {
     case 'pending': return 'warning';
     case 'processing': return 'info';
     case 'completed': return 'success';
+    case 'cancelled': return 'secondary';
     default: return 'secondary';
   }
 };
 
-onMounted(async () => {
-  try {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    isAdmin.value = user && user.is_admin;
-  } catch (e) {
-    isAdmin.value = false;
-  }
-  await loadData();
-});
+onMounted(loadData);
 </script>

@@ -38,6 +38,13 @@ class OrganizationChartRepository
         ?int $rootEmployeeId = null,
         int $maxDepth = 10
     ): Collection {
+        // The production query uses PostgreSQL arrays/operators. Feature tests
+        // use SQLite in-memory, so keep the same behavior with a small in-PHP
+        // traversal rather than making the endpoint database-specific.
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return $this->getTreePortable($rootEmployeeId, $maxDepth);
+        }
+
         // ── WITH RECURSIVE: Giải thích cú pháp ─────────────────────────────
         //
         // Cấu trúc CTE đệ quy gồm 2 phần nối bởi UNION ALL:
@@ -141,6 +148,49 @@ class OrganizationChartRepository
         return collect($results);
     }
 
+    private function getTreePortable(?int $rootEmployeeId, int $maxDepth): Collection
+    {
+        $tenantId = TenantContext::hasTenant() ? TenantContext::id() : null;
+        $rows = DB::table('employees as e')
+            ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
+            ->leftJoin('positions as p', 'p.id', '=', 'e.position_id')
+            ->where('e.status', '!=', 'TERMINATED')
+            ->when($tenantId !== null, fn ($q) => $q->where('e.tenant_id', $tenantId))
+            ->get([
+                'e.id', 'e.employee_code', 'e.full_name', 'e.manager_id', 'e.status',
+                'e.department_id', 'e.position_id', 'd.department_name', 'p.position_name',
+            ]);
+
+        $byManager = $rows->groupBy(fn ($row) => $row->manager_id === null ? 'root' : (string) $row->manager_id);
+        $roots = $rootEmployeeId !== null
+            ? $rows->filter(fn ($row) => (int) $row->id === $rootEmployeeId)
+            : ($byManager->get('root') ?? collect());
+        $result = collect();
+
+        $visit = function ($row, int $depth, array $path) use (&$visit, &$result, $byManager, $maxDepth): void {
+            $id = (int) $row->id;
+            if (in_array($id, $path, true) || $depth > $maxDepth) {
+                return;
+            }
+
+            $nextPath = [...$path, $id];
+            $result->push((object) array_merge((array) $row, [
+                'depth' => $depth,
+                'path_string' => implode('.', $nextPath),
+            ]));
+
+            foreach ($byManager->get((string) $id, collect()) as $child) {
+                $visit($child, $depth + 1, $nextPath);
+            }
+        };
+
+        foreach ($roots as $root) {
+            $visit($root, 0, []);
+        }
+
+        return $result;
+    }
+
     /**
      * Lấy cây tổ chức dạng nested (tree structure) thay vì flat list.
      * Phù hợp để render UI org chart, export JSON.
@@ -150,6 +200,24 @@ class OrganizationChartRepository
     public function getNestedTree(?int $rootEmployeeId = null): array
     {
         $flatList = $this->getTree($rootEmployeeId);
+
+        // Sơ đồ tổ chức = cây QUẢN LÝ + văn phòng. KHÔNG nhồi công nhân sản xuất
+        // (số lượng lớn làm rối, mất ý nghĩa quản trị). Loại các chức danh trong
+        // org_chart.exclude_positions (mặc định 'CN' = Công nhân) — chỉ ở bản VẼ này;
+        // getTree (phạm vi duyệt đơn, kiểm vòng lặp) vẫn giữ đủ mọi người.
+        $excludeCodes = (array) \App\Support\HrmConfig::get('org_chart.exclude_positions', ['CN']);
+        if (! empty($excludeCodes)) {
+            $tenantId = TenantContext::hasTenant() ? TenantContext::id() : null;
+            $excludedIds = DB::table('positions')
+                ->when($tenantId !== null, fn ($q) => $q->where('tenant_id', $tenantId))
+                ->whereIn('position_code', $excludeCodes)
+                ->pluck('id')->map(fn ($id) => (int) $id)->all();
+            if (! empty($excludedIds)) {
+                $flatList = $flatList
+                    ->reject(fn ($e) => in_array((int) $e->position_id, $excludedIds, true))
+                    ->values();
+            }
+        }
 
         // Kiêm nhiệm (matrix / dotted-line): với mỗi nhân viên trong cây, lấy các
         // phòng ban PHỤ từ pivot employee_departments. Chỉ 1 query bulk (tránh N+1),

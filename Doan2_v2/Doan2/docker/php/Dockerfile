@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/zz-hrm-opcache.ini
 
 RUN groupadd -g ${GID} laravel \
     && useradd -u ${UID} -g laravel -m laravel
