@@ -11,14 +11,17 @@ ssh-keygen -t ed25519 -C "github-actions-hrm" -f ~/.ssh/hrm_github_actions
 cat ~/.ssh/hrm_github_actions.pub
 ```
 
-Trên VPS, chạy provisioning bằng **public key** vừa in ra (không dùng private key):
+Trên VPS, clone tạm repository rồi chạy provisioning bằng **public key** vừa in ra (không dùng private key):
 
 ```bash
+PROVISION_DIR="$(mktemp -d /tmp/hrm-provision.XXXXXX)"
+git clone --branch production --single-branch https://github.com/vHozang/BEHRM.git "$PROVISION_DIR"
+cd "$PROVISION_DIR"
 export DEPLOY_PUBLIC_KEY='ssh-ed25519 AAAA... github-actions-hrm'
 bash deploy/provision-vps.sh
 ```
 
-Script tạo user `deloy`, thêm user vào nhóm `docker`, tạo `/opt/hrm`, và cài `authorized_keys`. Không đặt mật khẩu hoặc private key trong Git.
+Script tạo user `deloy`, thêm user vào nhóm `docker`, clone production vào `/opt/hrm`, và cài `authorized_keys`. Không đặt mật khẩu hoặc private key trong Git.
 
 Tạo file production secrets trên VPS:
 
