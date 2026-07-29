@@ -2,6 +2,36 @@
 
 Repository source duy nhất là `vHozang/BEHRM`, branch triển khai là `production`.
 
+VPS production không chạy `resume-backend`; service này có profile `resume` và chỉ bật trên máy local bằng `docker compose --profile resume up -d resume-backend` khi cần.
+
+## Tailscale cho resume-backend local
+
+Đăng nhập VPS bằng `root` và cài Tailscale:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+systemctl enable --now tailscaled
+tailscale up
+tailscale ip -4
+```
+
+Mở URL xác thực Tailscale nếu `tailscale up` yêu cầu. Không commit hoặc gửi auth key vào Git. Kiểm tra kết nối tới hai máy local:
+
+```bash
+tailscale ping 100.95.129.101
+tailscale ping 100.105.84.89
+```
+
+Chạy resume backend trên máy đang test với bind `0.0.0.0:8000`, sau đó kiểm tra từ VPS:
+
+```bash
+curl -fsS http://100.95.129.101:8000/health
+```
+
+VPS dùng Windows làm endpoint mặc định qua `AUTORECRUIT_URL=http://100.95.129.101:8000`; đổi sang `100.105.84.89` nếu chạy service trên Mac. Cần cho phép TCP/8000 trên interface Tailscale của máy local.
+
+Domain API production là `devtapcode.io.vn`. DNS phải trỏ tới `180.93.42.137`; sau khi có TLS, đặt frontend `VITE_API_BASE_URL=https://devtapcode.io.vn/api/v1` và `APP_URL=https://devtapcode.io.vn`.
+
 ## 0. Nếu VPS đã đổi host key
 
 Khi VPS được tạo lại nhưng giữ nguyên IP, SSH có thể báo `REMOTE HOST IDENTIFICATION HAS CHANGED`. Trước khi xóa key cũ, đối chiếu fingerprint với console của nhà cung cấp VPS. Fingerprint hiện VPS đang trình bày là:

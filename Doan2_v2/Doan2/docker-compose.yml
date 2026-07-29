@@ -99,6 +99,7 @@ services:
       - hrm_network
 
   resume-backend:
+    profiles: [resume]
     image: hrm-resume-backend:local
     build:
       context: ../../AutoRecruit-main

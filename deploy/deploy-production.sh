@@ -36,7 +36,7 @@ docker compose run --rm --no-deps --user root php composer install --no-dev --no
 
 # Prevent workers from reading a new release before its migrations finish.
 docker compose stop worker scheduler >/dev/null 2>&1 || true
-docker compose up -d php nginx resume-backend
+docker compose up -d php nginx
 docker compose exec -T php php artisan migrate --force
 docker compose exec -T php php artisan optimize:clear
 docker compose exec -T php php artisan config:cache
