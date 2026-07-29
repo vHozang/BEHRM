@@ -60,6 +60,28 @@ export const recruitmentService = {
     return response.data;
   },
 
+  // --- Recruitment post publishing ---
+  getRecruitmentPosts: async (params) => {
+    const response = await axiosClient.get('/recruitment-posts', { params });
+    return response.data;
+  },
+  getRecruitmentPost: async (id) => {
+    const response = await axiosClient.get(`/recruitment-posts/${id}`);
+    return response.data;
+  },
+  createRecruitmentPost: async (data) => {
+    const response = await axiosClient.post('/recruitment-posts', data);
+    return response.data;
+  },
+  updateRecruitmentPost: async (id, data) => {
+    const response = await axiosClient.put(`/recruitment-posts/${id}`, data);
+    return response.data;
+  },
+  deleteRecruitmentPost: async (id) => {
+    const response = await axiosClient.delete(`/recruitment-posts/${id}`);
+    return response.data;
+  },
+
   // --- Positions ---
   getAllPositions: async (params) => {
     const response = await axiosClient.get('/recruitment-positions', { params });

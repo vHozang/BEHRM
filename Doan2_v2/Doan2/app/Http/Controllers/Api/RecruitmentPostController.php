@@ -136,6 +136,10 @@ class RecruitmentPostController extends Controller
             'employment_type' => 'nullable|string|max:100',
             'deadline' => 'nullable|date',
             'status' => 'nullable|string|in:DRAFT,PUBLISHED,CLOSED,ARCHIVED',
+            'meta' => 'nullable|array',
+            'meta.quantity' => 'nullable|integer|min:1|max:999',
+            'meta.required_skills' => 'nullable|array',
+            'meta.required_skills.*' => 'string|max:120',
         ], [
             'title.required' => 'Tiêu đề bài đăng là bắt buộc',
             'slug.unique' => 'Slug đã tồn tại, vui lòng chọn slug khác',
@@ -145,11 +149,19 @@ class RecruitmentPostController extends Controller
             return $this->validationError($validator->errors()->toArray());
         }
 
+        $positionId = $request->integer('recruitment_position_id') ?: $this->createLinkedPosition($request);
+        if (!$this->positionBelongsToCurrentTenant($positionId)) {
+            return $this->validationError([
+                'recruitment_position_id' => ['Vị trí tuyển dụng không thuộc công ty hiện tại'],
+            ]);
+        }
+
         $data = $request->only([
             'title', 'slug', 'recruitment_position_id', 'summary', 'content',
             'benefits', 'requirements', 'location', 'salary_range',
             'employment_type', 'deadline', 'status', 'meta',
         ]);
+        $data['recruitment_position_id'] = $positionId;
 
         // Auto-generate slug nếu không cung cấp
         $data['slug'] = $data['slug'] ?? Str::slug($data['title']) . '-' . Str::random(6);
@@ -179,6 +191,7 @@ class RecruitmentPostController extends Controller
 
         $newId = DB::table('recruitment_posts')->insertGetId($data);
         $post = DB::table('recruitment_posts')->where('id', $newId)->first();
+        $this->syncLinkedPosition($post);
 
         // Sync to Redis
         $this->postService->syncToRedis($post);
@@ -251,14 +264,29 @@ class RecruitmentPostController extends Controller
             'employment_type' => 'nullable|string|max:100',
             'deadline' => 'nullable|date',
             'status' => 'nullable|string|in:DRAFT,PUBLISHED,CLOSED,ARCHIVED',
+            'meta' => 'nullable|array',
+            'meta.quantity' => 'nullable|integer|min:1|max:999',
+            'meta.required_skills' => 'nullable|array',
+            'meta.required_skills.*' => 'string|max:120',
         ]);
 
         if ($validator->fails()) {
             return $this->validationError($validator->errors()->toArray());
         }
 
+        $positionId = $request->has('recruitment_position_id')
+            ? $request->integer('recruitment_position_id')
+            : (int) $existingPost->recruitment_position_id;
+        $positionId = $positionId ?: $this->createLinkedPosition($request, $existingPost);
+        if (!$this->positionBelongsToCurrentTenant($positionId)) {
+            return $this->validationError([
+                'recruitment_position_id' => ['Vị trí tuyển dụng không thuộc công ty hiện tại'],
+            ]);
+        }
+
         $columns = Schema::getColumnListing('recruitment_posts');
         $data = collect($request->all())->only($columns)->except(['id', 'tenant_id', 'created_at'])->toArray();
+        $data['recruitment_position_id'] = $positionId;
         $data['updated_at'] = now();
 
         // Encode JSON fields
@@ -282,6 +310,7 @@ class RecruitmentPostController extends Controller
         $beforeRow = (array) $existingPost;
         DB::table('recruitment_posts')->where('id', $id)->update($data);
         $updatedPost = DB::table('recruitment_posts')->where('id', $id)->first();
+        $this->syncLinkedPosition($updatedPost);
 
         // Nếu slug thay đổi → xóa cache cũ
         if (isset($data['slug']) && $data['slug'] !== $oldSlug) {
@@ -315,6 +344,12 @@ class RecruitmentPostController extends Controller
         }
 
         DB::table('recruitment_posts')->where('id', $id)->delete();
+        if ($post->recruitment_position_id) {
+            DB::table('recruitment_positions')
+                ->where('id', $post->recruitment_position_id)
+                ->where('tenant_id', $post->tenant_id)
+                ->update(['status' => 'CLOSED', 'updated_at' => now()]);
+        }
 
         // Remove from Redis
         $this->postService->removeFromRedis($post->slug);
@@ -358,6 +393,7 @@ class RecruitmentPostController extends Controller
         ]);
 
         $updatedPost = DB::table('recruitment_posts')->where('id', $id)->first();
+        $this->syncLinkedPosition($updatedPost);
         $this->postService->syncToRedis($updatedPost);
 
         AuditLogger::log('update', 'recruitment_posts', $id, (array) $post, (array) $updatedPost);
@@ -394,6 +430,7 @@ class RecruitmentPostController extends Controller
         ]);
 
         $updatedPost = DB::table('recruitment_posts')->where('id', $id)->first();
+        $this->syncLinkedPosition($updatedPost);
         $this->postService->syncToRedis($updatedPost); // sẽ xóa khỏi Redis vì status != PUBLISHED
 
         AuditLogger::log('update', 'recruitment_posts', $id, (array) $post, (array) $updatedPost);
@@ -404,6 +441,62 @@ class RecruitmentPostController extends Controller
     // ══════════════════════════════════════════════════════════════
     //  RESPONSE HELPERS
     // ══════════════════════════════════════════════════════════════
+
+    private function createLinkedPosition(Request $request, ?object $existingPost = null): int
+    {
+        $postMeta = $existingPost ? (json_decode($existingPost->meta ?? '[]', true) ?: []) : [];
+        $requestMeta = (array) $request->input('meta', []);
+        $meta = array_merge($postMeta, $requestMeta);
+        $title = (string) ($request->input('title') ?: $existingPost?->title ?: 'Vị trí tuyển dụng');
+        $employmentType = (string) ($request->input('employment_type') ?: $existingPost?->employment_type ?: 'FULL_TIME');
+        $postStatus = (string) ($request->input('status') ?: $existingPost?->status ?: 'DRAFT');
+
+        return DB::table('recruitment_positions')->insertGetId(TenantContext::stamp([
+            'position_name' => Str::limit($title, 255, ''),
+            'employment_type' => $employmentType,
+            'status' => $postStatus === 'PUBLISHED' ? 'OPEN' : 'CLOSED',
+            'required_skills_json' => json_encode($meta['required_skills'] ?? [], JSON_UNESCAPED_UNICODE),
+            'meta' => json_encode([
+                'source' => 'recruitment-post',
+                'quantity' => max(1, (int) ($meta['quantity'] ?? 1)),
+            ], JSON_UNESCAPED_UNICODE),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]));
+    }
+
+    private function syncLinkedPosition(object $post): void
+    {
+        if (!$post->recruitment_position_id || !$this->positionBelongsToCurrentTenant((int) $post->recruitment_position_id)) {
+            return;
+        }
+
+        $postMeta = json_decode($post->meta ?? '[]', true) ?: [];
+        $position = DB::table('recruitment_positions')->where('id', $post->recruitment_position_id)->first();
+        $positionMeta = json_decode($position?->meta ?? '[]', true) ?: [];
+        $requiredSkills = $postMeta['required_skills'] ?? json_decode($position?->required_skills_json ?? '[]', true);
+        $requiredSkills = is_array($requiredSkills) ? $requiredSkills : [];
+
+        DB::table('recruitment_positions')->where('id', $post->recruitment_position_id)->update([
+            'position_name' => Str::limit((string) $post->title, 255, ''),
+            'employment_type' => $post->employment_type ?: 'FULL_TIME',
+            'status' => $post->status === 'PUBLISHED' ? 'OPEN' : 'CLOSED',
+            'required_skills_json' => json_encode($requiredSkills, JSON_UNESCAPED_UNICODE),
+            'meta' => json_encode(array_merge($positionMeta, [
+                'source' => 'recruitment-post',
+                'quantity' => max(1, (int) ($postMeta['quantity'] ?? $positionMeta['quantity'] ?? 1)),
+            ]), JSON_UNESCAPED_UNICODE),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function positionBelongsToCurrentTenant(int $positionId): bool
+    {
+        return $positionId > 0 && DB::table('recruitment_positions')
+            ->where('id', $positionId)
+            ->when(TenantContext::hasTenant(), fn ($query) => $query->where('tenant_id', TenantContext::id()))
+            ->exists();
+    }
 
     private function ok(mixed $data, string $message): JsonResponse
     {

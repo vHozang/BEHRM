@@ -85,10 +85,8 @@ class RecruitmentPostDemoSeeder extends Seeder
                 'updated_at' => now(),
             ];
 
-            DB::table('recruitment_posts')->updateOrInsert(
-                ['slug' => $post['slug']],
-                $payload + ['created_at' => now()],
-            );
+            // Only bootstrap missing demo posts; never overwrite HR edits on deploy.
+            DB::table('recruitment_posts')->insertOrIgnore($payload + ['created_at' => now()]);
 
             $saved = DB::table('recruitment_posts')->where('slug', $post['slug'])->first();
             if ($saved) {

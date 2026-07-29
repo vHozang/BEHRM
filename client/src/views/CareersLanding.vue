@@ -66,7 +66,10 @@
             <p>{{ job.summary || 'Cùng chúng tôi tạo ra những sản phẩm có ích cho con người.' }}</p>
             <div class="job-meta"><span>⌖ {{ job.location || 'TP. Hồ Chí Minh' }}</span><span>◷ {{ employmentLabel(job.employment_type) }}</span><span v-if="job.salary_range">₫ {{ job.salary_range }}</span></div>
           </div>
-          <button class="job-apply" type="button" @click="openApplication(job)">Ứng tuyển <span>→</span></button>
+          <div class="job-actions">
+            <button class="job-detail" type="button" @click="openDetails(job)">Chi tiết <span>↗</span></button>
+            <button class="job-apply" type="button" @click="openApplication(job)">Ứng tuyển <span>→</span></button>
+          </div>
         </article>
       </div>
       <div v-else class="jobs-state empty-state">
@@ -92,6 +95,47 @@
     </section>
 
     <footer class="careers-footer"><span>DEV TAP <em>/</em> CAREERS</span><span>Made for people who care.</span><a href="mailto:hello@devtapcode.io.vn">hello@devtapcode.io.vn ↗</a></footer>
+
+    <div v-if="showDetails" class="modal-backdrop" @click.self="closeDetails">
+      <section class="job-detail-modal" role="dialog" aria-modal="true" aria-labelledby="job-detail-title">
+        <button class="modal-close" type="button" aria-label="Đóng" @click="closeDetails">×</button>
+        <div v-if="loadingDetail" class="detail-loading"><span class="loader"></span> Đang tải JD...</div>
+        <template v-else-if="detailJob">
+          <div class="detail-kicker"><span>JOB DESCRIPTION</span><span>{{ detailJob.slug }}</span></div>
+          <h2 id="job-detail-title">{{ detailJob.title }}</h2>
+          <p class="detail-summary">{{ detailJob.summary }}</p>
+          <div class="detail-meta">
+            <span>⌖ {{ detailJob.location || 'TP. Hồ Chí Minh' }}</span>
+            <span>◷ {{ employmentLabel(detailJob.employment_type) }}</span>
+            <span v-if="detailJob.salary_range">₫ {{ detailJob.salary_range }}</span>
+            <span v-if="detailJob.deadline">Hạn {{ formatDate(detailJob.deadline) }}</span>
+          </div>
+
+          <div class="detail-divider"></div>
+          <section class="detail-section">
+            <span class="detail-number">01</span>
+            <div><h3>Về vị trí</h3><p class="detail-content">{{ detailJob.content || 'Nội dung JD đang được cập nhật.' }}</p></div>
+          </section>
+          <section v-if="detailList(detailJob.requirements).length" class="detail-section">
+            <span class="detail-number">02</span>
+            <div><h3>Chúng tôi tìm kiếm</h3><ul><li v-for="item in detailList(detailJob.requirements)" :key="`requirement-${item}`">{{ item }}</li></ul></div>
+          </section>
+          <section v-if="detailJob.position?.required_skills?.length" class="detail-section">
+            <span class="detail-number">03</span>
+            <div><h3>Kỹ năng phù hợp</h3><div class="detail-skills"><span v-for="skill in detailJob.position.required_skills" :key="skill">{{ skill }}</span></div></div>
+          </section>
+          <section v-if="detailList(detailJob.benefits).length" class="detail-section">
+            <span class="detail-number">04</span>
+            <div><h3>Điều bạn nhận được</h3><ul><li v-for="item in detailList(detailJob.benefits)" :key="`benefit-${item}`">{{ item }}</li></ul></div>
+          </section>
+
+          <div class="detail-footer">
+            <p>Bạn thấy mình trong vai trò này?</p>
+            <button class="button button-primary" type="button" @click="applyFromDetails">Ứng tuyển vị trí này <span>→</span></button>
+          </div>
+        </template>
+      </section>
+    </div>
 
     <div v-if="showApplication" class="modal-backdrop" @click.self="closeApplication">
       <section class="application-modal" role="dialog" aria-modal="true" aria-labelledby="application-title">
@@ -143,6 +187,9 @@ import { recruitmentService } from '../services/recruitmentService';
 const TENANT_CODE = 'DEFAULT';
 const posts = ref([]);
 const loadingPosts = ref(true);
+const showDetails = ref(false);
+const loadingDetail = ref(false);
+const detailJob = ref(null);
 const showApplication = ref(false);
 const selectedJob = ref(null);
 const fileInput = ref(null);
@@ -153,6 +200,17 @@ const form = ref({ full_name: '', email: '', phone: '', cover_letter: '', cv: nu
 
 const employmentLabel = (type) => ({ FULL_TIME: 'Toàn thời gian', PART_TIME: 'Bán thời gian', CONTRACT: 'Hợp đồng', REMOTE: 'Từ xa' }[type] || type || 'Toàn thời gian');
 const formatFileSize = (size) => `${(size / 1024 / 1024).toFixed(1)} MB`;
+const formatDate = (date) => new Date(date).toLocaleDateString('vi-VN');
+const detailList = (value) => {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return String(value).split('\n').map(item => item.trim()).filter(Boolean);
+  }
+};
 
 const loadPosts = async () => {
   loadingPosts.value = true;
@@ -173,6 +231,29 @@ const openApplication = (job) => {
   errorMessage.value = '';
   form.value = { full_name: '', email: '', phone: '', cover_letter: '', cv: null };
   showApplication.value = true;
+};
+
+const openDetails = async (job) => {
+  detailJob.value = job;
+  showDetails.value = true;
+  loadingDetail.value = true;
+  try {
+    detailJob.value = await recruitmentService.getPublicPost(job.slug);
+  } catch (error) {
+    console.error('Error loading job description:', error);
+  } finally {
+    loadingDetail.value = false;
+  }
+};
+
+const closeDetails = () => {
+  showDetails.value = false;
+};
+
+const applyFromDetails = () => {
+  const job = detailJob.value;
+  closeDetails();
+  openApplication(job);
 };
 
 const closeApplication = () => {
@@ -242,7 +323,31 @@ onMounted(loadPosts);
 .process-section { display:grid; grid-template-columns:.85fr 1.15fr; gap:110px; padding-top:102px; padding-bottom:122px; background:#e9f1f0; max-width:none; padding-left:max(34px, calc((100vw - 1172px)/2)); padding-right:max(34px, calc((100vw - 1172px)/2)); position:relative; }.process-section::before { content:'HOW'; position:absolute; right:2%; top:18px; color:rgba(10,28,43,.04); font-size:160px; font-weight:700; letter-spacing:-.12em; pointer-events:none; }.process-intro p:not(.eyebrow) { max-width:310px; color:#63777d; font-size:14px; line-height:1.6; margin-top:28px; }.process-list { position:relative; z-index:1; }.process-step { display:grid; grid-template-columns:45px 1fr 22px; gap:16px; align-items:start; padding:23px 0; border-top:1px solid #cbdcdd; }.process-step:last-child { border-bottom:1px solid #cbdcdd; }.process-step > span { color:var(--amber); font:11px 'DM Mono',monospace; padding-top:5px; }.process-step h3 { margin:0 0 5px; font-size:19px; letter-spacing:-.04em; }.process-step p { margin:0; color:#72858a; font-size:12px; }.process-step b { color:var(--cyan); font-size:19px; font-weight:400; }
 .careers-footer { min-height:95px; display:flex; align-items:center; justify-content:space-between; color:#7b8d92; font:10px 'DM Mono',monospace; letter-spacing:.04em; }.careers-footer span:first-child { color:var(--ink); font-weight:500; }.careers-footer a { color:var(--ink); text-decoration:none; }
 .modal-backdrop { position:fixed; z-index:20; inset:0; display:grid; place-items:center; padding:25px; background:rgba(5,19,28,.64); backdrop-filter:blur(7px); animation:fadeIn .2s ease; }.application-modal { position:relative; width:min(650px, 100%); max-height:calc(100vh - 50px); overflow-y:auto; background:#f5f7f8; padding:43px 48px 39px; box-shadow:0 28px 90px rgba(0,0,0,.3); animation:riseIn .3s ease; }.modal-close { position:absolute; right:19px; top:14px; border:0; background:none; font-size:28px; font-weight:300; color:#87979a; cursor:pointer; }.application-modal h2 { font-size:43px; }.modal-subtitle { margin:17px 0 29px; color:#5e7479; font:11px 'DM Mono',monospace; }.application-form { display:grid; gap:16px; }.form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }.application-form label { display:grid; gap:7px; color:#536a70; font:10px 'DM Mono',monospace; text-transform:uppercase; letter-spacing:.04em; }.optional { color:#99a8aa; text-transform:none; float:right; font-size:9px; margin-left:auto; }.application-form input:not([type=file]), .application-form textarea { width:100%; border:1px solid #d0dcde; background:#fff; border-radius:2px; padding:12px 13px; color:var(--ink); font:13px 'Space Grotesk',sans-serif; outline:none; resize:vertical; text-transform:none; letter-spacing:0; }.application-form input:focus, .application-form textarea:focus { border-color:var(--cyan); box-shadow:0 0 0 3px rgba(19,185,200,.1); }.application-form input:disabled { color:#829296; background:#edf2f2; }.file-drop { min-height:93px; display:flex !important; align-items:center; gap:15px; justify-content:center; border:1px dashed #a9c6c9; background:#eef8f8; cursor:pointer; text-align:center; text-transform:none !important; }.file-drop input[type=file] { position:absolute; width:1px; height:1px; opacity:0; }.file-drop strong { display:block; color:#315c63; font:600 12px 'Space Grotesk',sans-serif; }.file-drop u { color:var(--cyan); text-underline-offset:3px; }.file-drop small { display:block; color:#85999d; margin-top:5px; font:9px 'DM Mono',monospace; }.file-icon { display:grid; place-items:center; width:32px; height:32px; color:#fff; background:var(--cyan); border-radius:50%; font-size:19px; }.file-drop.has-file { border-style:solid; background:#f1f9e9; }.form-error { color:#bd4d42; margin:0; font-size:11px; }.submit-button { justify-content:center; width:100%; margin-top:3px; }.privacy-note { color:#96a4a6; font:9px 'DM Mono',monospace; text-align:center; line-height:1.5; margin:1px 0 0; }.application-result { text-align:center; padding:21px 10px 4px; }.result-check { display:grid; place-items:center; width:50px; height:50px; margin:0 auto 22px; color:var(--ink); background:#d4f170; border-radius:50%; font-size:27px; }.application-result .eyebrow { margin-bottom:18px; }.application-result h2 { font-size:43px; }.result-copy { max-width:410px; color:#687a7e; font-size:13px; line-height:1.6; margin:19px auto 26px; }.score-result { max-width:390px; margin:0 auto 28px; padding:19px 20px 17px; color:#d9f5f6; background:var(--ink); text-align:left; }.score-result > span { font:9px 'DM Mono',monospace; color:#86a6ab; letter-spacing:.09em; }.score-result > strong { display:block; color:#d4f170; font-size:53px; letter-spacing:-.08em; line-height:1.05; margin:8px 0 4px; }.score-result > strong small { font-size:18px; letter-spacing:0; margin-left:2px; }.score-result .score-track { margin:7px 0 19px; }.result-skills { display:grid; grid-template-columns:1fr 1fr; gap:13px; }.result-skills div { display:flex; flex-wrap:wrap; align-content:start; gap:5px; }.result-skills small { width:100%; color:#82a2a7; font:8px 'DM Mono',monospace; margin-bottom:2px; }.result-skills span { padding:4px 6px; border:1px solid rgba(126,230,235,.25); color:#c2dfe0; font:9px 'DM Mono',monospace; }
+.job-actions { align-self:end; display:flex; align-items:center; gap:8px; }
+.job-detail { border:1px solid #d8e1e4; border-radius:999px; padding:11px 14px; color:var(--ink); background:transparent; font:600 11px 'Space Grotesk',sans-serif; cursor:pointer; white-space:nowrap; }
+.job-detail span { color:var(--amber); margin-left:8px; }
+.featured .job-detail { color:#c0d6da; border-color:#34515c; }
+.job-detail-modal { position:relative; width:min(820px, 100%); max-height:calc(100vh - 50px); overflow-y:auto; padding:47px 55px 42px; background:#f5f7f8; box-shadow:0 28px 90px rgba(0,0,0,.3); animation:riseIn .3s ease; }
+.detail-loading { min-height:300px; display:flex; align-items:center; justify-content:center; gap:10px; color:var(--muted); font-size:12px; }
+.detail-kicker { display:flex; justify-content:space-between; padding-right:25px; color:#7a9196; font:9px 'DM Mono',monospace; letter-spacing:.08em; }
+.detail-kicker span:first-child { color:var(--amber); }
+.job-detail-modal h2 { max-width:650px; margin:26px 0 12px; font-size:clamp(36px,6vw,62px); line-height:.96; letter-spacing:-.06em; }
+.detail-summary { max-width:600px; color:#5e7479; font-size:15px; line-height:1.65; }
+.detail-meta { display:flex; flex-wrap:wrap; gap:10px 22px; margin-top:24px; color:#6f8388; font:10px 'DM Mono',monospace; }
+.detail-divider { height:1px; margin:31px 0 7px; background:#d4dfe1; }
+.detail-section { display:grid; grid-template-columns:42px 1fr; gap:17px; padding:25px 0; border-bottom:1px solid #d4dfe1; }
+.detail-number { color:var(--amber); font:10px 'DM Mono',monospace; padding-top:4px; }
+.detail-section h3 { margin:0 0 12px; font-size:20px; letter-spacing:-.04em; }
+.detail-content { white-space:pre-line; }
+.detail-section p, .detail-section li { color:#60747a; font-size:13px; line-height:1.72; }
+.detail-section ul { display:grid; gap:7px; margin:0; padding-left:17px; }
+.detail-section li::marker { color:var(--cyan); }
+.detail-skills { display:flex; flex-wrap:wrap; gap:7px; }
+.detail-skills span { padding:7px 10px; border:1px solid #b7d7d9; color:#315f65; font:10px 'DM Mono',monospace; }
+.detail-footer { display:flex; justify-content:space-between; align-items:center; gap:20px; margin-top:29px; }
+.detail-footer p { margin:0; color:#60747a; font-size:13px; }
 @keyframes floatCard { 0%,100% { transform:rotate(4deg) translateY(0); } 50% { transform:rotate(2deg) translateY(-11px); } } @keyframes spin { to { transform:rotate(360deg); } } @keyframes fadeIn { from { opacity:0; } to { opacity:1; } } @keyframes riseIn { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
 @media (max-width: 820px) { .careers-nav, .hero-shell, .manifesto-strip, .opportunities-section, .process-section, .careers-footer { padding-left:20px; padding-right:20px; }.careers-nav { height:72px; }.nav-links { display:none; }.nav-mobile-cta { display:block; color:var(--ink); font:11px 'DM Mono',monospace; text-decoration:none; }.nav-mobile-cta span { color:var(--cyan); margin-left:7px; }.hero-shell { display:block; min-height:0; padding-top:73px; padding-bottom:74px; }.hero-lede { font-size:15px; }.hero-actions { gap:18px; flex-wrap:wrap; }.hero-art { min-height:390px; margin-top:48px; }.manifesto-strip { grid-template-columns:repeat(3,1fr); gap:13px; padding-top:28px; padding-bottom:28px; }.manifesto-strip > p { grid-column:1/-1; margin:13px 0 0; max-width:none; }.manifesto-item { font-size:11px; }.opportunities-section { padding-top:75px; padding-bottom:78px; }.section-heading { display:block; }.section-aside { margin-top:20px; }.job-card { grid-template-columns:35px 1fr; gap:13px; padding:19px 15px; }.job-apply { grid-column:2; justify-self:start; margin-top:9px; }.job-main h3 { font-size:22px; }.job-meta { gap:8px 13px; }.process-section { display:block; padding-top:76px; padding-bottom:77px; }.process-intro { margin-bottom:46px; }.careers-footer { min-height:130px; flex-wrap:wrap; align-content:center; gap:13px; }.careers-footer span:nth-child(2) { order:3; width:100%; }.application-modal { padding:37px 22px 27px; }.application-modal h2, .application-result h2 { font-size:35px; }.form-row { grid-template-columns:1fr; gap:16px; }.modal-backdrop { padding:12px; }.signal-card { width:310px; }.orbit-one { width:350px; }.orbit-two { height:400px; } }
+@media (max-width: 820px) { .job-actions { grid-column:2; justify-self:start; margin-top:9px; flex-wrap:wrap; }.job-apply { margin-top:0; }.job-detail-modal { padding:37px 22px 27px; }.detail-kicker span:last-child { display:none; }.detail-section { grid-template-columns:28px 1fr; gap:10px; }.detail-footer { align-items:flex-start; flex-direction:column; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; } }
 </style>
