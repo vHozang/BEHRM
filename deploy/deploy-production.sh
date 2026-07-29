@@ -45,7 +45,7 @@ docker compose up -d --remove-orphans
 # Nginx resolves the PHP service at startup, so reload it after PHP recreation.
 docker compose restart nginx >/dev/null
 for attempt in {1..12}; do
-  if docker compose exec -T nginx wget -qO- http://127.0.0.1/api/v1/health >/dev/null; then
+  if docker compose exec -T php curl -fkS -H 'Host: devtapcode.io.vn' https://nginx/api/v1/health >/dev/null; then
     break
   fi
   if [ "$attempt" -eq 12 ]; then
