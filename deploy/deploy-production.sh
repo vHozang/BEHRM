@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 APP_DIR="${DEPLOY_PATH:-/opt/hrm}"
 BACKEND_DIR="$APP_DIR/Doan2_v2/Doan2"
+FRONTEND_DIR="$APP_DIR/dist/public"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required on the VPS" >&2
@@ -29,6 +30,11 @@ if ! grep -Eq '^APP_DEBUG=(false|0)$' "$BACKEND_DIR/.env"; then
   exit 1
 fi
 
+if [ ! -s "$FRONTEND_DIR/index.html" ]; then
+  echo "Missing frontend build at $FRONTEND_DIR/index.html" >&2
+  exit 1
+fi
+
 cd "$BACKEND_DIR"
 docker compose build
 docker compose up -d postgres redis
@@ -45,11 +51,13 @@ docker compose up -d --remove-orphans
 # Nginx resolves the PHP service at startup, so reload it after PHP recreation.
 docker compose restart nginx >/dev/null
 for attempt in {1..12}; do
-  if docker compose exec -T php curl -fkS -H 'Host: devtapcode.io.vn' https://nginx/api/v1/health >/dev/null; then
+  if docker compose exec -T php curl -fkS -H 'Host: devtapcode.io.vn' https://nginx/ \
+      | grep -q '<div id="root"></div>' \
+    && docker compose exec -T php curl -fkS -H 'Host: devtapcode.io.vn' https://nginx/api/v1/health >/dev/null; then
     break
   fi
   if [ "$attempt" -eq 12 ]; then
-    echo "Production API health check failed" >&2
+    echo "Production frontend or API health check failed" >&2
     exit 1
   fi
   sleep 5

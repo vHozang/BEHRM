@@ -51,6 +51,25 @@ jobs:
             }
             core.setFailed('Timed out waiting for the CI workflow');
 
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Build frontend
+        env:
+          VITE_API_BASE_URL: /api/v1
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+          tar -C dist/public -czf "$RUNNER_TEMP/hrm-frontend.tar.gz" .
+
       - name: Load SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -81,16 +100,32 @@ jobs:
         run: |
           set -Eeuo pipefail
           ssh-add -l
+          remote_frontend_archive="/tmp/hrm-frontend-${GITHUB_SHA}.tar.gz"
+          scp -P "$VPS_PORT" \
+            -o BatchMode=yes \
+            -o PasswordAuthentication=no \
+            -o PreferredAuthentications=publickey \
+            -o StrictHostKeyChecking=yes \
+            "$RUNNER_TEMP/hrm-frontend.tar.gz" \
+            "$VPS_USER@$VPS_HOST:$remote_frontend_archive"
+
           ssh -p "$VPS_PORT" \
             -o BatchMode=yes \
             -o PasswordAuthentication=no \
             -o PreferredAuthentications=publickey \
             -o StrictHostKeyChecking=yes \
             "$VPS_USER@$VPS_HOST" \
-            'DEPLOY_PATH=/opt/hrm bash -s' <<'REMOTE_SCRIPT'
+            "DEPLOY_PATH=/opt/hrm FRONTEND_ARCHIVE=$remote_frontend_archive bash -s" <<'REMOTE_SCRIPT'
           set -Eeuo pipefail
           APP_DIR="${DEPLOY_PATH:-/opt/hrm}"
           REPO_URL="https://github.com/vHozang/BEHRM.git"
+
+          if [ ! -s "$FRONTEND_ARCHIVE" ]; then
+            echo "Missing uploaded frontend archive: $FRONTEND_ARCHIVE" >&2
+            exit 1
+          fi
+
+          trap 'rm -f "$FRONTEND_ARCHIVE"' EXIT
 
           if [ ! -d "$APP_DIR/.git" ]; then
             mkdir -p "$(dirname "$APP_DIR")"
@@ -100,6 +135,12 @@ jobs:
             git -C "$APP_DIR" checkout production
             git -C "$APP_DIR" reset --hard origin/production
           fi
+
+          FRONTEND_DIR="$APP_DIR/dist/public"
+          mkdir -p "$FRONTEND_DIR"
+          find "$FRONTEND_DIR" -mindepth 1 -depth -delete
+          tar -xzf "$FRONTEND_ARCHIVE" -C "$FRONTEND_DIR"
+          test -s "$FRONTEND_DIR/index.html"
 
           cd "$APP_DIR"
           bash deploy/deploy-production.sh

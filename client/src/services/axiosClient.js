@@ -1,10 +1,9 @@
 
 import axios from 'axios';
 
-// API base URL: production (Vercel) đặt biến VITE_API_BASE_URL trỏ về domain VPS
-// Laravel (vd https://api.tencongty.com/api/v1). Local mặc định localhost.
+// Same-origin is the production default; Vite proxies /api during local development.
 const axiosClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost/api/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

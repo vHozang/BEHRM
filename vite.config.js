@@ -24,6 +24,12 @@ export default defineConfig({
     port: 5000,
     strictPort: true,
     allowedHosts: true,
+    proxy: {
+      "/api": {
+        target: process.env.VITE_DEV_API_TARGET || "http://localhost",
+        changeOrigin: true,
+      },
+    },
     fs: {
       strict: true,
       deny: ["**/.*"],
