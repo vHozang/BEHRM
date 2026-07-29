@@ -24,6 +24,12 @@ Sau khi xác minh fingerprint và chấp nhận key mới, tạo giá trị secr
 ssh-keyscan -H -t rsa 180.93.42.137
 ```
 
+Nếu `ssh-keyscan` trên PowerShell báo `unsupported KEX method`, chạy lệnh tương tự trong terminal Linux của VPS rồi copy các dòng khóa (không copy dòng bắt đầu bằng `#`):
+
+```bash
+ssh-keyscan -H -t rsa 180.93.42.137 2>/dev/null
+```
+
 ## 1. Tạo user triển khai trên VPS
 
 Đăng nhập VPS bằng `root` (IP `180.93.42.137`) và cài Docker Engine cùng Docker Compose v2 nếu máy chưa có. Trên máy local, tạo một cặp khóa riêng cho GitHub Actions:
