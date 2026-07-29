@@ -47,7 +47,7 @@ class AiFeedbackService
         array $missingSkills = []
     ): ?array {
         try {
-            $url = env('AUTORECRUIT_URL', 'http://resume-backend:8000');
+            $url = $this->baseUrl();
 
             $response = Http::timeout(15)
                 ->post($url . '/feedback', [
@@ -90,7 +90,7 @@ class AiFeedbackService
     public function getStats(): ?array
     {
         try {
-            $url = env('AUTORECRUIT_URL', 'http://resume-backend:8000');
+            $url = $this->baseUrl();
 
             $response = Http::timeout(10)->get($url . '/feedback/stats');
 
@@ -115,7 +115,7 @@ class AiFeedbackService
     public function getAdjustments(): ?array
     {
         try {
-            $url = env('AUTORECRUIT_URL', 'http://resume-backend:8000');
+            $url = $this->baseUrl();
 
             $response = Http::timeout(10)->get($url . '/feedback/adjustments');
 
@@ -130,5 +130,10 @@ class AiFeedbackService
         }
 
         return null;
+    }
+
+    private function baseUrl(): string
+    {
+        return rtrim((string) config('services.autorecruit.url', 'http://resume-backend:8000'), '/');
     }
 }

@@ -22,7 +22,24 @@ tailscale ping 100.95.129.101
 tailscale ping 100.105.84.89
 ```
 
-Chạy resume backend trên máy đang test với bind `0.0.0.0:8000`, sau đó kiểm tra từ VPS:
+Chạy resume backend trên máy đang test với bind vào IP Tailscale, sau đó kiểm tra từ VPS. Windows:
+
+```powershell
+cd D:\HRM\BEHRM\Doan2_v2\Doan2
+$env:RESUME_BIND_IP = "100.95.129.101"
+docker compose --profile resume up -d --build --force-recreate resume-backend
+curl.exe http://100.95.129.101:8000/health
+```
+
+Mac:
+
+```bash
+cd /path/to/BEHRM/Doan2_v2/Doan2
+RESUME_BIND_IP=100.105.84.89 docker compose --profile resume up -d --build --force-recreate resume-backend
+curl -fsS http://100.105.84.89:8000/health
+```
+
+Kiểm tra từ VPS:
 
 ```bash
 curl -fsS http://100.95.129.101:8000/health

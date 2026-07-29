@@ -28,6 +28,10 @@ return [
         'key' => env('RESEND_KEY'),
     ],
 
+    'autorecruit' => [
+        'url' => env('AUTORECRUIT_URL', 'http://resume-backend:8000'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
