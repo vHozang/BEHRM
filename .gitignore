@@ -40,3 +40,8 @@ venv/
 *.db
 *.sqlite
 
+# Let's Encrypt runtime certificates and challenge files
+Doan2_v2/Doan2/docker/certbot/conf/*
+!Doan2_v2/Doan2/docker/certbot/conf/.gitkeep
+Doan2_v2/Doan2/docker/certbot/www/*
+!Doan2_v2/Doan2/docker/certbot/www/.gitkeep
