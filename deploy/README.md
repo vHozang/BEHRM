@@ -2,6 +2,28 @@
 
 Repository source duy nhất là `vHozang/BEHRM`, branch triển khai là `production`.
 
+## 0. Nếu VPS đã đổi host key
+
+Khi VPS được tạo lại nhưng giữ nguyên IP, SSH có thể báo `REMOTE HOST IDENTIFICATION HAS CHANGED`. Trước khi xóa key cũ, đối chiếu fingerprint với console của nhà cung cấp VPS. Fingerprint hiện VPS đang trình bày là:
+
+```text
+SHA256:TVkp/PLJCLAPKPCRB5Qn1orWYlDZ5+3Kl/S9F3r77pk (RSA)
+```
+
+Trên PowerShell, chỉ xóa entry của IP này (không xóa toàn bộ `known_hosts`):
+
+```powershell
+ssh-keygen -R 180.93.42.137 -f "$env:USERPROFILE\.ssh\known_hosts"
+ssh-keygen -R "[180.93.42.137]:22" -f "$env:USERPROFILE\.ssh\known_hosts"
+ssh root@180.93.42.137
+```
+
+Sau khi xác minh fingerprint và chấp nhận key mới, tạo giá trị secret `VPS_KNOWN_HOSTS` bằng:
+
+```powershell
+ssh-keyscan -H -t rsa 180.93.42.137
+```
+
 ## 1. Tạo user triển khai trên VPS
 
 Đăng nhập VPS bằng `root` (IP `180.93.42.137`) và cài Docker Engine cùng Docker Compose v2 nếu máy chưa có. Trên máy local, tạo một cặp khóa riêng cho GitHub Actions:
