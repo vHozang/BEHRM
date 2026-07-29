@@ -41,4 +41,17 @@ docker compose exec -T php php artisan migrate --force
 docker compose exec -T php php artisan optimize:clear
 docker compose exec -T php php artisan config:cache
 docker compose up -d --remove-orphans
+
+# Nginx resolves the PHP service at startup, so reload it after PHP recreation.
+docker compose restart nginx >/dev/null
+for attempt in {1..12}; do
+  if docker compose exec -T nginx wget -qO- http://127.0.0.1/api/v1/health >/dev/null; then
+    break
+  fi
+  if [ "$attempt" -eq 12 ]; then
+    echo "Production API health check failed" >&2
+    exit 1
+  fi
+  sleep 5
+done
 docker compose ps
