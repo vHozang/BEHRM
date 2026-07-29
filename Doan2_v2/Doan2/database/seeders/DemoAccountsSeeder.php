@@ -1,0 +1,83 @@
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+
+class DemoAccountsSeeder extends Seeder
+{
+    public function run(): void
+    {
+        $roles = [
+            'ADMIN' => ['name' => 'Administrator', 'meta' => ['is_admin' => true]],
+            'HR' => ['name' => 'Human Resources', 'meta' => ['modules' => ['hr', 'time', 'recruitment', 'communications']]],
+            'MANAGER' => ['name' => 'Manager', 'meta' => ['modules' => ['time']]],
+            'EMPLOYEE' => ['name' => 'Employee', 'meta' => ['modules' => []]],
+        ];
+
+        foreach ($roles as $code => $role) {
+            DB::table('roles')->updateOrInsert(
+                ['role_code' => $code],
+                [
+                    'role_name' => $role['name'],
+                    'description' => "Demo {$role['name']} role",
+                    'is_system_role' => true,
+                    'meta' => json_encode($role['meta']),
+                    'tenant_id' => 1,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+            );
+        }
+
+        $accounts = [
+            ['code' => 'NV0001', 'name' => 'Nguyễn Văn An', 'email' => 'an.nguyen@company.com', 'password' => 'test1234', 'role' => 'ADMIN', 'super_admin' => true],
+            ['code' => 'NV0003', 'name' => 'Lê Văn Cường', 'email' => 'cuong.le@company.com', 'password' => 'demo1234', 'role' => 'MANAGER'],
+            ['code' => 'NV0002', 'name' => 'Trần Thị Mai', 'email' => 'mai.tran@company.com', 'password' => 'demo1234', 'role' => 'HR'],
+            ['code' => 'NV0004', 'name' => 'Phạm Thị Hương', 'email' => 'huong.pham@company.com', 'password' => 'demo1234', 'role' => 'EMPLOYEE'],
+        ];
+
+        foreach ($accounts as $account) {
+            $employeeId = DB::table('employees')->where('company_email', $account['email'])->value('id')
+                ?: DB::table('employees')->where('employee_code', $account['code'])->value('id');
+
+            $employeeData = [
+                'company_email' => $account['email'],
+                'password_hash' => Hash::make($account['password']),
+                'status' => 'ACTIVE',
+                'updated_at' => now(),
+            ];
+
+            if (! $employeeId) {
+                $employeeId = DB::table('employees')->insertGetId($employeeData + [
+                    'employee_code' => $account['code'],
+                    'full_name' => $account['name'],
+                    'is_super_admin' => $account['super_admin'] ?? false,
+                    'tenant_id' => 1,
+                    'legal_entity_id' => 1,
+                    'created_at' => now(),
+                ]);
+            } else {
+                if ($account['super_admin'] ?? false) {
+                    $employeeData['is_super_admin'] = true;
+                }
+
+                DB::table('employees')->where('id', $employeeId)->update($employeeData);
+            }
+
+            $roleId = DB::table('roles')->where('role_code', $account['role'])->value('id');
+
+            DB::table('employee_roles')->updateOrInsert(
+                ['employee_id' => $employeeId, 'role_id' => $roleId],
+                [
+                    'is_active' => true,
+                    'tenant_id' => 1,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+            );
+        }
+    }
+}

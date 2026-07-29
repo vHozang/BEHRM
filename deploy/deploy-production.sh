@@ -44,6 +44,17 @@ docker compose run --rm --no-deps --user root php composer install --no-dev --no
 docker compose stop worker scheduler >/dev/null 2>&1 || true
 docker compose up -d php nginx
 docker compose exec -T php php artisan migrate --force
+
+# A fresh production database needs the bundled demo organization and accounts.
+if ! docker compose exec -T php php -r '
+require "vendor/autoload.php";
+$app = require "bootstrap/app.php";
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+exit(Illuminate\Support\Facades\DB::table("employees")->exists() ? 0 : 1);
+' </dev/null; then
+  docker compose exec -T php php artisan db:seed --force
+fi
+
 docker compose exec -T php php artisan optimize:clear
 docker compose exec -T php php artisan config:cache
 docker compose up -d --remove-orphans

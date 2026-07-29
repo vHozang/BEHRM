@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Services\LeavePolicyService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -39,16 +40,7 @@ class DatabaseSeeder extends Seeder
                 ->update(['meta' => json_encode($meta), 'updated_at' => now()]);
         }
 
-        // An (NV0001) = tài khoản admin demo → cần role ADMIN (org phẳng nên không
-        // tự có quyền admin sau khi meta được cấu hình đúng).
-        $adminRoleId = DB::table('roles')->where('role_code', 'ADMIN')->value('id');
-        $an = DB::table('employees')->where('company_email', 'an.nguyen@company.com')->value('id');
-        if ($adminRoleId && $an) {
-            DB::table('employee_roles')->updateOrInsert(
-                ['employee_id' => $an, 'role_id' => $adminRoleId],
-                ['is_active' => 'true', 'tenant_id' => 1, 'created_at' => now(), 'updated_at' => now()],
-            );
-        }
+        $this->call(DemoAccountsSeeder::class);
 
         DB::table('employees')->updateOrInsert(
             ['company_email' => 'admin@company.com'],
@@ -76,17 +68,6 @@ class DatabaseSeeder extends Seeder
                 'updated_at' => now(),
             ],
         );
-
-        // Demo passwords (nút đăng nhập nhanh ở Login.vue) — bền qua reseed.
-        foreach ([
-            'an.nguyen@company.com' => 'test1234',
-            'cuong.le@company.com' => 'demo1234',
-            'mai.tran@company.com' => 'demo1234',
-            'huong.pham@company.com' => 'demo1234',
-        ] as $email => $pw) {
-            DB::table('employees')->where('company_email', $email)
-                ->update(['password_hash' => Hash::make($pw), 'updated_at' => now()]);
-        }
 
         $this->call(SeedDepartmentMetaSeeder::class);
         $this->call(LeaveTypeStatutorySeeder::class);
@@ -119,7 +100,7 @@ class DatabaseSeeder extends Seeder
         // BẮT BUỘC: thiếu balance năm N thì nhân viên KHÔNG xin nghỉ phép năm được
         // (LeaveController::store chặn "chưa có số dư phép cho năm N") → hỏng luồng
         // self-service ngay ngày đầu deploy. Đây là dữ liệu, không phải cấu hình.
-        $leavePolicy = app(\App\Services\LeavePolicyService::class);
+        $leavePolicy = app(LeavePolicyService::class);
         foreach (DB::table('tenants')->pluck('id') as $tenantId) {
             $leavePolicy->recomputeBalances((int) $tenantId, (int) now()->year);
         }
