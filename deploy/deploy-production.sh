@@ -55,6 +55,10 @@ exit(Illuminate\Support\Facades\DB::table("employees")->exists() ? 0 : 1);
   docker compose exec -T php php artisan db:seed --force
 fi
 
+# Keep public careers content present on existing databases too. This seeder is
+# idempotent and does not touch employee, attendance, or payroll data.
+docker compose exec -T php php artisan db:seed --class=RecruitmentPostDemoSeeder --force
+
 docker compose exec -T php php artisan optimize:clear
 docker compose exec -T php php artisan config:cache
 docker compose up -d --remove-orphans

@@ -47,9 +47,9 @@ Route::prefix('v1')->group(function (): void {
 
     // ─── Public Routes ───────────────────────────────────
     Route::get('/public/positions', [RecruitmentController::class, 'publicPositions']);
-    Route::post('/public/recruitment/applications', [RecruitmentController::class, 'store']);
     Route::get('/public/recruitment-posts', [RecruitmentPostController::class, 'publicListing']);
     Route::get('/public/recruitment-posts/{slug}', [RecruitmentPostController::class, 'publicShow']);
+    Route::middleware('throttle:5,1')->post('/public/recruitment/applications', [RecruitmentController::class, 'publicApplication']);
 
     // Máy chấm công (vân tay/khuôn mặt/thẻ) — token nội bộ, gọi bởi bridge thiết bị.
     Route::post('/internal/attendance/device-punch', [DeviceAttendanceController::class, 'punch']);

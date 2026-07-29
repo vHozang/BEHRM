@@ -7,10 +7,12 @@ use App\Models\Employee;
 use App\Models\InterviewSchedule;
 use App\Models\RecruitmentCandidate;
 use App\Services\AiFeedbackService;
+use App\Services\AutoRecruitScreeningService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -144,6 +146,156 @@ class RecruitmentController extends Controller
             'status' => 201,
             'message' => 'Ứng viên đã được tạo',
             'data' => $candidate,
+        ], 201);
+    }
+
+    /**
+     * Public application endpoint used by the careers landing page.
+     * Laravel stores the CV and proxies it to the private AutoRecruit service.
+     */
+    public function publicApplication(Request $request): JsonResponse
+    {
+        // Keep the legacy JSON application contract working for existing clients.
+        // Multipart requests with a CV use the careers + AI screening flow below.
+        if (! $request->hasFile('cv')) {
+            return $this->store($request);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'tenant_code' => ['required', 'string', 'exists:tenants,code'],
+            'post_slug' => ['required', 'string'],
+            'full_name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'cover_letter' => ['nullable', 'string', 'max:5000'],
+            'cv' => ['required', 'file', 'mimes:pdf,doc,docx', 'max:10240'],
+        ], [
+            'cv.required' => 'Vui lòng tải lên CV của bạn',
+            'cv.mimes' => 'CV chỉ hỗ trợ định dạng PDF, DOC hoặc DOCX',
+            'cv.max' => 'CV không được vượt quá 10 MB',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
+        }
+
+        $tenant = DB::table('tenants')
+            ->where('code', $request->input('tenant_code'))
+            ->where('status', 'ACTIVE')
+            ->first(['id', 'code']);
+
+        if (! $tenant) {
+            return $this->notFound('Công ty không tồn tại hoặc đã ngừng hoạt động');
+        }
+
+        $post = DB::table('recruitment_posts')
+            ->where('tenant_id', $tenant->id)
+            ->where('slug', $request->input('post_slug'))
+            ->where('status', 'PUBLISHED')
+            ->first();
+
+        if (! $post) {
+            return $this->notFound('Tin tuyển dụng không tồn tại hoặc đã đóng');
+        }
+
+        if ($post->deadline && now()->startOfDay()->gt($post->deadline)) {
+            return $this->validationError(['post_slug' => ['Tin tuyển dụng đã hết hạn nhận hồ sơ']]);
+        }
+
+        $position = $post->recruitment_position_id
+            ? DB::table('recruitment_positions')->where('id', $post->recruitment_position_id)->first()
+            : null;
+        $requirements = json_decode($post->requirements ?? '[]', true) ?: [];
+        $requiredSkills = $position
+            ? (json_decode($position->required_skills_json ?? '[]', true) ?: [])
+            : [];
+        $jdText = implode("\n", array_filter([
+            $post->title,
+            $post->summary,
+            $post->content,
+            $position?->position_name,
+            'Yêu cầu: '.implode(', ', $requiredSkills),
+            'Chi tiết: '.implode('; ', $requirements),
+        ]));
+
+        $candidate = RecruitmentCandidate::create([
+            'tenant_id' => $tenant->id,
+            'recruitment_position_id' => $post->recruitment_position_id,
+            'full_name' => $request->input('full_name'),
+            'email' => $request->input('email'),
+            'phone_number' => $request->input('phone'),
+            'application_status' => 'PENDING',
+            'ai_scoring_status' => 'PENDING',
+            'meta' => [
+                'cover_letter' => $request->input('cover_letter'),
+                'submitted_via' => 'careers_landing',
+            ],
+        ]);
+
+        $file = $request->file('cv');
+        $storagePath = $file->store("candidate-cvs/{$candidate->id}");
+        DB::table('recruitment_candidate_cvs')->updateOrInsert(
+            ['candidate_id' => $candidate->id],
+            [
+                'tenant_id' => $tenant->id,
+                'original_filename' => $file->getClientOriginalName(),
+                'storage_path' => $storagePath,
+                'mime_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]
+        );
+
+        $screening = null;
+        try {
+            $screening = app(AutoRecruitScreeningService::class)->screen($file, $jdText);
+            $screenedCandidate = $screening['candidate'];
+            $scores = $screenedCandidate['scores'] ?? [];
+            $finalScore = isset($scores['final_score']) ? (float) $scores['final_score'] : null;
+            $meta = $candidate->meta ?? [];
+            $meta['skills'] = $screenedCandidate['skills'] ?? [];
+            $meta['experience_years'] = $screenedCandidate['years_experience'] ?? null;
+            $meta['screening'] = [
+                'job_id' => $screening['job_id'],
+                'recommendation' => $scores['recommendation'] ?? null,
+                'analysis' => $screenedCandidate['analysis'] ?? [],
+            ];
+
+            $candidate->update([
+                'application_status' => 'SCREENING',
+                'ai_score' => $finalScore === null ? null : round($finalScore * 100, 1),
+                'ai_scoring_status' => 'DONE',
+                'ai_scored_at' => now(),
+                'ai_matched_skills_json' => $scores['matched_skills'] ?? [],
+                'ai_missing_skills_json' => $scores['missing_skills'] ?? [],
+                'meta' => $meta,
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning("Public CV screening deferred for candidate #{$candidate->id}", [
+                'error' => $exception->getMessage(),
+            ]);
+            $candidate->update([
+                'ai_scoring_status' => 'FAILED',
+                'ai_scoring_error' => 'CV đã nhận; hệ thống sẽ chấm lại sau',
+            ]);
+        }
+
+        $candidate->refresh();
+
+        return response()->json([
+            'status' => 201,
+            'message' => $candidate->ai_scoring_status === 'DONE'
+                ? 'Hồ sơ đã được gửi và chấm điểm thành công'
+                : 'Hồ sơ đã được gửi; hệ thống sẽ hoàn tất chấm điểm sau',
+            'data' => [
+                'candidate_id' => $candidate->id,
+                'application_status' => $candidate->application_status,
+                'ai_scoring_status' => $candidate->ai_scoring_status,
+                'ai_score' => $candidate->ai_score,
+                'matched_skills' => $candidate->ai_matched_skills_json ?? [],
+                'missing_skills' => $candidate->ai_missing_skills_json ?? [],
+            ],
         ], 201);
     }
 

@@ -46,6 +46,20 @@ const candidatePayload = (data) => {
 };
 
 export const recruitmentService = {
+  // --- Public careers landing ---
+  getPublicPosts: async () => {
+    const response = await axiosClient.get('/public/recruitment-posts');
+    return response.data;
+  },
+  getPublicPost: async (slug) => {
+    const response = await axiosClient.get(`/public/recruitment-posts/${encodeURIComponent(slug)}`);
+    return response.data;
+  },
+  submitPublicApplication: async (formData) => {
+    const response = await axiosClient.post('/public/recruitment/applications', formData);
+    return response.data;
+  },
+
   // --- Positions ---
   getAllPositions: async (params) => {
     const response = await axiosClient.get('/recruitment-positions', { params });

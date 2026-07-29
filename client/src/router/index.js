@@ -2,6 +2,12 @@ import { createRouter, createWebHistory } from 'vue-router';
 
 const routes = [
   {
+    path: '/careers',
+    name: 'careers',
+    component: () => import('../views/CareersLanding.vue'),
+    meta: { title: 'Cơ hội nghề nghiệp' }
+  },
+  {
     path: '/',
     component: () => import('../views/Layout.vue'),
     meta: { requiresAuth: true },

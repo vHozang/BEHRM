@@ -73,6 +73,7 @@ class DatabaseSeeder extends Seeder
         $this->call(LeaveTypeStatutorySeeder::class);
         $this->call(DemoCoverageSeeder::class);
         $this->call(DashboardDemoSeeder::class);
+        $this->call(RecruitmentPostDemoSeeder::class);
         $this->call(ScaleWorkerSeeder::class);
         $this->call(EnrichWorkerProfilesSeeder::class);
         $this->call(StandardizeAttendanceSeeder::class);
