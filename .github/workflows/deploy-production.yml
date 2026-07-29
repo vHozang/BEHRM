@@ -9,6 +9,12 @@ permissions:
   contents: read
   actions: read
 
+env:
+  VPS_HOST: 180.93.42.137
+  VPS_USER: deloy
+  VPS_PORT: '22'
+  VPS_HOST_RSA_FINGERPRINT: SHA256:TVkp/PLJCLAPKPCRB5Qn1orWYlDZ5+3Kl/S9F3r77pk
+
 concurrency:
   group: production-deploy
   cancel-in-progress: false
@@ -51,28 +57,36 @@ jobs:
           ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
 
       - name: Trust VPS host key
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
           set -Eeuo pipefail
           mkdir -p "$HOME/.ssh"
           chmod 700 "$HOME/.ssh"
-          if [ -n "${VPS_KNOWN_HOSTS:-}" ]; then
-            printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
-          else
-            ssh-keyscan -H "$VPS_HOST" >> "$HOME/.ssh/known_hosts"
+
+          scanned_key="$(ssh-keyscan -T 10 -t rsa "$VPS_HOST" 2>/dev/null)"
+          if [ -z "$scanned_key" ]; then
+            echo "Unable to read the VPS RSA host key" >&2
+            exit 1
           fi
+
+          actual_fingerprint="$(printf '%s\n' "$scanned_key" | ssh-keygen -lf - | awk 'NR == 1 {print $2}')"
+          if [ "$actual_fingerprint" != "$VPS_HOST_RSA_FINGERPRINT" ]; then
+            echo "VPS host key fingerprint mismatch: $actual_fingerprint" >&2
+            exit 1
+          fi
+
+          printf '%s\n' "$scanned_key" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
       - name: Deploy production branch
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
         run: |
           set -Eeuo pipefail
-          ssh -p "$VPS_PORT" -o BatchMode=yes "$VPS_USER@$VPS_HOST" \
+          ssh-add -l
+          ssh -p "$VPS_PORT" \
+            -o BatchMode=yes \
+            -o PasswordAuthentication=no \
+            -o PreferredAuthentications=publickey \
+            -o StrictHostKeyChecking=yes \
+            "$VPS_USER@$VPS_HOST" \
             'DEPLOY_PATH=/opt/hrm bash -s' <<'REMOTE_SCRIPT'
           set -Eeuo pipefail
           APP_DIR="${DEPLOY_PATH:-/opt/hrm}"

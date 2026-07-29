@@ -60,15 +60,13 @@ install -m 600 /dev/null /opt/hrm/Doan2_v2/Doan2/.env
 
 ## 2. Cấu hình GitHub Actions
 
-Trong GitHub repository, vào **Settings → Environments → New environment**, tạo environment tên `production`. Tại **Settings → Secrets and variables → Actions**, thêm các secrets:
+Trong GitHub repository, vào **Settings → Environments → New environment**, tạo environment tên `production`. Thêm environment secret:
 
 | Secret | Giá trị |
 |---|---|
-| `VPS_HOST` | `180.93.42.137` |
-| `VPS_USER` | `deloy` |
-| `VPS_PORT` | `22` |
 | `VPS_SSH_KEY` | toàn bộ private key `~/.ssh/hrm_github_actions` |
-| `VPS_KNOWN_HOSTS` | tùy chọn; output của `ssh-keyscan -H 180.93.42.137` |
+
+IP `180.93.42.137`, user `deloy`, port `22` và fingerprint RSA được cố định trong workflow. Workflow tự quét host key và chỉ kết nối khi fingerprint khớp, vì vậy không cần secret `VPS_KNOWN_HOSTS`.
 
 `CI` chạy frontend tests/build, Laravel tests và kiểm tra Compose. `Deploy production` tự chạy khi push lên `production`, chờ CI của đúng commit thành công, hoặc chạy thủ công bằng **Run workflow**. Workflow checkout code trên VPS, build/restart Docker Compose, cài dependency production, migrate và cache Laravel.
 
