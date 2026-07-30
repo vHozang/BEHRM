@@ -1,0 +1,301 @@
+<title>HRM System — Hồ sơ dự án &amp; Lộ trình hoàn thiện</title>
+<style>
+  :root {
+    --bg: #f5f7f8; --surface: #ffffff; --surface-2: #eceff1; --sunken: #e3e8ea;
+    --ink: #14201f; --ink-soft: #41504e; --ink-faint: #6d7c7a; --line: #d9e0e0;
+    --accent: #0e6d78; --accent-soft: #d6ebee; --accent-ink: #0a4f57;
+    --ok: #237a3e; --ok-bg: #e2f1e6; --warn: #a9711a; --warn-bg: #f6ecd7;
+    --wait: #5f6f74; --wait-bg: #e6ebec; --stop: #b03b3b; --stop-bg: #f6e2e1;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1516; --surface: #131e20; --surface-2: #1a2729; --sunken: #0f1a1b;
+      --ink: #e7eeed; --ink-soft: #b0bfbd; --ink-faint: #7a8987; --line: #263639;
+      --accent: #33b0bd; --accent-soft: #103138; --accent-ink: #7fd6df;
+      --ok: #46c072; --ok-bg: #12271a; --warn: #e0a83e; --warn-bg: #2a2210;
+      --wait: #869599; --wait-bg: #1b2529; --stop: #ee6a6a; --stop-bg: #2a1614;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1516; --surface: #131e20; --surface-2: #1a2729; --sunken: #0f1a1b;
+    --ink: #e7eeed; --ink-soft: #b0bfbd; --ink-faint: #7a8987; --line: #263639;
+    --accent: #33b0bd; --accent-soft: #103138; --accent-ink: #7fd6df;
+    --ok: #46c072; --ok-bg: #12271a; --warn: #e0a83e; --warn-bg: #2a2210;
+    --wait: #869599; --wait-bg: #1b2529; --stop: #ee6a6a; --stop-bg: #2a1614;
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7f8; --surface: #ffffff; --surface-2: #eceff1; --sunken: #e3e8ea;
+    --ink: #14201f; --ink-soft: #41504e; --ink-faint: #6d7c7a; --line: #d9e0e0;
+    --accent: #0e6d78; --accent-soft: #d6ebee; --accent-ink: #0a4f57;
+    --ok: #237a3e; --ok-bg: #e2f1e6; --warn: #a9711a; --warn-bg: #f6ecd7;
+    --wait: #5f6f74; --wait-bg: #e6ebec; --stop: #b03b3b; --stop-bg: #f6e2e1;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: clamp(20px,5vw,52px) clamp(16px,4vw,40px) 80px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  h1 { font-size: clamp(27px,5vw,42px); line-height: 1.07; margin: 12px 0 0; letter-spacing: -.02em; font-weight: 800; text-wrap: balance; }
+  h2 { font-size: clamp(19px,3vw,24px); margin: 0; font-weight: 750; letter-spacing: -.01em; text-wrap: balance; }
+  .lede { color: var(--ink-soft); font-size: 17px; max-width: 62ch; margin: 16px 0 0; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 24px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-faint); }
+  .meta b { color: var(--ink-soft); font-weight: 600; }
+  section { margin-top: clamp(38px,6vw,60px); }
+  .sec-head { display: flex; align-items: baseline; gap: 13px; margin-bottom: 20px; padding-bottom: 11px; border-bottom: 1px solid var(--line); }
+  .sec-head .n { font-family: var(--mono); font-size: 13px; color: var(--accent); font-weight: 600; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 13px; padding: 20px 22px; }
+
+  /* verdict */
+  .verdict { display: grid; grid-template-columns: 1.15fr .85fr; gap: 16px; }
+  @media (max-width: 720px){ .verdict { grid-template-columns: 1fr; } }
+  .badge { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-weight: 700; font-size: 12.5px; color: var(--ok); background: var(--ok-bg); border: 1px solid color-mix(in srgb, var(--ok) 32%, transparent); padding: 6px 12px; border-radius: 999px; width: fit-content; }
+  .verdict h2 { margin-top: 13px; }
+  .verdict p { color: var(--ink-soft); font-size: 15px; margin: 8px 0 0; }
+  .stats { display: grid; grid-template-columns: repeat(2,1fr); gap: 11px; }
+  .stat { background: var(--surface-2); border: 1px solid var(--line); border-radius: 11px; padding: 13px 15px; }
+  .stat .k { font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint); }
+  .stat .v { font-size: 27px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; margin-top: 3px; }
+
+  /* lifecycle pipeline */
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; }
+  .stage { flex: 1 1 130px; background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 10px; padding: 12px 13px; }
+  .stage .s-num { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); letter-spacing: .08em; }
+  .stage .s-name { font-weight: 700; font-size: 14px; margin-top: 3px; }
+  .stage .s-desc { font-size: 12px; color: var(--ink-faint); margin-top: 3px; line-height: 1.4; }
+  .flow .arr { align-self: center; color: var(--accent); font-family: var(--mono); font-weight: 700; flex: 0 0 auto; }
+  @media (max-width: 640px){ .flow { flex-direction: column; } .flow .arr { transform: rotate(90deg); margin-left: 20px; } }
+
+  /* architecture layers */
+  .layers { display: flex; flex-direction: column; gap: 9px; }
+  .layer { display: grid; grid-template-columns: 130px 1fr; gap: 14px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 13px 16px; }
+  @media (max-width: 560px){ .layer { grid-template-columns: 1fr; gap: 5px; } }
+  .layer .l-tag { font-family: var(--mono); font-size: 11.5px; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); padding: 4px 9px; border-radius: 6px; width: fit-content; }
+  .layer .l-body { font-size: 13.5px; color: var(--ink-soft); }
+  .layer .l-body b { color: var(--ink); }
+
+  /* module grid */
+  .mods { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 11px; }
+  .mod { background: var(--surface); border: 1px solid var(--line); border-left-width: 4px; border-radius: 10px; padding: 13px 15px; }
+  .mod.ok { border-left-color: var(--ok); }
+  .mod.warn { border-left-color: var(--warn); }
+  .mod.wait { border-left-color: var(--wait); }
+  .mod .m-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .mod .m-name { font-weight: 700; font-size: 14.5px; }
+  .mod .m-desc { font-size: 12.5px; color: var(--ink-faint); margin-top: 5px; line-height: 1.45; }
+  .pill { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 3px 7px; border-radius: 5px; white-space: nowrap; }
+  .pill.ok { color: var(--ok); background: var(--ok-bg); }
+  .pill.warn { color: var(--warn); background: var(--warn-bg); }
+  .pill.wait { color: var(--wait); background: var(--wait-bg); }
+
+  /* accomplishment list */
+  .done { display: grid; gap: 11px; }
+  .done-item { background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 15px 18px; }
+  .done-item h3 { margin: 0; font-size: 15.5px; font-weight: 700; display: flex; align-items: center; gap: 9px; }
+  .done-item h3 .tick { color: var(--ok); font-family: var(--mono); }
+  .done-item p { margin: 7px 0 0; font-size: 13.5px; color: var(--ink-soft); }
+  .done-item .ev { margin-top: 9px; font-family: var(--mono); font-size: 12px; color: var(--ink-soft); background: var(--sunken); border-radius: 7px; padding: 8px 11px; overflow-x: auto; }
+  .done-item .ev b { color: var(--ok); }
+
+  /* roadmap */
+  ol.road { list-style: none; counter-reset: r; padding: 0; margin: 0; display: grid; gap: 10px; }
+  ol.road li { counter-increment: r; display: grid; grid-template-columns: 34px 1fr auto; gap: 13px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 14px 16px; }
+  ol.road li::before { content: counter(r); font-family: var(--mono); font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; font-size: 13px; }
+  ol.road .r-body b { color: var(--ink); }
+  ol.road .r-body { font-size: 14px; color: var(--ink-soft); }
+  ol.road .r-when { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); white-space: nowrap; padding-top: 4px; }
+
+  /* demo personas */
+  .persona { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
+  .persona .p-role { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .persona h3 { margin: 3px 0 0; font-size: 16px; }
+  .persona ol { margin: 10px 0 0; padding-left: 18px; color: var(--ink-soft); font-size: 13.5px; }
+  .persona ol li { margin: 3px 0; }
+  .persona .acct { font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); margin-top: 8px; }
+
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.tbl th, table.tbl td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.tbl th { font-family: var(--mono); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-faint); font-weight: 600; }
+  table.tbl td.num { font-variant-numeric: tabular-nums; font-family: var(--mono); }
+  .scroll { overflow-x: auto; }
+  footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px; color: var(--ink-faint); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+  code { font-family: var(--mono); font-size: .9em; background: var(--sunken); padding: 1px 5px; border-radius: 4px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Hồ sơ bàn giao · Senior Architect</div>
+    <h1>HRM System — Toàn cảnh dự án, tiến độ &amp; lộ trình hoàn thiện</h1>
+    <p class="lede">Hệ thống quản trị nhân sự SaaS đa tổ chức, chuẩn nghiệp vụ &amp; pháp lý Việt Nam, phục vụ từ doanh nghiệp vừa đến công ty sản xuất đông công nhân. Tài liệu này giúp người đọc hiểu <em>hệ thống làm gì</em>, <em>đã hoàn thiện tới đâu</em> và <em>còn gì để lên production</em>.</p>
+    <div class="meta">
+      <span><b>Ngày:</b> 17/07/2026</span>
+      <span><b>Kiến trúc:</b> Vue 3 + Laravel 11 + PostgreSQL + Redis</span>
+      <span><b>Quy mô đã kiểm tải:</b> 1.222 nhân viên</span>
+      <span><b>Kiểm chứng:</b> đối soát CSDL + chạy thật, không dựa ghi chú</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="verdict">
+      <div class="card">
+        <span class="badge">● LÕI HỆ THỐNG SẴN SÀNG VẬN HÀNH</span>
+        <h2>Đủ vững để demo &amp; chào doanh nghiệp SME Việt Nam</h2>
+        <p>Toàn bộ luồng nghiệp vụ cốt lõi đã chạy &amp; kiểm chứng end-to-end. Phần còn lại là cấu hình hạ tầng khi lên VPS (HTTPS, CORS, email, worker nền) — không phải lỗi mã nguồn.</p>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="k">Nhân viên đồng bộ đủ</div><div class="v" style="color:var(--accent)">1.222</div></div>
+        <div class="stat"><div class="k">Dữ liệu mồ côi</div><div class="v" style="color:var(--ok)">0</div></div>
+        <div class="stat"><div class="k">Lỗ bảo mật đã vá</div><div class="v">13</div></div>
+        <div class="stat"><div class="k">Test tự động (pass)</div><div class="v" style="color:var(--ok)">5</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">01</span><h2>Hệ thống làm gì — vòng đời nhân viên</h2></div>
+    <p class="lede" style="margin-bottom:20px">Một HRM đúng nghĩa quản trị trọn vòng đời của người lao động. Đây là "xương sống" của dự án — mọi module đều gắn vào một chặng trong luồng này.</p>
+    <div class="flow">
+      <div class="stage"><div class="s-num">01</div><div class="s-name">Tuyển dụng</div><div class="s-desc">Ứng viên → phỏng vấn → đánh giá → tuyển</div></div>
+      <span class="arr">→</span>
+      <div class="stage"><div class="s-num">02</div><div class="s-name">Hội nhập &amp; HĐ</div><div class="s-desc">Onboarding, hợp đồng + ký điện tử</div></div>
+      <span class="arr">→</span>
+      <div class="stage"><div class="s-num">03</div><div class="s-name">Chấm công &amp; Ca</div><div class="s-desc">Vân tay/thẻ, xoay 3 ca, tăng ca</div></div>
+      <span class="arr">→</span>
+      <div class="stage"><div class="s-num">04</div><div class="s-name">Phép &amp; Đơn từ</div><div class="s-desc">Nghỉ phép, duyệt nhiều cấp, quota</div></div>
+      <span class="arr">→</span>
+      <div class="stage"><div class="s-num">05</div><div class="s-name">Tính lương</div><div class="s-desc">Lương công → BHXH → thuế TNCN → net</div></div>
+      <span class="arr">→</span>
+      <div class="stage"><div class="s-num">06</div><div class="s-name">Báo cáo &amp; Tuân thủ</div><div class="s-desc">Kê khai BHXH, quyết toán thuế</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">02</span><h2>Kiến trúc — 3 lớp bảo vệ trước dữ liệu</h2></div>
+    <div class="layers">
+      <div class="layer"><span class="l-tag">Giao diện</span><div class="l-body"><b>Vue 3 SPA</b> cho quản trị/HR + <b>bản mobile</b> (/m) cho công nhân chấm công. Gọi API qua bearer token.</div></div>
+      <div class="layer"><span class="l-tag">Lớp 1 · Auth</span><div class="l-body"><b>HrmAuth</b>: token → hash SHA-256 → xác định nhân viên + công ty (tenant).</div></div>
+      <div class="layer"><span class="l-tag">Lớp 2 · Quyền</span><div class="l-body"><b>ModuleAccess</b>: kiểm quyền theo vai trò/module + self-service (chỉ xem dữ liệu của mình).</div></div>
+      <div class="layer"><span class="l-tag">Lớp 3 · Tenant</span><div class="l-body"><b>Controller + Engine</b>: mọi truy vấn lọc theo <code>tenant_id</code>; engine luật lương/BHXH/thuế VN.</div></div>
+      <div class="layer"><span class="l-tag">Dữ liệu</span><div class="l-body"><b>PostgreSQL</b> (tenant_id mỗi hàng) + <b>Redis</b> (hàng đợi tính lương nền, cache).</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">03</span><h2>Bản đồ module &amp; trạng thái</h2></div>
+    <div class="mods">
+      <div class="mod ok"><div class="m-top"><span class="m-name">Nhân sự &amp; Hồ sơ</span><span class="pill ok">Xong</span></div><div class="m-desc">1.222 NV, hồ sơ 360°, phòng ban phân cấp, lịch sử công tác</div></div>
+      <div class="mod ok"><div class="m-top"><span class="m-name">Hợp đồng</span><span class="pill ok">Xong</span></div><div class="m-desc">Mẫu HĐ, ký điện tử OTP, gia hạn/hết hạn, đồng bộ hồ sơ</div></div>
+      <div class="mod ok"><div class="m-top"><span class="m-name">Chấm công &amp; Ca</span><span class="pill ok">Xong</span></div><div class="m-desc">Máy chấm công, xoay 3 ca, tăng ca theo luật, bảng công</div></div>
+      <div class="mod ok"><div class="m-top"><span class="m-name">Nghỉ phép &amp; Đơn từ</span><span class="pill ok">Xong</span></div><div class="m-desc">Duyệt nhiều cấp, quota + thâm niên, nghỉ lễ âm lịch</div></div>
+      <div class="mod ok"><div class="m-top"><span class="m-name">Tính lương VN</span><span class="pill ok">Xong</span></div><div class="m-desc">PIT 5 bậc, BHXH trần/sàn, giảm trừ gia cảnh, thưởng tháng 13</div></div>
+      <div class="mod ok"><div class="m-top"><span class="m-name">Báo cáo &amp; Tuân thủ</span><span class="pill ok">Xong</span></div><div class="m-desc">Kê khai BHXH, quyết toán thuế TNCN, headcount</div></div>
+      <div class="mod ok"><div class="m-top"><span class="m-name">Phân quyền đa-tenant</span><span class="pill ok">Xong</span></div><div class="m-desc">RBAC theo module, cô lập công ty, 3 vòng kiểm bảo mật</div></div>
+      <div class="mod ok"><div class="m-top"><span class="m-name">Bản mobile công nhân</span><span class="pill ok">Xong</span></div><div class="m-desc">Chấm công, đơn từ, phiếu lương trên điện thoại</div></div>
+      <div class="mod ok"><div class="m-top"><span class="m-name">Tuyển dụng</span><span class="pill ok">Xong</span></div><div class="m-desc">Ứng viên, lịch phỏng vấn, đánh giá</div></div>
+      <div class="mod warn"><div class="m-top"><span class="m-name">Email / Thông báo</span><span class="pill warn">Cần SMTP</span></div><div class="m-desc">Code sẵn (reset MK, OTP); dev ghi log, prod cần cắm SMTP</div></div>
+      <div class="mod warn"><div class="m-top"><span class="m-name">Deploy hạ tầng</span><span class="pill warn">Chờ VPS</span></div><div class="m-desc">HTTPS, CORS, biến môi trường, worker nền thường trực</div></div>
+      <div class="mod wait"><div class="m-top"><span class="m-name">KPI · Đào tạo · Chi lương bank</span><span class="pill wait">Phase 2</span></div><div class="m-desc">Hoãn có chủ đích (YAGNI) — thêm khi khách enterprise yêu cầu</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">04</span><h2>Đã làm gì — kèm bằng chứng kiểm chứng</h2></div>
+    <div class="done">
+      <div class="done-item">
+        <h3><span class="tick">✓</span> An toàn &amp; ổn định — 3 vòng "zero-trust"</h3>
+        <p>Đóng vai kẻ tấn công: vá 6 lỗ bảo mật (leo thang quyền, lộ lương/PII, tự duyệt phép), 4 điểm sập do input rác, 3 lỗi trừ trùng quota khi thao tác đồng thời.</p>
+        <div class="ev">Duyệt 1 đơn nghỉ 8 lần song song → trước: trừ 6 ngày; <b>sau vá: trừ đúng 2 ngày</b>. Input rác → 4xx sạch, không sập.</div>
+      </div>
+      <div class="done-item">
+        <h3><span class="tick">✓</span> Tính lương đúng luật VN 2026 + thưởng tháng 13</h3>
+        <p>Engine tính lương theo Luật thuế 109/2025, BHXH 2024. Thêm thưởng/lương tháng 13: chịu thuế TNCN nhưng không đóng BHXH (Đ.89).</p>
+        <div class="ev">Thưởng 10tr → thuế TNCN 1.947.078 → <b>3.394.156</b> (đúng bậc lũy tiến), <b>BHXH giữ nguyên</b> 5.407.000.</div>
+      </div>
+      <div class="done-item">
+        <h3><span class="tick">✓</span> Đồng bộ &amp; toàn vẹn dữ liệu 1.222 nhân viên</h3>
+        <p>Chuẩn hóa hồ sơ–hợp đồng–chấm công–lương–phép liên kết chặt, quan hệ rõ ràng; đưa lãnh đạo về đúng Ban Giám đốc; sửa suy diễn trạng thái (hết "tất cả thử việc").</p>
+        <div class="ev">1.222/1.222 đủ HĐ + công + lương + phép · <b>0 dữ liệu mồ côi</b> · 1.161 HĐ chính thức + 61 thử việc.</div>
+      </div>
+      <div class="done-item">
+        <h3><span class="tick">✓</span> Mở rộng quy mô sản xuất — tính lương chạy nền</h3>
+        <p>Test tải 1.200 công nhân. Chuyển tính lương từ "đứng chờ 30s (dễ timeout)" sang <b>hàng đợi chạy nền</b>: bấm là trả về ngay, worker tính phía sau, không timeout ở mọi quy mô.</p>
+        <div class="ev">Tính lương 1.218 NV: trả về <b>&lt;1s</b> (thay vì 30s), worker xử lý nền xong 27s, 0 job lỗi.</div>
+      </div>
+      <div class="done-item">
+        <h3><span class="tick">✓</span> Trải nghiệm nhân viên — vá lỗi màn tự phục vụ</h3>
+        <p>Nhân viên bị chặn xin nghỉ phép (thiếu số dư năm), giờ công hiển thị "Invalid Date", thống kê "tháng này" hiện tổng all-time, không đọc được chính sách/tin nội bộ (RBAC quá chặt), chấm công tải chậm (quét toàn bộ lịch sử).</p>
+        <div class="ev">Chính sách/tin: 403 → <b>200</b> (đọc + xác nhận được) · Chấm công: 8 trang lịch sử → <b>1 trang</b> (chỉ tháng hiện tại).</div>
+      </div>
+      <div class="done-item">
+        <h3><span class="tick">✓</span> Dữ liệu demo &amp; sơ đồ tổ chức</h3>
+        <p>Seed đầy đủ các phân hệ trống (tài sản, phỏng vấn, chính sách, ticket, đổi ca). Sơ đồ tổ chức lọc bỏ công nhân → chỉ cây quản lý gọn gàng.</p>
+        <div class="ev">Sơ đồ tổ chức: 1.221 node (rối/lag) → <b>23 node</b> lãnh đạo + văn phòng.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">05</span><h2>Lộ trình hoàn thành — ưu tiên theo giá trị</h2></div>
+    <ol class="road">
+      <li><div class="r-body"><b>Cấu hình deploy VPS.</b> HTTPS + CORS cho tên miền + biến môi trường production (tắt debug). Cần VPS/tên miền của anh.</div><div class="r-when">Chờ hạ tầng</div></li>
+      <li><div class="r-body"><b>Worker chạy nền thường trực.</b> Dựng container/supervisor chạy hàng đợi (queue) để tính lương nền tự động — dev đang chạy tay.</div><div class="r-when">Cùng deploy</div></li>
+      <li><div class="r-body"><b>Cắm SMTP thật.</b> Gửi email reset mật khẩu, OTP ký HĐ, phiếu lương — code đã sẵn, chỉ cấu hình mail server.</div><div class="r-when">Cùng deploy</div></li>
+      <li><div class="r-body"><b>Cho bộ test chạy trên PostgreSQL.</b> Hiện test chạy SQLite nên một số fail do lệch môi trường (không phải lỗi nghiệp vụ) — chuyển sang Postgres để có "cổng xanh" tin cậy.</div><div class="r-when">Trước bàn giao</div></li>
+      <li><div class="r-body"><b>Phase 2 (khi có khách enterprise).</b> Kê khai điện tử BHXH/thuế lên cơ quan, chấm công khuôn mặt/GPS, chi lương qua ngân hàng, đánh giá KPI.</div><div class="r-when">Tương lai</div></li>
+    </ol>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">06</span><h2>Chiến lược demo &amp; test — trình bày với hội đồng</h2></div>
+    <div class="persona">
+      <div class="p-role">Luồng 1 · Quản trị / HR</div>
+      <h3>Vận hành toàn công ty</h3>
+      <ol>
+        <li>Đăng nhập → Dashboard tổng quan.</li>
+        <li>Nhân viên: hiện <b>đủ 1.222 người</b> (không còn giới hạn 100), lọc theo phòng/trạng thái.</li>
+        <li><b>Tính lương kỳ 07/2026</b> → "đang xử lý nền" → báo xong <em>(điểm nhấn khả năng mở rộng)</em>.</li>
+        <li>Phiếu lương: lương công → BHXH → thuế TNCN → thực nhận.</li>
+        <li>Báo cáo → Kê khai BHXH / Quyết toán thuế TNCN.</li>
+        <li>Sơ đồ tổ chức: cây quản lý gọn (không nhồi công nhân).</li>
+      </ol>
+      <div class="acct">an.nguyen@company.com / test1234</div>
+    </div>
+    <div class="persona">
+      <div class="p-role">Luồng 2 · Nhân viên văn phòng</div>
+      <h3>Tự phục vụ</h3>
+      <ol>
+        <li>Cổng nhân viên: số dư phép + thống kê tháng này đúng.</li>
+        <li>Xin nghỉ phép năm → tạo đơn thành công.</li>
+        <li>(HR duyệt) → nhân viên thấy "Đã duyệt", quota trừ đúng.</li>
+        <li>Đọc chính sách công ty + tin nội bộ, xác nhận đã đọc.</li>
+      </ol>
+      <div class="acct">huong.pham@company.com / demo1234</div>
+    </div>
+    <div class="persona">
+      <div class="p-role">Luồng 3 · Công nhân trên mobile</div>
+      <h3>Chấm công tại xưởng</h3>
+      <ol>
+        <li>Mở bản mobile <code>/m</code> — giao diện tối giản kiểu app.</li>
+        <li>Chấm công vào/ra → phân loại đúng giờ/muộn.</li>
+        <li>Xem lịch ca được phân + phiếu lương của mình.</li>
+      </ol>
+      <div class="acct">cn00001@factory.vn / congnhan123</div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h2 style="font-size:15px">Bộ đối chứng để hội đồng tự kiểm</h2>
+      <div class="scroll" style="margin-top:10px">
+        <table class="tbl">
+          <tr><th>Kiểm gì</th><th>Cách</th><th>Kỳ vọng</th></tr>
+          <tr><td>Toàn vẹn dữ liệu</td><td>Đối soát SQL các quan hệ</td><td class="num">1.222 đủ · mồ côi 0</td></tr>
+          <tr><td>Test tự động</td><td>Feature test seeder/lương</td><td class="num">5 pass · 45 assert</td></tr>
+          <tr><td>Ca biên bảo mật</td><td>Input rác / duyệt đồng thời / kỳ khóa</td><td>4xx · trừ 1 lần · chặn</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>HRM System · Hồ sơ dự án &amp; lộ trình · Nhóm CODEDENNGU</span>
+    <span>17/07/2026 · kiểm chứng bằng đối soát CSDL + chạy thật</span>
+  </footer>
+</div>

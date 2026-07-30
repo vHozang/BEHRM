@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Báo cáo QA theo vai trò — HRM CODEDENGU (23/07/2026)</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --surface:#ffffff; --surface-2:#f0f2f8; --border:#e2e5ef;
+    --ink:#1a1c2e; --ink-2:#4b4f6b; --muted:#7b8098;
+    --brand:#4f46e5; --brand-soft:#eef0ff;
+    --ok:#0f9d58; --ok-soft:#e6f4ec; --warn:#c77700; --warn-soft:#fbf1df;
+    --crit:#d64550; --crit-soft:#fbe9eb; --info:#2563c9;
+    --shadow:0 1px 2px rgba(20,22,50,.06),0 8px 24px rgba(20,22,50,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0f1118; --surface:#171a24; --surface-2:#1e222f; --border:#2a2f40;
+      --ink:#eceefb; --ink-2:#b8bcd4; --muted:#868ba6;
+      --brand:#8b86f5; --brand-soft:#211f3d;
+      --ok:#4cc38a; --ok-soft:#12281f; --warn:#e0a13a; --warn-soft:#2c2415;
+      --crit:#f2818b; --crit-soft:#2e1a1d; --info:#6ea8fe;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
+  .tnum{font-variant-numeric:tabular-nums}
+
+  header.hero{border:1px solid var(--border);background:
+    linear-gradient(135deg,var(--brand-soft),var(--surface) 60%);
+    border-radius:18px;padding:32px;box-shadow:var(--shadow);margin-bottom:28px}
+  .eyebrow{text-transform:uppercase;letter-spacing:.14em;font-size:12px;font-weight:700;color:var(--brand)}
+  h1{font-size:clamp(24px,4vw,34px);line-height:1.15;margin:10px 0 6px;text-wrap:balance;letter-spacing:-.02em}
+  .sub{color:var(--ink-2);font-size:15px;max-width:62ch}
+  .verdict{display:inline-flex;align-items:center;gap:9px;margin-top:20px;
+    background:var(--ok-soft);color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 30%,transparent);
+    padding:9px 16px;border-radius:999px;font-weight:700;font-size:14px}
+  .verdict .dot{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 20%,transparent)}
+
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:32px}
+  @media(max-width:640px){.metrics{grid-template-columns:repeat(2,1fr)}}
+  .metric{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow)}
+  .metric .n{font-size:28px;font-weight:800;letter-spacing:-.02em}
+  .metric .l{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .metric.ok .n{color:var(--ok)} .metric.brand .n{color:var(--brand)} .metric.crit .n{color:var(--crit)}
+
+  h2{font-size:19px;letter-spacing:-.01em;margin:38px 0 4px;display:flex;align-items:center;gap:10px}
+  h2 .idx{font-size:12px;font-weight:700;color:var(--brand);background:var(--brand-soft);
+    width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none}
+  .lead{color:var(--ink-2);font-size:14.5px;margin:2px 0 16px}
+
+  .roles{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  @media(max-width:640px){.roles{grid-template-columns:1fr}}
+  .role{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow)}
+  .role h3{margin:0 0 2px;font-size:15.5px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .role .who{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+  .pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .role ul{margin:0;padding-left:18px;font-size:13.5px;color:var(--ink-2)}
+  .role li{margin:3px 0}
+  .role li b{color:var(--ink);font-weight:600}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px;
+    background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+  .tscroll{overflow-x:auto}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{background:var(--surface-2);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+  tr:last-child td{border-bottom:none}
+  td b{font-weight:600}
+  .sev{font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;white-space:nowrap}
+  .sev.high{background:var(--crit-soft);color:var(--crit)}
+  .sev.med{background:var(--warn-soft);color:var(--warn)}
+  .sev.sec{background:var(--brand-soft);color:var(--brand)}
+  .tag{font-size:11px;color:var(--muted)}
+
+  .note{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--warn);
+    border-radius:12px;padding:14px 18px;font-size:13.5px;color:var(--ink-2);box-shadow:var(--shadow)}
+  .note ul{margin:8px 0 0;padding-left:18px} .note li{margin:4px 0}
+  .note b{color:var(--ink)}
+
+  footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--border);
+    color:var(--muted);font-size:12.5px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  code{background:var(--surface-2);padding:1px 6px;border-radius:5px;font-size:12.5px;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">Kiểm thử chất lượng · Sẵn sàng Promotion</div>
+    <h1>Báo cáo QA theo vai trò người dùng — HRM CODEDENGU</h1>
+    <p class="sub">Kiểm thử end-to-end hệ thống nhân sự đa pháp nhân theo từng vai trò phân quyền (RBAC): Nhân viên, Quản lý, HR, Kế toán. Phát hiện và vá lỗi nghiệp vụ, lỗ hổng phân quyền và làm sạch trải nghiệm trước khi trình diễn cho doanh nghiệp.</p>
+    <span class="verdict"><span class="dot"></span> Đủ điều kiện demo/promotion — luồng chính ổn định</span>
+  </header>
+
+  <div class="metrics">
+    <div class="metric brand"><div class="n tnum">4+1</div><div class="l">Vai trò kiểm thử end-to-end</div></div>
+    <div class="metric ok"><div class="n tnum">8</div><div class="l">Lỗi đã vá &amp; xác minh</div></div>
+    <div class="metric crit"><div class="n tnum">2</div><div class="l">Lỗ hổng phân quyền đã bịt</div></div>
+    <div class="metric ok"><div class="n tnum">64</div><div class="l">Feature test PASS (322 assert)</div></div>
+  </div>
+
+  <h2><span class="idx">1</span> Phạm vi &amp; phương pháp</h2>
+  <p class="lead">Đăng nhập thật vào giao diện bằng tài khoản của từng vai trò, đi hết luồng nghiệp vụ, đối chiếu dữ liệu API với DB, và ép các thao tác nhạy cảm (duyệt/từ chối, chạy lương) để kiểm tra phân quyền ở cả frontend lẫn backend.</p>
+  <div class="roles">
+    <div class="role">
+      <h3>Nhân viên <span class="pill ok">Đạt</span></h3>
+      <div class="who">huong.pham@company.com · NV0004</div>
+      <ul>
+        <li>Cổng nhân viên: chấm công, lịch ca, nghỉ phép, <b>phiếu lương</b>, hồ sơ</li>
+        <li>Tin nội bộ &amp; chính sách công ty (trước đây 403)</li>
+        <li>Self-service tự giới hạn đúng phạm vi cá nhân</li>
+      </ul>
+    </div>
+    <div class="role">
+      <h3>Quản lý <span class="pill ok">Đạt</span></h3>
+      <div class="who">cuong.le@company.com · NV0003</div>
+      <ul>
+        <li>Dashboard vận hành (1.222 NV, xu hướng chấm công 30 ngày)</li>
+        <li>Duyệt đơn: nghỉ phép, yêu cầu chung — <b>đúng cấp duyệt</b></li>
+        <li>Module đúng phạm vi: chỉ Công &amp; Lịch</li>
+      </ul>
+    </div>
+    <div class="role">
+      <h3>HR <span class="pill ok">Đạt</span></h3>
+      <div class="who">mai.tran@company.com · NV0002</div>
+      <ul>
+        <li>Nhân viên (1.222, phân trang), hồ sơ 360°, hợp đồng (1.210)</li>
+        <li>Tuyển dụng Kanban + chấm điểm CV bằng AI</li>
+        <li><b>Duyệt nghỉ phép cấp HR</b> hoàn tất chuỗi (200 OK)</li>
+      </ul>
+    </div>
+    <div class="role">
+      <h3>Kế toán <span class="pill ok">Đạt</span></h3>
+      <div class="who">phuc.trinh@company.com · NV0013</div>
+      <ul>
+        <li>Chỉ thấy module Lương &amp; Báo cáo (RBAC chuẩn)</li>
+        <li>Bảng lương theo kỳ, chọn kỳ đa pháp nhân rõ ràng</li>
+        <li><b>Chạy lương nền (queue)</b>: 202 → xử lý → DONE, đúng phạm vi pháp nhân</li>
+      </ul>
+    </div>
+  </div>
+  <p class="lead" style="margin-top:14px">Vai trò <b>Admin</b> đã được kiểm ma trận truy cập toàn module ở đợt trước (0 crash trên 5 vai trò).</p>
+
+  <h2><span class="idx">2</span> Lỗi đã phát hiện &amp; vá</h2>
+  <p class="lead">Tất cả đã xác minh lại trực tiếp trên giao diện sau khi sửa.</p>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Vai trò</th><th>Vấn đề</th><th>Nguyên nhân gốc &amp; cách vá</th><th>Mức</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Nhân viên</td>
+        <td><b>Phiếu lương hiện 0₫</b> cho mọi nhân viên (15 dòng trống)</td>
+        <td>FE hiểu nhầm danh sách kỳ lương là danh sách thành phần. Đọc đúng breakdown thật từ <code>/payslip</code> → hiện Lương cơ bản, Phụ cấp, BHXH/BHYT/BHTN, Thực nhận.</td>
+        <td><span class="sev high">Cao</span></td>
+      </tr>
+      <tr>
+        <td>Nhân viên</td>
+        <td><b>Trang Chấm công trống</b> dù có 14 ngày công</td>
+        <td>Gọi API theo khoảng ngày mà thiếu <code>employee_id</code> → RBAC trả 403. Tự scope về chính mình khi không ở lăng kính toàn công ty.</td>
+        <td><span class="sev high">Cao</span></td>
+      </tr>
+      <tr>
+        <td>Nhân viên</td>
+        <td>Số dư phép năm cũ (2024) hiện lẫn năm hiện tại như bị trùng</td>
+        <td>Chỉ hiển thị số dư của năm hiện tại (giữ nguyên lịch sử trong DB).</td>
+        <td><span class="sev med">TB</span></td>
+      </tr>
+      <tr>
+        <td>Quản lý</td>
+        <td>Trang Yêu cầu: bộ đếm trạng thái luôn <b>= 0</b> dù có 10 đơn</td>
+        <td>API trả trạng thái tiếng Việt (<code>CHỜ_DUYỆT</code>) nhưng FE so khớp chuỗi tiếng Anh. Chuẩn hoá trạng thái một chỗ khi tải.</td>
+        <td><span class="sev med">TB</span></td>
+      </tr>
+      <tr>
+        <td>Quản lý / HR</td>
+        <td>Nút <b>Duyệt/Từ chối hiện cho cả người không phải người duyệt</b> → bấm vào lỗi 403/422</td>
+        <td>Backend tính cờ <code>can_approve</code> theo đúng người duyệt của cấp hiện tại (Requests + Leaves); FE chỉ hiện nút cho đúng người.</td>
+        <td><span class="sev high">Cao</span></td>
+      </tr>
+      <tr>
+        <td>Bảo mật</td>
+        <td><b>Từ chối đơn nghỉ &amp; yêu cầu chung thiếu kiểm tra quyền</b> — bất kỳ ai chạm endpoint đều từ chối được đơn của người khác, bỏ qua duyệt đa cấp</td>
+        <td>Thêm guard vai-trò-theo-cấp cho <code>reject()</code> (giống <code>approve()</code>) ở cả 2 controller. Đã kiểm: Quản lý bị chặn (422/403), HR/Admin đúng cấp được phép.</td>
+        <td><span class="sev sec">Bảo mật</span></td>
+      </tr>
+      <tr>
+        <td>Kế toán</td>
+        <td>Dropdown kỳ lương đa pháp nhân trùng mã (<code>P-2026-07</code> × 3)</td>
+        <td>Đính tên pháp nhân vào response kỳ lương → phân biệt rõ HQ / Hà Nội / Đà Nẵng.</td>
+        <td><span class="sev med">TB</span></td>
+      </tr>
+      <tr>
+        <td>Hệ thống</td>
+        <td>Tài khoản demo Kế toán chỉ tồn tại ở runtime</td>
+        <td>Đưa vào <code>DatabaseSeeder</code> (idempotent) → bền qua reseed.</td>
+        <td><span class="sev med">TB</span></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2><span class="idx">3</span> Đã xác minh hoạt động ổn định</h2>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Luồng nghiệp vụ</th><th>Kết quả kiểm chứng</th></tr></thead>
+    <tbody>
+      <tr><td>Phân quyền RBAC theo module</td><td>Menu &amp; API mỗi vai trò đúng phạm vi; module ngoài quyền trả 403 gọn gàng</td></tr>
+      <tr><td>Chuỗi duyệt nghỉ phép đa cấp</td><td>Quản lý bị chặn cấp HR → HR duyệt hoàn tất → Admin override; trừ số dư đúng, chống double-spend</td></tr>
+      <tr><td>Phiếu lương nhân viên</td><td>Đúng số: 15.000.000 gross − 1.575.000 BH = 13.755.000 net (kỳ P-2026-07)</td></tr>
+      <tr><td>Chạy lương bất đồng bộ (queue)</td><td><code>POST /payroll/run</code> → 202 → worker nền → <code>run-status</code> DONE; phạm vi đúng theo pháp nhân, không phình dữ liệu</td></tr>
+      <tr><td>Danh sách nhân viên &amp; hợp đồng</td><td>1.222 NV (1.173 chính thức + 49 thử việc), 1.210 HĐ hiệu lực — phân trang, không tải toàn bộ</td></tr>
+      <tr><td>Bộ test tự động</td><td>64 Feature test PASS / 322 assertions — không hồi quy sau các thay đổi phân quyền</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2><span class="idx">4</span> Làm đầy &amp; đồng bộ dữ liệu (đợt 23/07)</h2>
+  <p class="lead">Audit toàn bộ bảng: các bảng theo-nhân-viên (HĐ/lương/chấm công/phép) đã đủ 1.222; nhưng hồ sơ định danh chỉ có ~20 tài khoản văn phòng — 1.200 công nhân trống. Đã làm đầy tất định (seeder idempotent), bền qua reseed.</p>
+  <div class="tscroll">
+  <table>
+    <thead><tr><th>Hạng mục</th><th>Trước</th><th>Sau</th></tr></thead>
+    <tbody>
+      <tr><td>Hồ sơ công nhân (DOB, SĐT, CCCD, MST, BHXH, bank, địa chỉ, hôn nhân, học vấn, liên hệ khẩn cấp)</td><td>1.200 trống</td><td><b>1.200 đầy đủ</b> — CCCD &amp; email đều duy nhất</td></tr>
+      <tr><td>Giới tính khớp tên (hết "Đinh Kim Yến — Nam")</td><td>gán theo số CN</td><td><b>đệm+tên sinh lại theo giới tính</b></td></tr>
+      <tr><td>Chuẩn hoá giới tính</td><td>trộn NAM/NỮ + MALE/FEMALE</td><td><b>MALE/FEMALE</b> (canonical)</td></tr>
+      <tr><td>Tuyển dụng: vị trí ứng viên</td><td>"Vị trí chưa rõ"</td><td><b>hiện đúng tin tuyển dụng</b> (FE đọc sai field)</td></tr>
+      <tr><td>Tuyển dụng: CV (đã AI chấm mà báo thiếu)</td><td>"Thiếu CV"</td><td><b>gắn cv_path</b> → badge "CV"</td></tr>
+      <tr><td>Chấm công liên tục</td><td>dừng 17/07 → biểu đồ rớt về 0</td><td><b>đủ tới hôm qua</b>, Chủ nhật nghỉ đúng lịch</td></tr>
+      <tr><td>Dashboard "Có mặt hôm nay"</td><td>0 / 0 · 0%</td><td><b>1.020 có mặt · tỉ lệ 85%</b> (chừa NV văn phòng chấm live)</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2><span class="idx">5</span> Còn lại — tuỳ chọn, không phải lỗi chức năng</h2>
+  <div class="note">
+    Mức độ <b>chất lượng dữ liệu mẫu</b>, không ảnh hưởng vận hành:
+    <ul>
+      <li>Công nhân chưa có <b>người phụ thuộc / bằng cấp</b> (thực tế công nhân nhà máy phần lớn không có — để trống là hợp lý).</li>
+      <li>Trạng thái dashboard dùng status thô (1.222 ACTIVE) vs trang Nhân viên dùng status suy ra từ HĐ (49 thử việc) — chênh nhẹ do kiến trúc suy-ra-trạng-thái.</li>
+      <li>Một số đơn nghỉ mẫu &amp; tin nội bộ mang mốc 2024 và nội dung rút gọn.</li>
+    </ul>
+  </div>
+
+  <footer>
+    <span>HRM CODEDENGU · Laravel 11 + Vue 3 + PostgreSQL · Đa pháp nhân (multi-tenant)</span>
+    <span class="tnum">Ngày lập: 23/07/2026 · commit 19a8714 → 0a46ac3</span>
+  </footer>
+
+</div>
+</body>
+</html>

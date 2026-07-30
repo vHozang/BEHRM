@@ -1,0 +1,448 @@
+<title>HRM — Security & Production-Readiness Audit</title>
+<style>
+  :root {
+    --bg: #f5f7f9;
+    --surface: #ffffff;
+    --surface-2: #eef1f4;
+    --ink: #12181f;
+    --ink-soft: #3f4a56;
+    --ink-faint: #6b7885;
+    --line: #dde3e9;
+    --accent: #0e8f9b;
+    --accent-soft: #d5eef0;
+    --crit: #d0353b;
+    --high: #c9631f;
+    --med: #b08308;
+    --ok: #1f8a54;
+    --crit-bg: #fbe9ea;
+    --high-bg: #fceee2;
+    --med-bg: #fbf4dd;
+    --ok-bg: #e4f4ea;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c1116;
+      --surface: #141b22;
+      --surface-2: #1b242d;
+      --ink: #e8edf2;
+      --ink-soft: #b3bec9;
+      --ink-faint: #7d8894;
+      --line: #263039;
+      --accent: #29c2ce;
+      --accent-soft: #123138;
+      --crit: #f2555b;
+      --high: #f0894a;
+      --med: #e5b431;
+      --ok: #43c47e;
+      --crit-bg: #2a1518;
+      --high-bg: #291a12;
+      --med-bg: #241f10;
+      --ok-bg: #12251a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c1116; --surface: #141b22; --surface-2: #1b242d;
+    --ink: #e8edf2; --ink-soft: #b3bec9; --ink-faint: #7d8894; --line: #263039;
+    --accent: #29c2ce; --accent-soft: #123138;
+    --crit: #f2555b; --high: #f0894a; --med: #e5b431; --ok: #43c47e;
+    --crit-bg: #2a1518; --high-bg: #291a12; --med-bg: #241f10; --ok-bg: #12251a;
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7f9; --surface: #ffffff; --surface-2: #eef1f4;
+    --ink: #12181f; --ink-soft: #3f4a56; --ink-faint: #6b7885; --line: #dde3e9;
+    --accent: #0e8f9b; --accent-soft: #d5eef0;
+    --crit: #d0353b; --high: #c9631f; --med: #b08308; --ok: #1f8a54;
+    --crit-bg: #fbe9ea; --high-bg: #fceee2; --med-bg: #fbf4dd; --ok-bg: #e4f4ea;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: clamp(20px, 5vw, 56px) clamp(16px, 4vw, 40px) 80px; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); font-weight: 600;
+  }
+  h1 { font-size: clamp(28px, 5vw, 44px); line-height: 1.08; margin: 14px 0 0; letter-spacing: -0.02em; text-wrap: balance; font-weight: 800; }
+  h2 { font-size: clamp(20px, 3vw, 26px); margin: 0; letter-spacing: -0.01em; font-weight: 750; text-wrap: balance; }
+  .lede { color: var(--ink-soft); font-size: 17px; max-width: 60ch; margin: 16px 0 0; }
+
+  /* header meta strip */
+  .meta { display: flex; flex-wrap: wrap; gap: 10px 26px; margin-top: 26px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-faint); }
+  .meta b { color: var(--ink-soft); font-weight: 600; }
+
+  section { margin-top: clamp(40px, 7vw, 68px); }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .sec-head .n { font-family: var(--mono); font-size: 13px; color: var(--accent); font-weight: 600; }
+
+  /* verdict */
+  .verdict { display: grid; grid-template-columns: 1.1fr 1fr; gap: 18px; }
+  @media (max-width: 720px){ .verdict { grid-template-columns: 1fr; } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; }
+  .verdict-main { display: flex; flex-direction: column; justify-content: center; }
+  .badge-ok { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-weight: 700; font-size: 13px; color: var(--ok); background: var(--ok-bg); border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); padding: 6px 12px; border-radius: 999px; width: fit-content; }
+  .verdict-main h2 { margin-top: 14px; }
+  .verdict-main p { color: var(--ink-soft); margin: 8px 0 0; font-size: 15px; }
+  .counts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .stat { background: var(--surface-2); border: 1px solid var(--line); border-radius: 11px; padding: 14px 16px; }
+  .stat .k { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+  .stat .v { font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; margin-top: 4px; }
+
+  /* flow pipeline */
+  .flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+  .node { flex: 1 1 150px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 15px; position: relative; }
+  .node .tag { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .node .nm { font-weight: 700; font-size: 14.5px; margin-top: 5px; }
+  .node .ds { font-size: 12.5px; color: var(--ink-faint); margin-top: 4px; line-height: 1.45; }
+  .node.guard { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .flow .arr { align-self: center; color: var(--ink-faint); font-family: var(--mono); font-weight: 700; flex: 0 0 auto; }
+  @media (max-width: 720px){ .flow { flex-direction: column; } .flow .arr { transform: rotate(90deg); align-self: flex-start; margin-left: 22px; } }
+
+  /* findings */
+  .finding { background: var(--surface); border: 1px solid var(--line); border-left-width: 4px; border-radius: 12px; padding: 20px 22px; margin-bottom: 16px; }
+  .finding.crit { border-left-color: var(--crit); }
+  .finding.high { border-left-color: var(--high); }
+  .finding.med  { border-left-color: var(--med); }
+  .f-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .chip { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 4px 9px; border-radius: 6px; }
+  .chip.crit { color: var(--crit); background: var(--crit-bg); }
+  .chip.high { color: var(--high); background: var(--high-bg); }
+  .chip.med  { color: var(--med);  background: var(--med-bg); }
+  .chip.done { color: var(--ok); background: var(--ok-bg); margin-left: auto; }
+  .f-id { font-family: var(--mono); font-size: 12.5px; color: var(--ink-faint); font-weight: 600; }
+  .f-title { font-size: 18px; font-weight: 750; margin: 12px 0 0; letter-spacing: -0.01em; }
+  .f-where { font-family: var(--mono); font-size: 12px; color: var(--accent); margin-top: 5px; word-break: break-word; }
+  .f-body { color: var(--ink-soft); font-size: 14.5px; margin: 12px 0 0; }
+  .ba { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+  @media (max-width: 620px){ .ba { grid-template-columns: 1fr; } }
+  .ba > div { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--surface-2); }
+  .ba .lbl { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; }
+  .ba .risk .lbl { color: var(--crit); }
+  .ba .fix .lbl { color: var(--ok); }
+  .ba p { margin: 7px 0 0; font-size: 13.5px; color: var(--ink-soft); }
+  .proof { margin-top: 14px; font-family: var(--mono); font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 11px 13px; color: var(--ink-soft); overflow-x: auto; }
+  .proof b { color: var(--ok); }
+  .proof .pl { color: var(--ink-faint); }
+
+  /* solid + checklist lists */
+  ul.clean { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  ul.clean li { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 13px 16px; font-size: 14.5px; color: var(--ink-soft); }
+  ul.clean li .mk { font-family: var(--mono); font-weight: 700; flex: 0 0 auto; margin-top: 1px; }
+  ul.clean.ok li .mk { color: var(--ok); }
+  ul.clean.todo li .mk { color: var(--med); }
+  ul.clean li b { color: var(--ink); font-weight: 650; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  @media (max-width: 720px){ .grid2 { grid-template-columns: 1fr; gap: 34px; } }
+
+  footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px; color: var(--ink-faint); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+  a { color: var(--accent); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Đánh giá bảo mật &amp; sẵn sàng vận hành</div>
+    <h1>HRM System — Audit &amp; hardening trước khi lên production</h1>
+    <p class="lede">Test sâu toàn hệ thống để tìm lỗ hổng bảo mật, lỗi logic nghiệp vụ và tính năng chết. Sáu vấn đề thật đã được truy nguyên gốc, vá và kiểm chứng bằng request thực tế trên backend đang chạy.</p>
+    <div class="meta">
+      <span><b>Ngày:</b> 13/07/2026</span>
+      <span><b>Phạm vi:</b> Laravel API · Vue SPA · PostgreSQL đa-tenant</span>
+      <span><b>Commit vá:</b> faebeea · e3f49ff</span>
+      <span><b>Phương pháp:</b> đọc mã → trace luồng → khai thác thử → vá → verify</span>
+    </div>
+  </header>
+
+  <!-- VERDICT -->
+  <section>
+    <div class="verdict">
+      <div class="card verdict-main">
+        <span class="badge-ok">● KHÔNG CÒN LỖ HỔNG CRITICAL/HIGH · 0 CRASH</span>
+        <h2>Lõi hệ thống đã đủ vững để đưa vào vận hành</h2>
+        <p>3 vòng kiểm thử: 6 lỗ bảo mật + 4 điểm crash input rác + 3 race đồng thời (double-spend quota) — tất cả đã vá &amp; verify. Phần còn lại là cấu hình hạ tầng khi deploy (HTTPS, CORS, biến môi trường) — không phải lỗi mã nguồn.</p>
+      </div>
+      <div class="counts">
+        <div class="stat"><div class="k">Lỗ bảo mật</div><div class="v" style="color:var(--high)">6</div></div>
+        <div class="stat"><div class="k">Điểm crash (500)</div><div class="v" style="color:var(--crit)">4</div></div>
+        <div class="stat"><div class="k">Race đồng thời</div><div class="v" style="color:var(--high)">3</div></div>
+        <div class="stat"><div class="k">Đã vá &amp; verify</div><div class="v" style="color:var(--ok)">13</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FLOW -->
+  <section>
+    <div class="sec-head"><span class="n">01</span><h2>Một request đi qua đâu</h2></div>
+    <p class="lede" style="margin-bottom:22px">Mọi lời gọi API đều xuyên qua ba lớp bảo vệ trước khi chạm dữ liệu. Bốn lỗ hổng nằm ngay tại các lớp này — nơi một sơ hở nhỏ mở toang cả hệ thống đa-tenant.</p>
+    <div class="flow">
+      <div class="node"><div class="tag">Client</div><div class="nm">Vue SPA + Mobile /m</div><div class="ds">Gắn bearer token vào mỗi request</div></div>
+      <span class="arr">→</span>
+      <div class="node guard"><div class="tag">Lớp 1 · Auth</div><div class="nm">HrmAuth</div><div class="ds">Token → hash SHA-256 → tra api_tokens, suy ra nhân viên + tenant</div></div>
+      <span class="arr">→</span>
+      <div class="node guard"><div class="tag">Lớp 2 · RBAC</div><div class="nm">ModuleAccess</div><div class="ds">Kiểm quyền module + self-service (chỉ xem dữ liệu của mình)</div></div>
+      <span class="arr">→</span>
+      <div class="node guard"><div class="tag">Lớp 3 · Tenant</div><div class="nm">Controller</div><div class="ds">Mọi query lọc theo tenant_id; engine nghiệp vụ VN</div></div>
+      <span class="arr">→</span>
+      <div class="node"><div class="tag">Data</div><div class="nm">PostgreSQL</div><div class="ds">tenant_id trên từng hàng</div></div>
+    </div>
+  </section>
+
+  <!-- FINDINGS -->
+  <section>
+    <div class="sec-head"><span class="n">02</span><h2>Phát hiện &amp; cách vá</h2></div>
+
+    <!-- S1 -->
+    <div class="finding crit">
+      <div class="f-top">
+        <span class="chip crit">Critical</span>
+        <span class="f-id">S1 · Leo thang đặc quyền</span>
+        <span class="chip done">✓ Đã vá · verify</span>
+      </div>
+      <div class="f-title">Sửa nhân viên có thể tự phong “super-admin” &amp; phá cô lập tenant</div>
+      <div class="f-where">app/Http/Controllers/Api/EmployeeController.php · update()</div>
+      <p class="f-body">Hàm cập nhật dùng <code>except()->only(columns)</code> thay vì whitelist đã validate — nghĩa là <em>mọi</em> cột trừ 4 trường bị bỏ đều gán được tự do, gồm <code>is_super_admin</code>, <code>tenant_id</code>, <code>legal_entity_id</code>. Bất kỳ tài khoản có module HR chỉ cần thêm một trường vào request là tự cấp quyền vận hành xuyên mọi công ty, hoặc “dời” một nhân viên sang tenant khác.</p>
+      <div class="ba">
+        <div class="risk"><div class="lbl">Rủi ro</div><p>HR → gửi <code>is_super_admin=true</code> → chiếm quyền toàn nền tảng, đọc dữ liệu mọi doanh nghiệp.</p></div>
+        <div class="fix"><div class="lbl">Cách vá</div><p>Chặn 3 cột bảo mật/định danh khỏi payload update. Chúng không bao giờ được set qua thao tác sửa nhân viên bình thường.</p></div>
+      </div>
+      <div class="proof"><span class="pl">PUT /employees/6</span> {is_super_admin:true, tenant_id:2} → DB: <b>is_super_admin=f, tenant_id=1</b> (không đổi)</div>
+    </div>
+
+    <!-- S2 -->
+    <div class="finding high">
+      <div class="f-top">
+        <span class="chip high">High</span>
+        <span class="f-id">S2 · Lộ dữ liệu nhạy cảm</span>
+        <span class="chip done">✓ Đã vá · verify</span>
+      </div>
+      <div class="f-title">Mọi nhân viên xem được lương &amp; hồ sơ cá nhân của đồng nghiệp</div>
+      <div class="f-where">EmployeeController · index() + show() — thuộc SHARED_READ</div>
+      <p class="f-body">Danh bạ nhân viên mở cho mọi người đăng nhập (để tra tên/liên hệ), nhưng phản hồi trả nguyên cả <code>base_salary</code> và <code>profile</code> (CMND, ngày sinh). Một nhân viên thường gọi <code>GET /employees</code> là thấy bảng lương toàn công ty.</p>
+      <div class="ba">
+        <div class="risk"><div class="lbl">Rủi ro</div><p>Rò rỉ lương + PII nội bộ — vi phạm bảo mật cơ bản của một HRM doanh nghiệp.</p></div>
+        <div class="fix"><div class="lbl">Cách vá</div><p>Ẩn lương/hồ sơ/email cá nhân/ngày sinh (và hợp đồng) trừ khi người xem có vai HR·Payroll hoặc chính là chủ hồ sơ.</p></div>
+      </div>
+      <div class="proof">NV thường xem list &amp; đồng nghiệp → <b>không có base_salary</b> · xem chính mình → <b>có</b> · Admin → <b>có</b></div>
+    </div>
+
+    <!-- S6 -->
+    <div class="finding high">
+      <div class="f-top">
+        <span class="chip high">High</span>
+        <span class="f-id">S6 · Bỏ qua quy trình duyệt</span>
+        <span class="chip done">✓ Đã vá · verify</span>
+      </div>
+      <div class="f-title">Nhân viên tự tạo đơn nghỉ đã “được duyệt” — nghỉ có lương không giới hạn</div>
+      <div class="f-where">LeaveController · store() + update()</div>
+      <p class="f-body">Khi tạo đơn, <code>status</code> lấy thẳng từ request. Nhân viên gửi <code>status=APPROVED</code> là đơn thành đã duyệt ngay — bỏ qua quản lý <em>và</em> bỏ qua việc trừ số dư phép (chỉ hàm <code>approve()</code> mới trừ quota). Bảng công vẫn tính đây là nghỉ có lương → nghỉ phép miễn phí vô hạn.</p>
+      <div class="ba">
+        <div class="risk"><div class="lbl">Rủi ro</div><p>Tự duyệt đơn của mình; quota phép không bị trừ; thất thoát lương thực tế.</p></div>
+        <div class="fix"><div class="lbl">Cách vá</div><p>store luôn ép <code>PENDING</code>; update loại bỏ trường <code>status</code>. Chỉ approve/reject/cancel mới đổi trạng thái.</p></div>
+      </div>
+      <div class="proof"><span class="pl">POST</span> status=APPROVED → <b>PENDING</b> · <span class="pl">PATCH</span> status=APPROVED → <b>vẫn PENDING</b></div>
+    </div>
+
+    <!-- S(pw) -->
+    <div class="finding high">
+      <div class="f-top">
+        <span class="chip high">High</span>
+        <span class="f-id">S4 · Lộ băm mật khẩu</span>
+        <span class="chip done">✓ Đã vá · verify</span>
+      </div>
+      <div class="f-title">Đăng nhập &amp; /auth/me trả về cả <code>password_hash</code></div>
+      <div class="f-where">AuthController::login · HrmAuth (auth_employee)</div>
+      <p class="f-body">Bản ghi nhân viên trả thẳng về client kèm cột <code>password_hash</code> — cho phép tấn công brute-force offline nếu token/hash bị chặn bắt.</p>
+      <div class="ba">
+        <div class="risk"><div class="lbl">Rủi ro</div><p>Băm mật khẩu lọt ra front-end, lưu trong localStorage.</p></div>
+        <div class="fix"><div class="lbl">Cách vá</div><p>Strip <code>password_hash</code> tại nguồn (login + middleware auth) trước khi trả về.</p></div>
+      </div>
+      <div class="proof">user sau đăng nhập → <b>has_hash=false</b></div>
+    </div>
+
+    <!-- S3 -->
+    <div class="finding med">
+      <div class="f-top">
+        <span class="chip med">Medium</span>
+        <span class="f-id">S5 · Thiếu rate-limit</span>
+        <span class="chip done">✓ Đã vá · verify</span>
+      </div>
+      <div class="f-title">Không giới hạn tần suất đăng nhập → brute-force mật khẩu</div>
+      <div class="f-where">routes/api.php · /auth/login · /forgot · /reset</div>
+      <p class="f-body">Ba endpoint xác thực nhận request không giới hạn, cho phép dò mật khẩu tự động.</p>
+      <div class="ba">
+        <div class="risk"><div class="lbl">Rủi ro</div><p>Dò mật khẩu / token không bị chặn.</p></div>
+        <div class="fix"><div class="lbl">Cách vá</div><p><code>throttle:10,1</code> cho nhóm route xác thực (10 lần/phút/IP).</p></div>
+      </div>
+      <div class="proof">12 lần đăng nhập sai → <b>401 ×7 rồi 429 429 429…</b></div>
+    </div>
+
+    <!-- S(otp) -->
+    <div class="finding med">
+      <div class="f-top">
+        <span class="chip med">Medium</span>
+        <span class="f-id">S6b · Lộ OTP trong response</span>
+        <span class="chip done">✓ Đã vá · verify</span>
+      </div>
+      <div class="f-title">OTP ký hợp đồng trả thẳng trong phản hồi API</div>
+      <div class="f-where">ContractController::requestOtp</div>
+      <p class="f-body">Mã OTP xác nhận ký hợp đồng luôn nằm trong response (<code>dev_otp</code>) — tiện cho demo nhưng vô hiệu hoá lớp bảo vệ khi lên production.</p>
+      <div class="ba">
+        <div class="risk"><div class="lbl">Rủi ro</div><p>Ai gọi API cũng thấy OTP → ký thay người khác.</p></div>
+        <div class="fix"><div class="lbl">Cách vá</div><p>Chỉ trả <code>dev_otp</code> khi <code>APP_DEBUG=true</code>; production gửi qua email/SMS.</p></div>
+      </div>
+      <div class="proof">APP_DEBUG=true → <b>có dev_otp</b> · APP_DEBUG=false → <b>ẩn</b></div>
+    </div>
+  </section>
+
+  <!-- ZERO-TRUST ROUND -->
+  <section>
+    <div class="sec-head"><span class="n">03</span><h2>Vòng 2 — Zero-trust fuzzing: ép hệ thống lộ lỗi khi vận hành</h2></div>
+    <p class="lede" style="margin-bottom:22px">Bắn input rác (sai kiểu, quá dài, ngày vô lý, chuỗi tấn công) vào <b>cả 127 endpoint ghi</b>. Mỗi <code>500</code> = một exception chưa bắt = API sập giữa chừng khi khách hàng dùng thật. Tìm ra 4 điểm — vá tận gốc, không vá triệu chứng.</p>
+
+    <div class="finding crit">
+      <div class="f-top">
+        <span class="chip crit">Crash ×3</span>
+        <span class="f-id">Z1 · Input rác chạm thẳng database</span>
+        <span class="chip done">✓ Đã vá · verify</span>
+      </div>
+      <div class="f-title">Sai kiểu / quá dài → Postgres ném lỗi → API trả 500 kèm cả câu SQL</div>
+      <div class="f-where">bootstrap/app.php · global exception handler</div>
+      <p class="f-body">3 kiểu input làm sập: <code>employee_id="abc"</code> (sai kiểu bigint trên rule <code>exists</code>), tên phòng ban 8000 ký tự (tràn <code>varchar(255)</code>). Lỗi <code>QueryException</code> mặc định thành 500 — vừa sập thao tác, vừa <b>lộ nguyên câu SQL + tên bảng</b> ra response.</p>
+      <div class="ba">
+        <div class="risk"><div class="lbl">Rủi ro</div><p>Một form nhập sai kiểu là sập API; lộ cấu trúc DB cho kẻ tấn công dò.</p></div>
+        <div class="fix"><div class="lbl">Cách vá (1 chỗ, phủ 127 endpoint)</div><p>Handler quy lỗi DB theo SQLSTATE: 22xxx (sai kiểu/quá dài) → 422, 23xxx (trùng/FK) → 409; lỗi server thật vẫn 500 + log. Không còn SQL lọt ra ngoài.</p></div>
+      </div>
+      <div class="proof">3 crasher cũ → <b>422</b> · trùng khoá → <b>409</b> · 20 write rác khác → <b>0 crash</b> · dữ liệu hợp lệ vẫn 200</div>
+    </div>
+
+    <div class="finding high">
+      <div class="f-top">
+        <span class="chip high">Crash ×1</span>
+        <span class="f-id">Z2 · Tháng vô lý làm sập bảng công</span>
+        <span class="chip done">✓ Đã vá · verify</span>
+      </div>
+      <div class="f-title"><code>?month=2026-99</code> lọt qua regex rồi làm Carbon ném lỗi → 500</div>
+      <div class="f-where">AttendanceController · timesheet() + recompute()</div>
+      <p class="f-body">Regex <code>\d{4}-\d{2}</code> chấp nhận tháng 99; sau đó thư viện ngày parse "2026-99" thì nổ. 2 hàm dùng chung mẫu này.</p>
+      <div class="ba">
+        <div class="risk"><div class="lbl">Rủi ro</div><p>Chỉ cần đổi URL tháng là sập trang Bảng công tháng.</p></div>
+        <div class="fix"><div class="lbl">Cách vá</div><p>Siết regex về tháng thật <code>(0[1-9]|1[0-2])</code> ở cả 2 hàm.</p></div>
+      </div>
+      <div class="proof">2026-99 / 2026-00 / 2026-13 → <b>422</b> · 2026-07 → <b>200</b></div>
+    </div>
+
+    <div class="finding med">
+      <div class="f-top">
+        <span class="chip med">Đã kiểm</span>
+        <span class="f-id">Z3 · Ranh giới xác thực</span>
+        <span class="chip done">✓ Vững</span>
+      </div>
+      <div class="f-title">Token giả / sửa / hết hạn / chuỗi SQLi đều bị chặn</div>
+      <div class="f-where">HrmAuth middleware</div>
+      <p class="f-body">Thử mọi kiểu token bất hợp lệ — không cái nào lọt.</p>
+      <div class="proof">không token / rác / sửa đuôi / rỗng / <code>' OR '1'='1</code> / hết hạn → <b>401</b> · token thật → <b>200</b> · SQLi vào token bất khả (hash SHA-256 trước khi truy vấn)</div>
+    </div>
+  </section>
+
+  <!-- CONCURRENCY ROUND -->
+  <section>
+    <div class="sec-head"><span class="n">04</span><h2>Vòng 3 — Đồng thời: bắn nhiều request cùng lúc để lộ race</h2></div>
+    <p class="lede" style="margin-bottom:22px">Một quản lý bấm duyệt hai lần, hay hai người duyệt cùng lúc — hệ thống có trừ quota <b>hai lần</b> không? Đây là loại lỗi không bao giờ thấy khi test tay, chỉ lộ khi bắn request song song thật.</p>
+
+    <div class="finding crit">
+      <div class="f-top">
+        <span class="chip crit">Double-spend</span>
+        <span class="f-id">C1 · Duyệt phép đồng thời trừ quota nhiều lần</span>
+        <span class="chip done">✓ Đã vá · verify</span>
+      </div>
+      <div class="f-title">8 lượt duyệt song song 1 đơn 2 ngày → trừ <b>6 ngày</b> phép (3×)</div>
+      <div class="f-where">LeaveController · approve() + adjustBalanceAndLedger()</div>
+      <p class="f-body">Đơn được kiểm "đang chờ duyệt" <b>ngoài</b> transaction, rồi mới trừ quota <b>trong</b> transaction — không khoá hàng. Nhiều request cùng lọt qua bước kiểm → cùng trừ. Đây là lỗi tiền/quota kinh điển (TOCTOU).</p>
+      <div class="ba">
+        <div class="risk"><div class="lbl">Rủi ro</div><p>Nhân viên nghỉ 2 ngày nhưng quota trừ 6; hoặc trừ hụt khi 2 đơn duyệt song song (mất cập nhật).</p></div>
+        <div class="fix"><div class="lbl">Cách vá</div><p><code>lockForUpdate</code> khoá hàng đơn + xác nhận lại trạng thái TRONG transaction; khoá thêm hàng số dư để read-modify-write không mất cập nhật.</p></div>
+      </div>
+      <div class="proof">Sau vá: 8 duyệt song song → <b>1×200 + 7×422</b>, quota 14 → <b>12</b> (đúng 2 ngày), giao dịch trừ = <b>1</b></div>
+    </div>
+
+    <div class="finding high">
+      <div class="f-top">
+        <span class="chip high">Double-credit</span>
+        <span class="f-id">C2 · Duyệt tăng ca đồng thời cộng nghỉ bù nhiều lần</span>
+        <span class="chip done">✓ Đã vá · verify</span>
+      </div>
+      <div class="f-title">Duyệt OT quy đổi nghỉ bù song song → cộng nghỉ bù 2 lần</div>
+      <div class="f-where">AttendanceController · approveOvertime()</div>
+      <p class="f-body">Cùng lỗi race ở nhánh comp-off: <code>creditCompOff</code> cộng ngày nghỉ bù cho nhân viên — chạy song song thì cộng dư.</p>
+      <div class="ba">
+        <div class="risk"><div class="lbl">Rủi ro</div><p>Nhân viên nhận gấp đôi ngày nghỉ bù.</p></div>
+        <div class="fix"><div class="lbl">Cách vá</div><p>Cùng khoá hàng + xác nhận lại trạng thái trong transaction.</p></div>
+      </div>
+      <div class="proof">Sau vá: 6 duyệt song song → nghỉ bù cộng <b>đúng 0.25 ngày</b>, giao dịch = <b>1</b></div>
+    </div>
+
+    <div class="finding med">
+      <div class="f-top">
+        <span class="chip med">Rác dữ liệu</span>
+        <span class="f-id">C3 · Cấp phép năm nhận năm vô lý</span>
+        <span class="chip done">✓ Đã vá · verify</span>
+      </div>
+      <div class="f-title"><code>accrual/run</code> nhận <code>year="abc"</code>/<code>-5</code> → tạo hàng số dư năm 0 &amp; -5</div>
+      <div class="f-where">LeaveController · accrualRun()</div>
+      <p class="f-body">Ép kiểu <code>(int)"abc"</code>=0 sinh 42 hàng số dư năm bịa cho toàn bộ nhân viên.</p>
+      <div class="ba">
+        <div class="risk"><div class="lbl">Rủi ro</div><p>Bảng số dư phép rác, sai báo cáo phép năm.</p></div>
+        <div class="fix"><div class="lbl">Cách vá</div><p>Chặn năm ngoài khoảng 2000–2100 → 422. Đã dọn 42 hàng rác.</p></div>
+      </div>
+      <div class="proof">year=abc / -5 / 1900 → <b>422</b> · 2026 → 200 · 0 hàng năm rác</div>
+    </div>
+  </section>
+
+  <!-- SOLID + TODO -->
+  <section>
+    <div class="sec-head"><span class="n">05</span><h2>Đã kiểm tra kỹ — phần này vững</h2></div>
+    <div class="grid2">
+      <ul class="clean ok">
+        <li><span class="mk">✓</span><span><b>Token xác thực:</b> đối xứng opaque, lưu dạng hash SHA-256, có hạn dùng, thu hồi khi đổi mật khẩu.</span></li>
+        <li><span class="mk">✓</span><span><b>Cô lập đa-tenant:</b> CRUD chung + model đều lọc theo <code>tenant_id</code>; FK chéo tenant bị chặn.</span></li>
+        <li><span class="mk">✓</span><span><b>Máy chấm công (endpoint public):</b> bắt buộc device-token hoặc internal-token, thiếu là 403.</span></li>
+      </ul>
+      <ul class="clean ok">
+        <li><span class="mk">✓</span><span><b>Luồng tiền lương/phép:</b> chống trùng ngày, kiểm đủ số dư, trần ngày/lần theo luật, transaction, không tự duyệt.</span></li>
+        <li><span class="mk">✓</span><span><b>Chống IDOR:</b> NV thử đọc phiếu lương / đơn nghỉ / chấm công của người khác theo ID → <b>403 cả ba</b>; dữ liệu của chính mình → 200.</span></li>
+        <li><span class="mk">✓</span><span><b>Phân quyền ghi:</b> NV thường gọi <code>payroll/run</code>, tạo/sửa nhân viên, tạo kỳ lương, xem audit-log → <b>403 tất cả</b>.</span></li>
+        <li><span class="mk">✓</span><span><b>Smoke-test 30 endpoint chính:</b> tất cả trả 200 — không có tính năng chết (job-titles là báo động giả, FE dùng /positions).</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="n">06</span><h2>Cần làm khi deploy — cấu hình hạ tầng, không phải lỗi mã</h2></div>
+    <ul class="clean todo">
+      <li><span class="mk">▹</span><span><b>APP_DEBUG=false · APP_ENV=production</b> trên VPS — hiện container dev đang bật debug (lộ stack-trace nếu để nguyên).</span></li>
+      <li><span class="mk">▹</span><span><b>CORS</b> cho phép origin Vercel &amp; <b>HTTPS</b> cho API trên VPS.</span></li>
+      <li><span class="mk">▹</span><span><b>Nối SMTP:</b> quên-mật-khẩu và thông báo đã sinh token/bản ghi nhưng chưa gửi email — cần cấu hình mail server.</span></li>
+      <li><span class="mk">▹</span><span><b>Gia cố thêm (khuyến nghị):</b> rate-limit theo tài khoản (tránh khoá nhầm cả văn phòng chung IP), min mật khẩu ≥ 8 ký tự.</span></li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>HRM System · Security &amp; Production-Readiness Audit</span>
+    <span>3 vòng · 13 phát hiện · 13 đã vá &amp; verify · 127 endpoint fuzz · 13/07/2026</span>
+  </footer>
+</div>
+
+<script>
+  // Bảo vệ: nếu viewer bật reduce-motion thì không làm gì (trang tĩnh sẵn).
+  (function () {
+    var root = document.documentElement;
+    // đồng bộ theme toggle của host (nếu có) — token-level đã lo phần còn lại.
+    try {
+      var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    } catch (e) {}
+  })();
+</script>

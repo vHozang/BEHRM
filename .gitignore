@@ -45,3 +45,18 @@ Doan2_v2/Doan2/docker/certbot/conf/*
 !Doan2_v2/Doan2/docker/certbot/conf/.gitkeep
 Doan2_v2/Doan2/docker/certbot/www/*
 !Doan2_v2/Doan2/docker/certbot/www/.gitkeep
+
+# Office lock files and local backups
+~$*.docx
+~$*.xlsx
+~$*.pptx
+backups/
+
+# Ad-hoc Laravel debug scripts; automated tests live under tests/Feature
+Doan2_v2/Doan2/test_*.php
+
+# Runtime uploads and temporary report exports
+Doan2_v2/Doan2/storage/app/candidate-cvs/
+Doan2_v2/Doan2/storage/app/request-attachments/
+*.csv.tmp
+qa*.pdf
