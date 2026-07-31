@@ -346,6 +346,60 @@ class ResourceBusinessRules
                 ['field' => 'code', 'rule' => 'unique_if_present', 'table' => 'job_families', 'message' => 'Mã nhóm công việc đã tồn tại'],
                 ['field' => 'name', 'rule' => 'required', 'message' => 'Tên nhóm công việc là bắt buộc'],
             ],
+            'roles' => [
+                ['field' => 'role_code', 'rule' => 'required', 'message' => 'Mã vai trò là bắt buộc'],
+                ['field' => 'role_code', 'rule' => 'unique_if_present', 'table' => 'roles', 'message' => 'Mã vai trò đã tồn tại'],
+                ['field' => 'role_name', 'rule' => 'required', 'message' => 'Tên vai trò là bắt buộc'],
+            ],
+            'dependents' => [
+                ['field' => 'employee_id', 'rule' => 'required', 'message' => 'Nhân viên là bắt buộc'],
+                ['field' => 'full_name', 'rule' => 'required', 'message' => 'Họ tên người phụ thuộc là bắt buộc'],
+                ['field' => 'relationship', 'rule' => 'required', 'message' => 'Quan hệ với nhân viên là bắt buộc'],
+            ],
+            'leave_types' => [
+                ['field' => 'leave_type_code', 'rule' => 'required', 'message' => 'Mã loại nghỉ là bắt buộc'],
+                ['field' => 'leave_type_code', 'rule' => 'unique_if_present', 'table' => 'leave_types', 'message' => 'Mã loại nghỉ đã tồn tại'],
+                ['field' => 'leave_type_name', 'rule' => 'required', 'message' => 'Tên loại nghỉ là bắt buộc'],
+            ],
+            'shift_types' => [
+                ['field' => 'shift_code', 'rule' => 'required', 'message' => 'Mã ca làm là bắt buộc'],
+                ['field' => 'shift_code', 'rule' => 'unique_if_present', 'table' => 'shift_types', 'message' => 'Mã ca làm đã tồn tại'],
+                ['field' => 'shift_name', 'rule' => 'required', 'message' => 'Tên ca làm là bắt buộc'],
+                ['field' => 'start_time', 'rule' => 'required', 'message' => 'Giờ bắt đầu là bắt buộc'],
+                ['field' => 'end_time', 'rule' => 'required', 'message' => 'Giờ kết thúc là bắt buộc'],
+            ],
+            'shift_assignments' => [
+                ['field' => 'employee_id', 'rule' => 'required', 'message' => 'Nhân viên là bắt buộc'],
+                ['field' => 'shift_type_id', 'rule' => 'required', 'message' => 'Ca làm là bắt buộc'],
+                ['field' => 'effective_date', 'rule' => 'required', 'message' => 'Ngày hiệu lực là bắt buộc'],
+            ],
+            'assets' => [
+                ['field' => 'asset_code', 'rule' => 'required', 'message' => 'Mã tài sản là bắt buộc'],
+                ['field' => 'asset_code', 'rule' => 'unique_if_present', 'table' => 'assets', 'message' => 'Mã tài sản đã tồn tại'],
+                ['field' => 'asset_name', 'rule' => 'required', 'message' => 'Tên tài sản là bắt buộc'],
+            ],
+            'asset_assignments' => [
+                ['field' => 'asset_id', 'rule' => 'required', 'message' => 'Tài sản là bắt buộc'],
+                ['field' => 'employee_id', 'rule' => 'required', 'message' => 'Nhân viên là bắt buộc'],
+                ['field' => 'assigned_date', 'rule' => 'required', 'message' => 'Ngày bàn giao là bắt buộc'],
+            ],
+            'news' => [
+                ['field' => 'title', 'rule' => 'required', 'message' => 'Tiêu đề tin tức là bắt buộc'],
+                ['field' => 'content', 'rule' => 'required', 'message' => 'Nội dung tin tức là bắt buộc'],
+            ],
+            'policies' => [
+                ['field' => 'policy_code', 'rule' => 'required', 'message' => 'Mã chính sách là bắt buộc'],
+                ['field' => 'policy_code', 'rule' => 'unique_if_present', 'table' => 'policies', 'message' => 'Mã chính sách đã tồn tại'],
+                ['field' => 'policy_name', 'rule' => 'required', 'message' => 'Tên chính sách là bắt buộc'],
+                ['field' => 'content', 'rule' => 'required', 'message' => 'Nội dung chính sách là bắt buộc'],
+            ],
+            'salary_components' => [
+                ['field' => 'code', 'rule' => 'required', 'message' => 'Mã thành phần lương là bắt buộc'],
+                ['field' => 'code', 'rule' => 'unique_if_present', 'table' => 'salary_components', 'message' => 'Mã thành phần lương đã tồn tại'],
+                ['field' => 'name', 'rule' => 'required', 'message' => 'Tên thành phần lương là bắt buộc'],
+                ['field' => 'type', 'rule' => 'required', 'message' => 'Loại thành phần lương là bắt buộc'],
+                ['field' => 'category', 'rule' => 'required', 'message' => 'Nhóm thành phần lương là bắt buộc'],
+            ],
         ];
     }
 
@@ -364,6 +418,24 @@ class ResourceBusinessRules
             ],
             'job_families' => [
                 ['field' => 'code', 'rule' => 'unique_if_present', 'table' => 'job_families', 'message' => 'Mã nhóm công việc đã tồn tại'],
+            ],
+            'roles' => [
+                ['field' => 'role_code', 'rule' => 'unique_if_present', 'table' => 'roles', 'message' => 'Mã vai trò đã tồn tại'],
+            ],
+            'leave_types' => [
+                ['field' => 'leave_type_code', 'rule' => 'unique_if_present', 'table' => 'leave_types', 'message' => 'Mã loại nghỉ đã tồn tại'],
+            ],
+            'shift_types' => [
+                ['field' => 'shift_code', 'rule' => 'unique_if_present', 'table' => 'shift_types', 'message' => 'Mã ca làm đã tồn tại'],
+            ],
+            'assets' => [
+                ['field' => 'asset_code', 'rule' => 'unique_if_present', 'table' => 'assets', 'message' => 'Mã tài sản đã tồn tại'],
+            ],
+            'policies' => [
+                ['field' => 'policy_code', 'rule' => 'unique_if_present', 'table' => 'policies', 'message' => 'Mã chính sách đã tồn tại'],
+            ],
+            'salary_components' => [
+                ['field' => 'code', 'rule' => 'unique_if_present', 'table' => 'salary_components', 'message' => 'Mã thành phần lương đã tồn tại'],
             ],
         ];
     }
@@ -396,8 +468,8 @@ class ResourceBusinessRules
             }
 
             match ($condition['operator']) {
-                '=' => $query->where($condition['column'], $condition['value']),
-                '!=' => $query->where($condition['column'], '!=', $condition['value']),
+                '=' => self::applyScalarCondition($query, $condition['column'], '=', $condition['value']),
+                '!=' => self::applyScalarCondition($query, $condition['column'], '!=', $condition['value']),
                 'IN' => $query->whereIn($condition['column'], $condition['value']),
                 'NOT_IN' => $query->whereNotIn($condition['column'], $condition['value']),
                 default => null,
@@ -405,6 +477,17 @@ class ResourceBusinessRules
         }
 
         return $query->exists();
+    }
+
+    private static function applyScalarCondition($query, string $column, string $operator, mixed $value): mixed
+    {
+        if (is_bool($value)) {
+            $literal = $value ? 'true' : 'false';
+
+            return $query->whereRaw("{$column} {$operator} {$literal}");
+        }
+
+        return $query->where($column, $operator, $value);
     }
 
     private static function checkSelfStatus(array $guard, string $table, int $id): bool
@@ -473,7 +556,7 @@ class ResourceBusinessRules
 
     private static function validateRequired(mixed $value, array $rule): ?string
     {
-        return ($value === null || $value === '') ? $rule['message'] : null;
+        return ($value === null || (is_string($value) && trim($value) === '')) ? $rule['message'] : null;
     }
 
     private static function validateUnique(mixed $value, array $rule, ?int $excludeId): ?string
@@ -482,7 +565,17 @@ class ResourceBusinessRules
             return null;
         }
 
-        $query = DB::table($rule['table'])->where($rule['field'], $value);
+        $query = DB::table($rule['table']);
+
+        if (is_string($value)) {
+            $query->whereRaw('LOWER('.$rule['field'].') = ?', [mb_strtolower(trim($value))]);
+        } else {
+            $query->where($rule['field'], $value);
+        }
+
+        if (TenantContext::hasTenant() && Schema::hasColumn($rule['table'], 'tenant_id')) {
+            $query->where('tenant_id', TenantContext::id());
+        }
 
         if ($excludeId !== null) {
             $query->where('id', '!=', $excludeId);

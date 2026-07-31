@@ -360,6 +360,14 @@ class GenericResourceController extends Controller
             }
         }
 
+        // Keep legacy frontend field names compatible with canonical DB columns.
+        if ($table === 'assets' && $request->filled('name') && ! $request->filled('asset_name')) {
+            $payload['asset_name'] = $request->input('name');
+        }
+        if ($table === 'policies' && $request->filled('title') && ! $request->filled('policy_name')) {
+            $payload['policy_name'] = $request->input('title');
+        }
+
         if (in_array('meta', $columns, true)) {
             $existingMeta = [];
             if ($id) {

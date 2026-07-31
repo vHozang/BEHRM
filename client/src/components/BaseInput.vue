@@ -12,6 +12,7 @@
       @input="handleInput"
       @blur="emit('blur')"
       :placeholder="placeholder"
+      :autocomplete="autocomplete"
       :disabled="disabled"
       :required="required"
       :class="inputClasses"
@@ -32,6 +33,7 @@ interface Props {
   label?: string;
   modelValue?: string | number;
   placeholder?: string;
+  autocomplete?: string;
   disabled?: boolean;
   required?: boolean;
   error?: string;

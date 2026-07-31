@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Support\HrmConfig;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 /**
  * Tenant business-rule settings (Cấu hình nghiệp vụ).
@@ -191,6 +192,52 @@ class SettingsController extends Controller
         }
 
         return response()->json(['status' => 200, 'message' => 'Đã lưu cấu hình', 'data' => ['saved' => $saved]]);
+    }
+
+    /** GET /settings/integrations/autorecruit/health — admin-only connectivity check. */
+    public function autoRecruitHealth(): JsonResponse
+    {
+        $urls = array_values(array_unique(array_filter(array_map(
+            fn ($url) => rtrim((string) $url, '/'),
+            array_merge(
+                [(string) config('services.autorecruit.url')],
+                (array) config('services.autorecruit.fallback_urls', [])
+            )
+        ))));
+        $checks = [];
+        $available = false;
+
+        foreach ($urls as $url) {
+            $startedAt = microtime(true);
+            try {
+                $response = Http::connectTimeout(min((int) config('services.autorecruit.connect_timeout', 5), 5))
+                    ->timeout(8)
+                    ->acceptJson()
+                    ->get($url.'/health');
+                $healthy = $response->successful();
+                $checks[] = [
+                    'url' => $url,
+                    'healthy' => $healthy,
+                    'status' => $response->status(),
+                    'latency_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+                ];
+                $available = $available || $healthy;
+            } catch (\Throwable $exception) {
+                $checks[] = [
+                    'url' => $url,
+                    'healthy' => false,
+                    'status' => null,
+                    'latency_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+                    'error' => 'Không thể kết nối',
+                ];
+            }
+        }
+
+        return response()->json([
+            'status' => $available ? 200 : 503,
+            'message' => $available ? 'Resume backend đang hoạt động' : 'Resume backend không khả dụng',
+            'data' => ['available' => $available, 'checks' => $checks],
+        ], $available ? 200 : 503);
     }
 
     /** @return array<string,string> key => type */

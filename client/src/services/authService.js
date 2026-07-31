@@ -1,6 +1,15 @@
 
 import axiosClient from './axiosClient';
 
+const clearStoredSession = () => {
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('user_email');
+  localStorage.removeItem('role');
+  localStorage.removeItem('user_role');
+  localStorage.removeItem('access');
+};
+
 export const authService = {
   // Login
   login: async (email, password) => {
@@ -59,21 +68,36 @@ export const authService = {
   },
 
   // Change password for logged-in user
-  changePassword: async (newPassword) => {
+  changePassword: async (currentPassword, newPassword, passwordConfirmation) => {
     const response = await axiosClient.post('/auth/change-password', {
-      password: newPassword
+      current_password: currentPassword,
+      password: newPassword,
+      password_confirmation: passwordConfirmation
     });
     return response.data;
   },
 
+  forgotPassword: async (email) => {
+    const response = await axiosClient.post('/auth/forgot-password', {
+      company_email: email
+    });
+    return response.data;
+  },
+
+  resetPassword: async (token, password, passwordConfirmation) => {
+    const response = await axiosClient.post('/auth/reset-password', {
+      token,
+      password,
+      password_confirmation: passwordConfirmation
+    });
+    return response.data;
+  },
+
+  clearSession: clearStoredSession,
+
   // Logout
   logout: () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('user_email');
-    localStorage.removeItem('role');
-    localStorage.removeItem('user_role');
-    localStorage.removeItem('access');
+    clearStoredSession();
     window.location.href = '/login';
   },
 

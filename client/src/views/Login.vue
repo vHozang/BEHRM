@@ -45,6 +45,12 @@
           <BaseInput v-model="password" type="password" label="Mật khẩu" placeholder="••••••••" required />
         </div>
 
+        <div class="flex justify-end">
+          <router-link to="/forgot-password" class="text-sm font-medium text-primary hover:underline">
+            Quên mật khẩu?
+          </router-link>
+        </div>
+
         <div v-if="error" class="text-red-600 text-sm text-center">
           {{ error }}
         </div>
@@ -89,11 +95,12 @@ const password = ref('');
 const loading = ref(false);
 const error = ref('');
 
-// Tài khoản demo cho nút đăng nhập nhanh (4 tầng quyền khác nhau).
+// Tài khoản demo cho nút đăng nhập nhanh (5 tầng quyền khác nhau).
 const demoAccounts = [
   { label: 'Admin', email: 'an.nguyen@company.com', password: 'test1234' },
   { label: 'Trưởng phòng', email: 'cuong.le@company.com', password: 'demo1234' },
   { label: 'HR', email: 'mai.tran@company.com', password: 'demo1234' },
+  { label: 'Kế toán', email: 'phuc.trinh@company.com', password: 'ketoan1234' },
   { label: 'Nhân viên', email: 'huong.pham@company.com', password: 'demo1234' },
 ];
 

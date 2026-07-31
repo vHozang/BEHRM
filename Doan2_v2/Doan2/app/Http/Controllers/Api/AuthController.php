@@ -10,7 +10,11 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -83,17 +87,35 @@ class AuthController extends Controller
     public function changePassword(Request $request): JsonResponse
     {
         $payload = $request->validate([
-            'password' => ['required', 'string', 'min:6'],
+            'current_password' => ['required', 'string'],
+            'password' => [
+                'required',
+                'confirmed',
+                'different:current_password',
+                Password::min(8)->letters()->numbers(),
+            ],
         ]);
 
         $employee = $request->attributes->get('auth_employee');
+        $passwordHash = DB::table('employees')
+            ->where('id', $employee['id'])
+            ->value('password_hash');
 
-        DB::table('employees')->where('id', $employee['id'])->update([
-            'password_hash' => Hash::make($payload['password']),
-            'updated_at' => now(),
-        ]);
+        if (! $passwordHash || ! Hash::check($payload['current_password'], $passwordHash)) {
+            throw ValidationException::withMessages([
+                'current_password' => ['Mật khẩu hiện tại không chính xác.'],
+            ]);
+        }
 
-        DB::table('api_tokens')->where('employee_id', $employee['id'])->delete();
+        DB::transaction(function () use ($employee, $payload): void {
+            DB::table('employees')->where('id', $employee['id'])->update([
+                'password_hash' => Hash::make($payload['password']),
+                'updated_at' => now(),
+            ]);
+
+            // Revoke every active session after a credential change.
+            DB::table('api_tokens')->where('employee_id', $employee['id'])->delete();
+        });
 
         return response()->json([
             'status' => 200,
@@ -179,16 +201,16 @@ class AuthController extends Controller
             // Gửi email đặt lại mật khẩu. Driver 'log' (dev) ghi vào laravel.log;
             // production cấu hình SMTP là gửi thật — KHÔNG đổi code. try/catch để
             // lỗi mail không làm hỏng phản hồi (vẫn trả thông báo trung lập).
-            $resetUrl = rtrim(env('FRONTEND_URL', 'http://localhost:5050'), '/').'/reset-password?token='.$token;
+            $resetUrl = rtrim((string) config('app.frontend_url'), '/').'/reset-password?token='.$token;
             try {
-                \Illuminate\Support\Facades\Mail::raw(
+                Mail::raw(
                     "Xin chào,\n\nCó yêu cầu đặt lại mật khẩu cho tài khoản {$payload['company_email']}.\n"
                     ."Nhấn liên kết sau để đặt lại (hết hạn sau 1 giờ):\n{$resetUrl}\n\n"
                     ."Nếu không phải bạn, hãy bỏ qua email này.\n\n— Hệ thống HRM",
                     fn ($m) => $m->to($payload['company_email'])->subject('Đặt lại mật khẩu HRM')
                 );
             } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('Gửi email reset password thất bại: '.$e->getMessage());
+                Log::warning('Gửi email reset password thất bại: '.$e->getMessage());
             }
         }
 
@@ -203,31 +225,45 @@ class AuthController extends Controller
     {
         $payload = $request->validate([
             'token' => ['required', 'string'],
-            'password' => ['required', 'string', 'min:6'],
+            'password' => [
+                'required',
+                'confirmed',
+                Password::min(8)->letters()->numbers(),
+            ],
         ]);
 
-        $reset = DB::table('password_reset_requests')
-            ->where('token', $payload['token'])
-            ->whereNull('used_at')
-            ->where('expires_at', '>', now())
-            ->first();
+        $passwordChanged = DB::transaction(function () use ($payload): bool {
+            $reset = DB::table('password_reset_requests')
+                ->where('token', $payload['token'])
+                ->whereNull('used_at')
+                ->where('expires_at', '>', now())
+                ->lockForUpdate()
+                ->first();
 
-        if (! $reset) {
+            if (! $reset) {
+                return false;
+            }
+
+            DB::table('employees')->where('id', $reset->employee_id)->update([
+                'password_hash' => Hash::make($payload['password']),
+                'updated_at' => now(),
+            ]);
+            DB::table('password_reset_requests')->where('id', $reset->id)->update([
+                'used_at' => now(),
+                'updated_at' => now(),
+            ]);
+            DB::table('api_tokens')->where('employee_id', $reset->employee_id)->delete();
+
+            return true;
+        });
+
+        if (! $passwordChanged) {
             return response()->json([
                 'status' => 422,
                 'message' => 'Invalid reset token',
                 'data' => null,
             ], 422);
         }
-
-        DB::table('employees')->where('id', $reset->employee_id)->update([
-            'password_hash' => Hash::make($payload['password']),
-            'updated_at' => now(),
-        ]);
-        DB::table('password_reset_requests')->where('id', $reset->id)->update([
-            'used_at' => now(),
-            'updated_at' => now(),
-        ]);
 
         return response()->json([
             'status' => 200,

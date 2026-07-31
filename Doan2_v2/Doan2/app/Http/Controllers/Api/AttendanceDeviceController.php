@@ -32,6 +32,16 @@ class AttendanceDeviceController extends Controller
         return $this->ok($devices, 'Danh sách máy chấm công');
     }
 
+    public function show(int $id): JsonResponse
+    {
+        $device = $this->find($id);
+        if (! $device) {
+            return $this->notFound();
+        }
+
+        return $this->ok($this->present($device), 'Chi tiết máy chấm công');
+    }
+
     public function store(Request $request): JsonResponse
     {
         $v = Validator::make($request->all(), [
@@ -62,7 +72,7 @@ class AttendanceDeviceController extends Controller
         return response()->json([
             'status' => 201,
             'message' => 'Đã đăng ký máy chấm công',
-            'data' => $this->present(DB::table('attendance_devices')->find($id)),
+            'data' => $this->present($this->find($id), true),
         ], 201);
     }
 
@@ -121,7 +131,7 @@ class AttendanceDeviceController extends Controller
             'updated_at' => now(),
         ]);
 
-        return $this->ok($this->present($this->find($id)), 'Đã cấp lại token thiết bị');
+        return $this->ok($this->present($this->find($id), true), 'Đã cấp lại token thiết bị');
     }
 
     // ── Helpers ──────────────────────────────────────────
@@ -138,11 +148,12 @@ class AttendanceDeviceController extends Controller
         return $meta;
     }
 
-    private function present($d): array
+    private function present($d, bool $includeToken = false): array
     {
         $meta = is_string($d->meta) ? (json_decode($d->meta, true) ?: []) : (array) ($d->meta ?? []);
+        unset($meta['api_key']);
 
-        return [
+        $data = [
             'id' => $d->id,
             'name' => $d->name,
             'brand' => $d->brand,
@@ -150,10 +161,17 @@ class AttendanceDeviceController extends Controller
             'protocol_label' => $this->protocolLabel($d->protocol),
             'status' => $d->status,
             'location' => $d->location,
-            'device_token' => $d->device_token,
+            'has_device_token' => ! empty($d->device_token),
+            'device_token_hint' => $d->device_token ? substr($d->device_token, -4) : null,
             'last_seen_at' => $d->last_seen_at,
             'meta' => $meta,
         ];
+
+        if ($includeToken) {
+            $data['device_token'] = $d->device_token;
+        }
+
+        return $data;
     }
 
     private function protocolLabel(string $p): string

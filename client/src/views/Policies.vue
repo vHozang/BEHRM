@@ -115,6 +115,7 @@
     <!-- Create Policy Modal (Admin only) -->
     <BaseModal v-model="showCreateModal" title="Thêm chính sách mới">
       <div class="space-y-4">
+        <BaseInput v-model="form.policy_code" label="Mã chính sách" placeholder="POL-001" required />
         <BaseInput v-model="form.title" label="Tiêu đề chính sách" required />
         <BaseInput v-model="form.version" label="Phiên bản (Ví dụ: 1.0, 1.2)" placeholder="1.0" required />
         <BaseInput v-model="form.description" label="Tóm tắt ngắn gọn" />
@@ -162,6 +163,7 @@ const currentPolicy = ref(null);
 const signLoading = ref(false);
 
 const form = ref({
+  policy_code: '',
   title: '',
   version: '1.0',
   description: '',
@@ -209,6 +211,7 @@ const signPolicy = async (signatureBase64) => {
 
 const openCreateModal = () => {
   form.value = {
+    policy_code: '',
     title: '',
     version: '1.0',
     description: '',
@@ -218,12 +221,16 @@ const openCreateModal = () => {
 };
 
 const submitForm = async () => {
-  if (!form.value.title || !form.value.content || !form.value.version) {
-    toast.error('Vui lòng nhập đầy đủ tiêu đề, phiên bản và nội dung');
+  if (!form.value.policy_code || !form.value.title || !form.value.content || !form.value.version) {
+    toast.error('Vui lòng nhập đầy đủ mã, tiêu đề, phiên bản và nội dung');
     return;
   }
   try {
-    await communicationService.createPolicy(form.value);
+    await communicationService.createPolicy({
+      ...form.value,
+      policy_code: form.value.policy_code.trim().toUpperCase(),
+      policy_name: form.value.title.trim(),
+    });
     toast.success('Ban hành chính sách mới thành công');
     showCreateModal.value = false;
     await loadData();

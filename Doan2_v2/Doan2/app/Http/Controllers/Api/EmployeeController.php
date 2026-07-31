@@ -453,11 +453,7 @@ class EmployeeController extends Controller
         $employee->status = EmployeeStatus::resolve((int) $employee->id);
 
         // Lương + hợp đồng + hồ sơ cá nhân chỉ cho HR/Payroll hoặc chính chủ.
-        $access = $request->attributes->get('access');
-        $privileged = is_array($access) && (! empty($access['full'])
-            || array_intersect(['hr', 'payroll'], $access['modules'] ?? []));
-        $isSelf = (int) $request->attributes->get('auth_employee_id') === (int) $id;
-        if (! $privileged && ! $isSelf) {
+        if (! $this->canAccessPrivateEmployeeData($request, $id)) {
             unset($employee->base_salary, $employee->personal_email, $employee->date_of_birth);
             $employee->unsetRelation('activeContract');
             $employee->setAttribute('profile', null);
@@ -748,7 +744,7 @@ class EmployeeController extends Controller
     /**
      * GET /employees/{id}/profile — Xem profile.
      */
-    public function showProfile(int $id): JsonResponse
+    public function showProfile(Request $request, int $id): JsonResponse
     {
         $employee = Employee::with([
             'department:id,department_name',
@@ -757,6 +753,14 @@ class EmployeeController extends Controller
 
         if (! $employee) {
             return $this->notFound();
+        }
+
+        if (! $this->canAccessPrivateEmployeeData($request, $id)) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Bạn không có quyền xem hồ sơ riêng tư của nhân viên này',
+                'data' => null,
+            ], 403);
         }
 
         // Gather extended profile data
@@ -770,6 +774,18 @@ class EmployeeController extends Controller
         ];
 
         return $this->ok($data, 'Employee profile');
+    }
+
+    private function canAccessPrivateEmployeeData(Request $request, int $employeeId): bool
+    {
+        if ((int) $request->attributes->get('auth_employee_id') === $employeeId) {
+            return true;
+        }
+
+        $access = $request->attributes->get('access');
+
+        return is_array($access) && (! empty($access['full'])
+            || (bool) array_intersect(['hr', 'payroll'], $access['modules'] ?? []));
     }
 
     /**

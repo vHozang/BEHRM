@@ -286,6 +286,112 @@ class BusinessRulesTest extends TestCase
         $this->assertStringContainsString('system role', $response->json('data.violations.0'));
     }
 
+    public function test_can_delete_unused_non_system_role(): void
+    {
+        $roleId = DB::table('roles')->insertGetId([
+            'role_code' => 'QA_UNUSED_ROLE',
+            'role_name' => 'QA Unused Role',
+            'is_system_role' => false,
+            'tenant_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->deleteJson("/api/v1/roles/{$roleId}", [], [
+            'Authorization' => "Bearer {$this->token}",
+        ])->assertOk();
+
+        $this->assertDatabaseMissing('roles', ['id' => $roleId]);
+    }
+
+    public function test_cannot_delete_role_assigned_to_an_active_employee(): void
+    {
+        $roleId = DB::table('roles')->insertGetId([
+            'role_code' => 'QA_ASSIGNED_ROLE',
+            'role_name' => 'QA Assigned Role',
+            'is_system_role' => false,
+            'tenant_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('employee_roles')->insert([
+            'employee_id' => $this->employeeId,
+            'role_id' => $roleId,
+            'is_active' => true,
+            'tenant_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->deleteJson("/api/v1/roles/{$roleId}", [], [
+            'Authorization' => "Bearer {$this->token}",
+        ])->assertConflict();
+
+        $this->assertDatabaseHas('roles', ['id' => $roleId]);
+    }
+
+    public function test_generic_resources_reject_empty_payloads(): void
+    {
+        $cases = [
+            '/api/v1/roles' => 'role_code',
+            '/api/v1/dependents' => 'employee_id',
+            '/api/v1/leave-types' => 'leave_type_code',
+            '/api/v1/shift-types' => 'shift_code',
+            '/api/v1/shift-assignments' => 'employee_id',
+            '/api/v1/assets' => 'asset_code',
+            '/api/v1/asset-assignments' => 'asset_id',
+            '/api/v1/news' => 'title',
+            '/api/v1/policies' => 'policy_code',
+            '/api/v1/salary-components' => 'code',
+        ];
+
+        foreach ($cases as $url => $field) {
+            $this->postJson($url, [], [
+                'Authorization' => "Bearer {$this->token}",
+            ])->assertUnprocessable()
+                ->assertJsonStructure(['data' => ['errors' => [$field]]]);
+        }
+    }
+
+    public function test_generic_catalog_codes_are_unique_within_a_tenant(): void
+    {
+        $cases = [
+            ['/api/v1/roles', ['role_code' => 'QA_DUP_ROLE', 'role_name' => 'QA Role']],
+            ['/api/v1/leave-types', ['leave_type_code' => 'QA_DUP_LEAVE', 'leave_type_name' => 'QA Leave']],
+            ['/api/v1/shift-types', ['shift_code' => 'QA_DUP_SHIFT', 'shift_name' => 'QA Shift', 'start_time' => '08:00', 'end_time' => '17:00']],
+            ['/api/v1/assets', ['asset_code' => 'QA_DUP_ASSET', 'asset_name' => 'QA Asset']],
+            ['/api/v1/policies', ['policy_code' => 'QA_DUP_POLICY', 'policy_name' => 'QA Policy', 'content' => 'Policy body']],
+            ['/api/v1/salary-components', ['code' => 'QA_DUP_COMPONENT', 'name' => 'QA Component', 'type' => 'earning', 'category' => 'fixed']],
+        ];
+
+        foreach ($cases as [$url, $payload]) {
+            $this->postJson($url, $payload, [
+                'Authorization' => "Bearer {$this->token}",
+            ])->assertCreated();
+
+            $this->postJson($url, $payload, [
+                'Authorization' => "Bearer {$this->token}",
+            ])->assertUnprocessable();
+        }
+    }
+
+    public function test_legal_entity_duplicate_code_returns_validation_error(): void
+    {
+        $payload = [
+            'name' => 'QA Legal Entity',
+            'code' => 'QA-LEGAL-ENTITY',
+        ];
+
+        $this->postJson('/api/v1/legal-entities', $payload, [
+            'Authorization' => "Bearer {$this->token}",
+        ])->assertCreated();
+
+        $this->postJson('/api/v1/legal-entities', $payload, [
+            'Authorization' => "Bearer {$this->token}",
+        ])->assertUnprocessable()
+            ->assertJsonStructure(['data' => ['errors' => ['code']]]);
+    }
+
     // =========================================================================
     // STORE VALIDATION TESTS
     // =========================================================================

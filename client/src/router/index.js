@@ -8,6 +8,18 @@ const routes = [
     meta: { title: 'Cơ hội nghề nghiệp' }
   },
   {
+    path: '/forgot-password',
+    name: 'forgot-password',
+    component: () => import('../views/ForgotPassword.vue'),
+    meta: { title: 'Quên mật khẩu' }
+  },
+  {
+    path: '/reset-password',
+    name: 'reset-password',
+    component: () => import('../views/ResetPassword.vue'),
+    meta: { title: 'Đặt lại mật khẩu' }
+  },
+  {
     path: '/',
     component: () => import('../views/Layout.vue'),
     meta: { requiresAuth: true },

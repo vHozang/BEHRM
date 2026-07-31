@@ -21,12 +21,12 @@
         :data="interviews"
       >
         <template #cell-candidate="{ item }">
-          <div class="font-medium text-foreground">{{ item.candidate_name || `Ứng viên #${item.candidate_id}` }}</div>
-          <div class="text-xs text-muted-foreground">{{ item.position_title || 'Vị trí ứng tuyển' }}</div>
+          <div class="font-medium text-foreground">{{ item.candidate_name || item.candidate?.full_name || `Ứng viên #${item.candidate_id}` }}</div>
+          <div class="text-xs text-muted-foreground">{{ item.position_title || item.candidate?.position?.position_name || 'Vị trí ứng tuyển' }}</div>
         </template>
 
         <template #cell-interview_date="{ item }">
-          <div class="font-semibold text-primary text-sm">{{ formatDateTime(item.interview_date) }}</div>
+          <div class="font-semibold text-primary text-sm">{{ formatDateTime(item) }}</div>
         </template>
 
         <template #cell-interviewer="{ item }">
@@ -103,7 +103,30 @@
           <BaseInput v-model="form.interviewer" label="Người phỏng vấn / Hội đồng" placeholder="Ví dụ: Nguyễn Văn A (HR), Trần Văn B (Tech Lead)" required />
         </div>
 
-        <BaseInput v-model="form.location" label="Địa điểm hoặc Link meeting" placeholder="Phòng họp A02 hoặc link Google Meet / Zoom..." />
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-foreground mb-1">Hình thức phỏng vấn</label>
+            <select
+              v-model="form.interview_mode"
+              class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="ONSITE">Trực tiếp</option>
+              <option value="ONLINE">Trực tuyến</option>
+              <option value="HYBRID">Linh hoạt</option>
+            </select>
+          </div>
+          <BaseInput v-model="form.duration_minutes" type="number" label="Thời lượng (phút)" />
+        </div>
+
+        <BaseInput v-model="form.location" label="Địa điểm phỏng vấn" placeholder="Phòng họp A02 hoặc địa chỉ văn phòng..." />
+        <BaseInput
+          v-if="form.interview_mode !== 'ONSITE'"
+          v-model="form.meeting_link"
+          type="url"
+          label="Link Google Meet / Zoom"
+          placeholder="https://meet.google.com/..."
+        />
+        <BaseInput v-model="form.confirmation_deadline" type="date" label="Hạn ứng viên xác nhận tham dự" />
 
         <div>
           <label class="block text-sm font-medium text-foreground mb-1">Trạng thái buổi phỏng vấn</label>
@@ -198,7 +221,11 @@ const form = ref({
   candidate_id: '',
   interview_date: '',
   interviewer: '',
+  interview_mode: 'ONSITE',
   location: '',
+  meeting_link: '',
+  duration_minutes: 60,
+  confirmation_deadline: '',
   status: 'pending',
   result_note: ''
 });
@@ -209,16 +236,25 @@ const loadData = async () => {
       recruitmentService.getAllInterviews(),
       recruitmentService.getAllCandidates()
     ]);
-    interviews.value = intRes?.data || intRes || [];
+    interviews.value = (intRes?.data || intRes || []).map((item) => ({
+      ...item,
+      status: {
+        SCHEDULED: 'pending',
+        COMPLETED: 'passed',
+        CANCELLED: 'failed'
+      }[item.status] || item.status
+    }));
     candidates.value = (candRes?.data || candRes || []).filter(c => c.status === 'applied' || c.status === 'shortlisted' || c.status === 'interviewing');
   } catch (err) {
     console.error('Error loading interviews:', err);
   }
 };
 
-const formatDateTime = (dt) => {
-  if (!dt) return '-';
-  const date = new Date(dt);
+const formatDateTime = (item) => {
+  if (!item?.interview_date) return '-';
+  const datePart = String(item.interview_date).slice(0, 10);
+  const timePart = item.interview_time ? String(item.interview_time).slice(0, 8) : '00:00:00';
+  const date = new Date(`${datePart}T${timePart}`);
   return date.toLocaleString('vi-VN', {
     day: '2-digit',
     month: '2-digit',
@@ -238,7 +274,11 @@ const openCreateModal = () => {
     candidate_id: '',
     interview_date: '',
     interviewer: '',
+    interview_mode: 'ONSITE',
     location: '',
+    meeting_link: '',
+    duration_minutes: 60,
+    confirmation_deadline: '',
     status: 'pending',
     result_note: ''
   };
@@ -248,7 +288,12 @@ const openCreateModal = () => {
 const editItem = (item) => {
   form.value = { 
     ...item,
-    interview_date: item.interview_date ? item.interview_date.substring(0, 16) : ''
+    interview_date: item.interview_date
+      ? `${String(item.interview_date).slice(0, 10)}T${String(item.interview_time || '09:00').slice(0, 5)}`
+      : '',
+    interview_mode: item.interview_mode || 'ONSITE',
+    duration_minutes: item.duration_minutes || 60,
+    confirmation_deadline: item.confirmation_deadline || ''
   };
   showModal.value = true;
 };

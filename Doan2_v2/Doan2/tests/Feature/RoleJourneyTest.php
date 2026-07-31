@@ -157,6 +157,44 @@ class RoleJourneyTest extends TestCase
         $this->assertArrayNotHasKey('profile', $item);
     }
 
+    public function test_employee_cannot_read_another_employees_private_profile(): void
+    {
+        $viewer = $this->actor('profile-viewer');
+        $target = $this->actor('profile-target');
+        $hr = $this->actor('profile-hr', ['hr']);
+
+        DB::table('employees')->where('id', $target['id'])->update([
+            'base_salary' => 50000000,
+            'profile' => json_encode(['identity_number' => 'secret-profile']),
+        ]);
+        DB::table('social_insurance_info')->insert([
+            'employee_id' => $target['id'],
+            'social_insurance_number' => 'SI-SECRET',
+            'tax_code' => 'TAX-SECRET',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withToken($viewer['token'])
+            ->getJson('/api/v1/employees/'.$target['id'].'/profile')
+            ->assertForbidden()
+            ->assertJsonMissing(['base_salary' => 50000000])
+            ->assertJsonMissing(['tax_code' => 'TAX-SECRET']);
+
+        $this->withToken($target['token'])
+            ->getJson('/api/v1/employees/'.$target['id'].'/profile')
+            ->assertOk()
+            ->assertJsonPath('data.employee.base_salary', 50000000)
+            ->assertJsonPath('data.social_insurance.tax_code', 'TAX-SECRET');
+
+        $this->withToken($hr['token'])
+            ->getJson('/api/v1/employees/'.$target['id'].'/profile')
+            ->assertOk()
+            ->assertJsonPath('data.social_insurance.social_insurance_number', 'SI-SECRET');
+    }
+
     /**
      * @return array{id:int, code:string, token:string}
      */

@@ -112,7 +112,7 @@ class DataIntegrityTest extends TestCase
         $this->getJson('/api/v1/recruitment-candidates/1/cv')->assertUnauthorized();
     }
 
-    public function test_public_recruitment_is_explicitly_tenant_scoped(): void
+    public function test_public_recruitment_is_explicitly_tenant_scoped_and_requires_cv(): void
     {
         DB::table('tenants')->insert([
             'id' => 2,
@@ -149,11 +149,11 @@ class DataIntegrityTest extends TestCase
             'full_name' => 'Scoped Candidate',
             'email' => 'candidate@test.local',
             'recruitment_position_id' => $positionId,
-        ])->assertCreated();
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['post_slug', 'cv'], 'data.errors');
 
-        $this->assertDatabaseHas('recruitment_candidates', [
+        $this->assertDatabaseMissing('recruitment_candidates', [
             'email' => 'candidate@test.local',
-            'tenant_id' => 1,
         ]);
     }
 

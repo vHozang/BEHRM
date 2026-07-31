@@ -320,6 +320,53 @@
         <BaseButton :disabled="actionLoading" @click="submitManagerReview">Gửi đánh giá</BaseButton>
       </template>
     </BaseModal>
+
+    <BaseModal v-model="showHireModal" title="Xác nhận tuyển dụng và gửi thư nhận việc">
+      <div class="space-y-4">
+        <p class="text-sm text-muted-foreground">
+          Email nhận việc sẽ được gửi tới <strong class="text-foreground">{{ selectedCandidate?.email }}</strong> ngay sau khi tuyển.
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <BaseInput v-model="hireForm.start_date" type="date" label="Ngày bắt đầu làm việc" required />
+          <BaseInput v-model="hireForm.arrival_time" type="time" label="Thời gian có mặt" required />
+        </div>
+        <BaseInput v-model="hireForm.work_location" label="Địa điểm làm việc" placeholder="Văn phòng / chi nhánh làm việc" />
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1">Ghi chú trong thư nhận việc</label>
+          <textarea
+            v-model="hireForm.offer_note"
+            class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            rows="3"
+            placeholder="Hồ sơ cần chuẩn bị, người liên hệ hoặc lưu ý ngày đầu đi làm..."
+          ></textarea>
+        </div>
+      </div>
+      <template #footer>
+        <BaseButton variant="outline" @click="showHireModal = false">Hủy</BaseButton>
+        <BaseButton :disabled="actionLoading" @click="submitHireCandidate">Tuyển và gửi email</BaseButton>
+      </template>
+    </BaseModal>
+
+    <BaseModal v-model="showRejectModal" title="Từ chối ứng viên và gửi email phản hồi">
+      <div class="space-y-4">
+        <p class="text-sm text-muted-foreground">
+          Email phản hồi lịch sự sẽ được gửi tới <strong class="text-foreground">{{ selectedCandidate?.email }}</strong>.
+        </p>
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1">Lý do / phản hồi cho ứng viên</label>
+          <textarea
+            v-model="rejectForm.reason"
+            class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            rows="4"
+            placeholder="Ví dụ: Kinh nghiệm hiện tại chưa hoàn toàn phù hợp với yêu cầu của vị trí..."
+          ></textarea>
+        </div>
+      </div>
+      <template #footer>
+        <BaseButton variant="outline" @click="showRejectModal = false">Hủy</BaseButton>
+        <BaseButton variant="destructive" :disabled="actionLoading" @click="submitRejectCandidate">Từ chối và gửi email</BaseButton>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -356,6 +403,8 @@ const columns = [
 const showDetailModal = ref(false);
 const showCreateModal = ref(false);
 const showReviewModal = ref(false);
+const showHireModal = ref(false);
+const showRejectModal = ref(false);
 const selectedCandidate = ref(null);
 const aiLoading = ref(false);
 const actionLoading = ref(false);
@@ -364,6 +413,15 @@ const reviewForm = ref({
   decision: 'approved',
   note: ''
 });
+
+const hireForm = ref({
+  start_date: '',
+  arrival_time: '08:30',
+  work_location: '',
+  offer_note: ''
+});
+
+const rejectForm = ref({ reason: '' });
 
 const createForm = ref({
   full_name: '',
@@ -444,13 +502,32 @@ const advanceCandidate = async () => {
   }
 };
 
-const hireCandidate = async () => {
+const hireCandidate = () => {
   if (!selectedCandidate.value?.id) return;
-  if (!confirm('Xác nhận tuyển dụng ứng viên này?')) return;
+  if (!['interviewing', 'offered'].includes(selectedCandidate.value.status)) {
+    toast.error('Chỉ có thể tuyển ứng viên đang phỏng vấn hoặc đã được đề nghị nhận việc');
+    return;
+  }
+  const start = new Date();
+  start.setDate(start.getDate() + 1);
+  hireForm.value = {
+    start_date: start.toISOString().slice(0, 10),
+    arrival_time: '08:30',
+    work_location: '',
+    offer_note: ''
+  };
+  showHireModal.value = true;
+};
+
+const submitHireCandidate = async () => {
+  if (!selectedCandidate.value?.id || !hireForm.value.start_date || !hireForm.value.arrival_time) return;
   actionLoading.value = true;
   try {
-    await recruitmentService.hire(selectedCandidate.value.id);
-    toast.success('Đã tuyển dụng ứng viên');
+    const result = await recruitmentService.hire(selectedCandidate.value.id, hireForm.value);
+    toast.success(result?.notification_email_sent
+      ? 'Đã tuyển dụng và gửi email nhận việc'
+      : 'Đã tuyển dụng; email chưa gửi được, vui lòng kiểm tra cấu hình SMTP');
+    showHireModal.value = false;
     showDetailModal.value = false;
     await loadCandidates();
   } catch (err) {
@@ -461,13 +538,21 @@ const hireCandidate = async () => {
   }
 };
 
-const rejectCandidate = async () => {
+const rejectCandidate = () => {
   if (!selectedCandidate.value?.id) return;
-  if (!confirm('Xác nhận từ chối ứng viên này?')) return;
+  rejectForm.value = { reason: '' };
+  showRejectModal.value = true;
+};
+
+const submitRejectCandidate = async () => {
+  if (!selectedCandidate.value?.id) return;
   actionLoading.value = true;
   try {
-    await recruitmentService.reject(selectedCandidate.value.id);
-    toast.success('Đã từ chối ứng viên');
+    const result = await recruitmentService.reject(selectedCandidate.value.id, rejectForm.value);
+    toast.success(result?.notification_email_sent
+      ? 'Đã từ chối và gửi email phản hồi'
+      : 'Đã từ chối; email chưa gửi được, vui lòng kiểm tra cấu hình SMTP');
+    showRejectModal.value = false;
     showDetailModal.value = false;
     await loadCandidates();
   } catch (err) {

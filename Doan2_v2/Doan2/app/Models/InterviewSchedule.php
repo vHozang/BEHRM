@@ -17,6 +17,7 @@ class InterviewSchedule extends Model
     {
         return [
             'interview_date' => 'date',
+            'meta' => 'array',
         ];
     }
 

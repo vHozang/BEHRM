@@ -45,7 +45,16 @@ Kiểm tra từ VPS:
 curl -fsS http://100.95.129.101:8000/health
 ```
 
-VPS dùng Windows làm endpoint mặc định qua `AUTORECRUIT_URL=http://100.95.129.101:8000`; đổi sang `100.105.84.89` nếu chạy service trên Mac. Cần cho phép TCP/8000 trên interface Tailscale của máy local.
+VPS dùng Windows làm endpoint mặc định và tự chuyển sang Mac nếu Windows tắt:
+
+```dotenv
+AUTORECRUIT_URL=http://100.95.129.101:8000
+AUTORECRUIT_FALLBACK_URLS=http://100.105.84.89:8000
+AUTORECRUIT_CONNECT_TIMEOUT=5
+AUTORECRUIT_TIMEOUT=120
+```
+
+Cần cho phép TCP/8000 trên interface Tailscale của máy local. Admin có thể kiểm tra từ Laravel qua `GET /api/v1/settings/integrations/autorecruit/health`.
 
 Domain API production là `devtapcode.io.vn`. DNS phải trỏ tới `180.93.42.137`; sau khi có TLS, đặt frontend `VITE_API_BASE_URL=https://devtapcode.io.vn/api/v1` và `APP_URL=https://devtapcode.io.vn`.
 
@@ -103,6 +112,44 @@ Tạo file production secrets trên VPS:
 ```bash
 install -m 600 /dev/null /opt/hrm/Doan2_v2/Doan2/.env
 # điền APP_KEY, DB_PASSWORD, APP_URL, các thông tin Redis/attendance...
+```
+
+### Cấu hình gửi email tuyển dụng
+
+Cloudflare Email Routing chỉ nhận thư gửi đến `hr@devtapcode.io.vn` rồi chuyển tiếp; dịch vụ này không cung cấp SMTP gửi thư. Cần đăng ký một nhà cung cấp gửi mail như Resend, Brevo, Postmark hoặc Mailgun, xác minh domain `devtapcode.io.vn`, rồi thêm thông tin SMTP vào file `.env` trên VPS:
+
+```dotenv
+MAIL_MAILER=smtp
+MAIL_SCHEME=tls
+MAIL_HOST=<SMTP_HOST>
+MAIL_PORT=587
+MAIL_USERNAME=<SMTP_USERNAME>
+MAIL_PASSWORD=<SMTP_PASSWORD_OR_API_KEY>
+MAIL_EHLO_DOMAIN=devtapcode.io.vn
+MAIL_FROM_ADDRESS=hr@devtapcode.io.vn
+MAIL_FROM_NAME="DEVTAPCODE HR"
+
+RECRUITMENT_MAIL_FROM_ADDRESS=hr@devtapcode.io.vn
+RECRUITMENT_MAIL_FROM_NAME="DEVTAPCODE HR"
+RECRUITMENT_COMPANY_NAME="DEVTAPCODE"
+RECRUITMENT_COMPANY_ADDRESS="<ĐỊA CHỈ CÔNG TY>"
+RECRUITMENT_COMPANY_PHONE="<SỐ ĐIỆN THOẠI>"
+RECRUITMENT_WEBSITE_URL=https://devtapcode.io.vn
+RECRUITMENT_CONTACT_NAME="Bộ phận Tuyển dụng"
+```
+
+Trong Cloudflare DNS, thêm DKIM và SPF đúng theo nhà cung cấp SMTP. Domain chỉ được có **một** TXT SPF ở cùng hostname; nếu nhà cung cấp yêu cầu SPF tại root thì phải gộp `include` của họ với `_spf.mx.cloudflare.net`, không tạo hai bản ghi `v=spf1` riêng. Nên thêm DMARC ở chế độ theo dõi trước:
+
+```dns
+_dmarc.devtapcode.io.vn TXT "v=DMARC1; p=none; rua=mailto:hr@devtapcode.io.vn; adkim=s; aspf=s"
+```
+
+Sau khi cập nhật `.env`:
+
+```bash
+cd /opt/hrm/Doan2_v2/Doan2
+docker compose exec -T php php artisan optimize:clear
+docker compose exec -T php php artisan config:cache
 ```
 
 ## 2. Cấu hình GitHub Actions

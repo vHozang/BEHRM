@@ -60,3 +60,6 @@ Doan2_v2/Doan2/storage/app/candidate-cvs/
 Doan2_v2/Doan2/storage/app/request-attachments/
 *.csv.tmp
 qa*.pdf
+
+Api.md
+

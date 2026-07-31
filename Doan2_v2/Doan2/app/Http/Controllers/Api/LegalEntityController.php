@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 /**
  * Multi-entity management. All queries are tenant-scoped via the
@@ -72,7 +73,12 @@ class LegalEntityController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
-            'code' => 'nullable|string|max:50',
+            'code' => [
+                'nullable',
+                'string',
+                'max:50',
+                Rule::unique('legal_entities', 'code')->where('tenant_id', TenantContext::id()),
+            ],
             'tax_code' => 'nullable|string|max:50',
             'address' => 'nullable|string',
             'status' => 'nullable|string|max:50',
@@ -121,7 +127,12 @@ class LegalEntityController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|required|string|max:255',
-            'code' => 'nullable|string|max:50',
+            'code' => [
+                'nullable',
+                'string',
+                'max:50',
+                Rule::unique('legal_entities', 'code')->where('tenant_id', TenantContext::id())->ignore($id),
+            ],
             'tax_code' => 'nullable|string|max:50',
             'address' => 'nullable|string',
             'status' => 'nullable|string|max:50',

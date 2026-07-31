@@ -347,12 +347,16 @@
           <h3 class="text-lg font-bold text-foreground mb-4">Đổi mật khẩu</h3>
           <div class="space-y-4">
             <div>
+              <label class="block text-sm font-medium text-foreground mb-1">Mật khẩu hiện tại <span class="text-destructive">*</span></label>
+              <input v-model="pwForm.currentPassword" type="password" autocomplete="current-password" class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Nhập mật khẩu hiện tại..." />
+            </div>
+            <div>
               <label class="block text-sm font-medium text-foreground mb-1">Mật khẩu mới <span class="text-destructive">*</span></label>
-              <input v-model="pwForm.newPassword" type="password" class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Nhập mật khẩu mới..." />
+              <input v-model="pwForm.newPassword" type="password" autocomplete="new-password" class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Tối thiểu 8 ký tự, gồm chữ và số..." />
             </div>
             <div>
               <label class="block text-sm font-medium text-foreground mb-1">Xác nhận mật khẩu <span class="text-destructive">*</span></label>
-              <input v-model="pwForm.confirmPassword" type="password" class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Nhập lại mật khẩu..." />
+              <input v-model="pwForm.confirmPassword" type="password" autocomplete="new-password" class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Nhập lại mật khẩu mới..." />
             </div>
             <div v-if="pwError" class="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
               <p class="text-destructive text-sm">{{ pwError }}</p>
@@ -631,7 +635,7 @@ const notificationContainerRef = ref(null);
 const isAvatarMenuOpen = ref(false);
 const avatarContainerRef = ref(null);
 const showChangePasswordModal = ref(false);
-const pwForm = ref({ newPassword: '', confirmPassword: '' });
+const pwForm = ref({ currentPassword: '', newPassword: '', confirmPassword: '' });
 const pwError = ref('');
 const pwSuccess = ref('');
 const pwLoading = ref(false);
@@ -979,7 +983,7 @@ const toggleAvatarMenu = () => {
 
 const openChangePassword = () => {
   isAvatarMenuOpen.value = false;
-  pwForm.value = { newPassword: '', confirmPassword: '' };
+  pwForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' };
   pwError.value = '';
   pwSuccess.value = '';
   showChangePasswordModal.value = true;
@@ -988,8 +992,18 @@ const openChangePassword = () => {
 const submitChangePassword = async () => {
   pwError.value = '';
   pwSuccess.value = '';
-  if (!pwForm.value.newPassword || pwForm.value.newPassword.length < 6) {
-    pwError.value = 'Mật khẩu mới phải có ít nhất 6 ký tự';
+  if (!pwForm.value.currentPassword) {
+    pwError.value = 'Vui lòng nhập mật khẩu hiện tại';
+    return;
+  }
+  if (!pwForm.value.newPassword || pwForm.value.newPassword.length < 8
+      || !/[A-Za-z]/.test(pwForm.value.newPassword)
+      || !/\d/.test(pwForm.value.newPassword)) {
+    pwError.value = 'Mật khẩu mới phải có ít nhất 8 ký tự, gồm chữ và số';
+    return;
+  }
+  if (pwForm.value.newPassword === pwForm.value.currentPassword) {
+    pwError.value = 'Mật khẩu mới phải khác mật khẩu hiện tại';
     return;
   }
   if (pwForm.value.newPassword !== pwForm.value.confirmPassword) {
@@ -1003,11 +1017,18 @@ const submitChangePassword = async () => {
   }
   pwLoading.value = true;
   try {
-    await authService.changePassword(pwForm.value.newPassword);
+    await authService.changePassword(
+      pwForm.value.currentPassword,
+      pwForm.value.newPassword,
+      pwForm.value.confirmPassword
+    );
     pwSuccess.value = 'Đổi mật khẩu thành công! Vui lòng đăng nhập lại.';
     setTimeout(() => { showChangePasswordModal.value = false; authService.logout(); }, 2000);
   } catch (err) {
-    pwError.value = err.response?.data?.error || 'Đổi mật khẩu thất bại';
+    pwError.value = err.response?.data?.errors?.current_password?.[0]
+      || err.response?.data?.errors?.password?.[0]
+      || err.response?.data?.message
+      || 'Đổi mật khẩu thất bại';
   } finally {
     pwLoading.value = false;
   }

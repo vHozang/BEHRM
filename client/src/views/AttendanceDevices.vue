@@ -42,9 +42,9 @@
         <div class="mt-3 rounded-lg border border-border bg-muted/40 p-2.5">
           <p class="text-xs text-muted-foreground mb-1">Device token (dùng cho bridge/thiết bị):</p>
           <div class="flex items-center gap-2">
-            <code class="text-xs break-all flex-1 text-foreground">{{ shown[d.id] ? d.device_token : maskToken(d.device_token) }}</code>
-            <button @click="shown[d.id] = !shown[d.id]" class="text-xs text-primary shrink-0">{{ shown[d.id] ? 'Ẩn' : 'Hiện' }}</button>
-            <button @click="copy(d.device_token)" class="text-xs text-primary shrink-0">Sao chép</button>
+            <code class="text-xs break-all flex-1 text-foreground">{{ tokenDisplay(d) }}</code>
+            <button v-if="tokenFor(d)" @click="shown[d.id] = !shown[d.id]" class="text-xs text-primary shrink-0">{{ shown[d.id] ? 'Ẩn' : 'Hiện' }}</button>
+            <button v-if="tokenFor(d)" @click="copy(tokenFor(d))" class="text-xs text-primary shrink-0">Sao chép</button>
             <button @click="rotate(d)" class="text-xs text-amber-600 dark:text-amber-400 shrink-0" title="Cấp token mới (token cũ hết hiệu lực)">Đổi</button>
           </div>
         </div>
@@ -108,6 +108,7 @@ const editing = ref(null);
 const formError = ref('');
 const devices = ref([]);
 const shown = reactive({});
+const issuedTokens = reactive({});
 
 const BRANDS = { zkteco: 'ZKTeco', wiseeye: 'Wise Eye', hikvision: 'Hikvision', suprema: 'Suprema', other: 'Khác' };
 const brandOptions = Object.entries(BRANDS).map(([value, label]) => ({ value, label }));
@@ -121,6 +122,12 @@ const form = reactive({ name: '', brand: 'wiseeye', protocol: 'zk_pull', locatio
 
 const brandLabel = (b) => BRANDS[b] || b;
 const maskToken = (t) => (t ? t.slice(0, 8) + '••••••••••••' + t.slice(-4) : '');
+const tokenFor = (d) => issuedTokens[d.id] || d.device_token || '';
+const tokenDisplay = (d) => {
+  const token = tokenFor(d);
+  if (token) return shown[d.id] ? token : maskToken(token);
+  return d.has_device_token ? `Đã cấu hình (••••${d.device_token_hint || ''}) — đổi token để xem lại` : 'Chưa có token';
+};
 const formatDateTime = (s) => { try { return new Date(s).toLocaleString('vi-VN'); } catch { return s; } };
 
 const apiBase = () => (typeof window !== 'undefined' ? window.location.origin : '') + '/api/v1';
@@ -133,12 +140,12 @@ const protocolHint = (p) => ({
 }[p] || '');
 
 const connectionGuide = (d) => {
-  const t = d.device_token;
+  const t = tokenFor(d);
   const ip = d.meta?.ip || '192.168.1.201';
   if (d.protocol === 'zk_pull') {
     return `1. Cắm máy vào mạng LAN, đảm bảo PC chạy bridge cùng mạng.<br>
       2. <code>cd tools/zk-bridge &amp;&amp; npm install</code><br>
-      3. Chạy:<br><code>DEVICE_IP=${ip} API_BASE=${apiBase()} DEVICE_TOKEN=${maskToken(t)} node bridge.js</code><br>
+      3. Chạy:<br><code>DEVICE_IP=${ip} API_BASE=${apiBase()} DEVICE_TOKEN=${maskToken(t) || '[đổi token để lấy giá trị mới]'} node bridge.js</code><br>
       4. Đăng ký vân tay với <b>User ID = mã nhân viên</b> (enroll_id) tương ứng trong HRM.`;
   }
   if (d.protocol === 'adms_push') {
@@ -179,8 +186,9 @@ const save = async () => {
       await attendanceDeviceService.update(editing.value.id, payload);
       toast.success('Đã cập nhật thiết bị');
     } else {
-      await attendanceDeviceService.create(payload);
-      toast.success('Đã thêm thiết bị');
+      const created = await attendanceDeviceService.create(payload);
+      if (created?.id && created?.device_token) issuedTokens[created.id] = created.device_token;
+      toast.success('Đã thêm thiết bị; hãy sao chép token đang hiển thị');
     }
     showModal.value = false;
     await load();
@@ -199,7 +207,13 @@ const remove = async (d) => {
 
 const rotate = async (d) => {
   if (!confirm('Cấp token mới? Bridge/thiết bị đang dùng token cũ sẽ ngừng hoạt động cho tới khi cập nhật token mới.')) return;
-  try { await attendanceDeviceService.rotateToken(d.id); toast.success('Đã cấp token mới'); await load(); }
+  try {
+    const rotated = await attendanceDeviceService.rotateToken(d.id);
+    if (rotated?.device_token) issuedTokens[d.id] = rotated.device_token;
+    shown[d.id] = true;
+    toast.success('Đã cấp token mới; hãy sao chép trước khi rời trang');
+    await load();
+  }
   catch (e) { toast.error(e.response?.data?.message || 'Lỗi đổi token'); }
 };
 

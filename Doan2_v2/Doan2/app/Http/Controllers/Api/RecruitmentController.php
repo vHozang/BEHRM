@@ -8,7 +8,9 @@ use App\Models\InterviewSchedule;
 use App\Models\RecruitmentCandidate;
 use App\Services\AiFeedbackService;
 use App\Services\AutoRecruitScreeningService;
+use App\Services\RecruitmentMailService;
 use App\Support\TenantContext;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -155,12 +157,6 @@ class RecruitmentController extends Controller
      */
     public function publicApplication(Request $request): JsonResponse
     {
-        // Keep the legacy JSON application contract working for existing clients.
-        // Multipart requests with a CV use the careers + AI screening flow below.
-        if (! $request->hasFile('cv')) {
-            return $this->store($request);
-        }
-
         $validator = Validator::make($request->all(), [
             'tenant_code' => ['required', 'string', 'exists:tenants,code'],
             'post_slug' => ['required', 'string'],
@@ -282,6 +278,7 @@ class RecruitmentController extends Controller
         }
 
         $candidate->refresh();
+        $confirmationEmailSent = app(RecruitmentMailService::class)->sendApplicationReceived($candidate);
 
         return response()->json([
             'status' => 201,
@@ -295,6 +292,7 @@ class RecruitmentController extends Controller
                 'ai_score' => $candidate->ai_score,
                 'matched_skills' => $candidate->ai_matched_skills_json ?? [],
                 'missing_skills' => $candidate->ai_missing_skills_json ?? [],
+                'confirmation_email_sent' => $confirmationEmailSent,
             ],
         ], 201);
     }
@@ -375,10 +373,10 @@ class RecruitmentController extends Controller
             'OFFERED' => ['HIRED', 'REJECTED'],
         ];
 
-        $newStatus = $request->input('status');
         $allowed = $validTransitions[$candidate->application_status] ?? [];
+        $newStatus = $request->input('status', $allowed[0] ?? null);
 
-        if (! in_array($newStatus, $allowed)) {
+        if (! is_string($newStatus) || ! in_array($newStatus, $allowed, true)) {
             return $this->validationError([
                 'status' => ["Không thể chuyển từ {$candidate->application_status} sang {$newStatus}"],
             ]);
@@ -479,12 +477,12 @@ class RecruitmentController extends Controller
                 $matchedSkills = json_decode($candidate->ai_matched_skills_json ?? '[]', true) ?: [];
                 $missingSkills = json_decode($candidate->ai_missing_skills_json ?? '[]', true) ?: [];
 
-                $feedbackResult = (new AiFeedbackService())->sendFeedback(
+                $feedbackResult = (new AiFeedbackService)->sendFeedback(
                     candidateId: $id,
                     aiScore: (int) $aiScore,
                     humanScore: (int) $managerScore,
                     jdText: $position
-                        ? 'Position: ' . ($position->position_name ?? 'Job Position') . '. Requirements: ' . implode(', ', $requiredSkills)
+                        ? 'Position: '.($position->position_name ?? 'Job Position').'. Requirements: '.implode(', ', $requiredSkills)
                         : '',
                     cvSkills: is_array($candidateMeta['skills'] ?? null) ? $candidateMeta['skills'] : [],
                     matchedSkills: $matchedSkills,
@@ -504,7 +502,7 @@ class RecruitmentController extends Controller
                         ->update(['meta' => json_encode($reviewMeta, JSON_UNESCAPED_UNICODE)]);
                 }
             } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::error("AI feedback failed for candidate #{$id}: " . $e->getMessage());
+                Log::error("AI feedback failed for candidate #{$id}: ".$e->getMessage());
             }
         }
 
@@ -556,14 +554,29 @@ class RecruitmentController extends Controller
             return $this->notFound();
         }
 
+        if (in_array($candidate->application_status, ['REJECTED', 'HIRED'], true)) {
+            return $this->validationError([
+                'status' => ['Không thể từ chối ứng viên đã kết thúc quy trình'],
+            ]);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'reason' => ['nullable', 'string', 'max:2000'],
+        ]);
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
+        }
+
         DB::transaction(function () use ($candidate, $request) {
             // Archive snapshot
             if (Schema::hasTable('recruitment_rejected_archive')) {
                 DB::table('recruitment_rejected_archive')->insert(TenantContext::stamp([
                     'candidate_id' => $candidate->id,
                     'snapshot' => json_encode($candidate->toArray()),
-                    'rejection_reason' => $request->input('reason'),
                     'rejected_by' => $request->attributes->get('auth_employee_id'),
+                    'meta' => json_encode([
+                        'rejection_reason' => $request->input('reason'),
+                    ], JSON_UNESCAPED_UNICODE),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]));
@@ -572,7 +585,15 @@ class RecruitmentController extends Controller
             $candidate->update(['application_status' => 'REJECTED']);
         });
 
-        return $this->ok($candidate->fresh(), 'Ứng viên đã bị từ chối');
+        $candidate->refresh();
+        $mailSent = app(RecruitmentMailService::class)->sendRejected(
+            $candidate,
+            $request->input('reason'),
+            $request->attributes->get('auth_employee_id'),
+        );
+        $candidate->setAttribute('notification_email_sent', $mailSent);
+
+        return $this->ok($candidate, 'Ứng viên đã bị từ chối');
     }
 
     /**
@@ -586,10 +607,22 @@ class RecruitmentController extends Controller
             return $this->notFound();
         }
 
-        if ($candidate->application_status !== 'OFFERED') {
+        if (! in_array($candidate->application_status, ['INTERVIEWING', 'OFFERED'], true)) {
             return $this->validationError([
-                'status' => ['Chỉ có thể tuyển ứng viên đã được offer'],
+                'status' => ['Chỉ có thể tuyển ứng viên đang phỏng vấn hoặc đã được offer'],
             ]);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'start_date' => ['nullable', 'date', 'after_or_equal:today'],
+            'arrival_time' => ['nullable', 'date_format:H:i'],
+            'work_location' => ['nullable', 'string', 'max:500'],
+            'offer_note' => ['nullable', 'string', 'max:2000'],
+            'department_id' => ['nullable', 'integer', 'exists:departments,id'],
+            'position_id' => ['nullable', 'integer', 'exists:positions,id'],
+        ]);
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
         }
 
         $employee = DB::transaction(function () use ($candidate, $request) {
@@ -599,9 +632,9 @@ class RecruitmentController extends Controller
             $employee = Employee::create([
                 'full_name' => $candidate->full_name,
                 'company_email' => $candidate->email,
-                'phone' => $candidate->phone,
+                'phone_number' => $candidate->phone_number,
                 'status' => 'ACTIVE',
-                'hire_date' => now()->toDateString(),
+                'hire_date' => $request->input('start_date', now()->addWeekday()->toDateString()),
                 'department_id' => $request->input('department_id'),
                 'position_id' => $request->input('position_id'),
                 'password_hash' => \Hash::make('password'),
@@ -610,9 +643,17 @@ class RecruitmentController extends Controller
             return $employee;
         });
 
+        $candidate->refresh();
+        $mailSent = app(RecruitmentMailService::class)->sendHired(
+            $candidate,
+            $request->only(['start_date', 'arrival_time', 'work_location', 'offer_note']),
+            $request->attributes->get('auth_employee_id'),
+        );
+
         return $this->ok([
             'candidate' => $candidate->fresh(),
             'employee' => $employee,
+            'notification_email_sent' => $mailSent,
         ], 'Ứng viên đã được tuyển dụng thành công');
     }
 
@@ -624,7 +665,7 @@ class RecruitmentController extends Controller
     {
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
 
-        $query = InterviewSchedule::with(['candidate:id,full_name'])
+        $query = InterviewSchedule::with(['candidate:id,full_name,email,recruitment_position_id', 'candidate.position:id,position_name'])
             ->orderByDesc('id');
 
         foreach (['candidate_id', 'status'] as $field) {
@@ -651,24 +692,64 @@ class RecruitmentController extends Controller
         $validator = Validator::make($request->all(), [
             'candidate_id' => 'required|exists:recruitment_candidates,id',
             'interview_date' => 'required|date',
+            'interview_time' => ['nullable', 'date_format:H:i'],
+            'interview_mode' => ['nullable', 'in:ONSITE,ONLINE,HYBRID'],
+            'interviewer_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'interviewer' => ['nullable', 'string', 'max:255'],
+            'location' => ['nullable', 'string', 'max:500'],
+            'meeting_link' => ['nullable', 'url', 'max:1000'],
+            'duration_minutes' => ['nullable', 'integer', 'min:15', 'max:480'],
+            'confirmation_deadline' => ['nullable', 'date'],
         ]);
 
         if ($validator->fails()) {
             return $this->validationError($validator->errors()->toArray());
         }
 
+        $scheduledAt = Carbon::parse($request->input('interview_date'));
         $columns = Schema::getColumnListing('interview_schedules');
         $data = collect($request->all())->only($columns)->toArray();
-        $data['status'] = $data['status'] ?? 'SCHEDULED';
+        $data['interview_date'] = $scheduledAt->toDateString();
+        $data['interview_time'] = $request->input('interview_time', $scheduledAt->format('H:i'));
+        $data['interview_mode'] = $request->input(
+            'interview_mode',
+            $request->filled('meeting_link') || filter_var($request->input('location'), FILTER_VALIDATE_URL)
+                ? 'ONLINE'
+                : 'ONSITE',
+        );
+        $data['status'] = match (strtolower((string) ($data['status'] ?? 'scheduled'))) {
+            'pending', 'scheduled' => 'SCHEDULED',
+            'passed', 'completed' => 'COMPLETED',
+            'failed', 'cancelled' => 'CANCELLED',
+            default => strtoupper((string) $data['status']),
+        };
+        $data['meta'] = array_filter([
+            'interviewer' => $request->input('interviewer'),
+            'location' => $request->input('location'),
+            'meeting_link' => $request->input('meeting_link')
+                ?: (filter_var($request->input('location'), FILTER_VALIDATE_URL) ? $request->input('location') : null),
+            'duration_minutes' => $request->integer('duration_minutes') ?: null,
+            'confirmation_deadline' => $request->input('confirmation_deadline'),
+        ], static fn ($value) => $value !== null && $value !== '');
         $data['created_at'] = now();
         $data['updated_at'] = now();
 
         $interview = InterviewSchedule::create($data);
+        $candidate = RecruitmentCandidate::findOrFail($request->integer('candidate_id'));
+        if (in_array($candidate->application_status, ['PENDING', 'SCREENING'], true)) {
+            $candidate->update(['application_status' => 'INTERVIEWING']);
+        }
+        $mailSent = app(RecruitmentMailService::class)->sendInterviewInvitation(
+            $candidate,
+            $interview,
+            $request->attributes->get('auth_employee_id'),
+        );
+        $interview->setAttribute('invitation_email_sent', $mailSent);
 
         return response()->json([
             'status' => 201,
             'message' => 'Lịch phỏng vấn đã được tạo',
-            'data' => $interview->fresh()->load('candidate:id,full_name'),
+            'data' => $interview->load('candidate:id,full_name,email,recruitment_position_id'),
         ], 201);
     }
 
@@ -710,8 +791,46 @@ class RecruitmentController extends Controller
             return $this->notFound();
         }
 
+        $validator = Validator::make($request->all(), [
+            'interview_date' => ['sometimes', 'date'],
+            'interview_time' => ['nullable', 'date_format:H:i'],
+            'interview_mode' => ['nullable', 'in:ONSITE,ONLINE,HYBRID'],
+            'interviewer' => ['nullable', 'string', 'max:255'],
+            'location' => ['nullable', 'string', 'max:500'],
+            'meeting_link' => ['nullable', 'url', 'max:1000'],
+            'duration_minutes' => ['nullable', 'integer', 'min:15', 'max:480'],
+            'confirmation_deadline' => ['nullable', 'date'],
+            'result_note' => ['nullable', 'string', 'max:5000'],
+        ]);
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
+        }
+
         $columns = Schema::getColumnListing('interview_schedules');
         $data = collect($request->all())->only($columns)->toArray();
+        if ($request->filled('interview_date')) {
+            $scheduledAt = Carbon::parse($request->input('interview_date'));
+            $data['interview_date'] = $scheduledAt->toDateString();
+            $data['interview_time'] = $request->input('interview_time', $scheduledAt->format('H:i'));
+        }
+        if ($request->filled('status')) {
+            $data['status'] = match (strtolower((string) $request->input('status'))) {
+                'pending', 'scheduled' => 'SCHEDULED',
+                'passed', 'completed' => 'COMPLETED',
+                'failed', 'cancelled' => 'CANCELLED',
+                default => strtoupper((string) $request->input('status')),
+            };
+        }
+        if ($request->filled('result_note')) {
+            $data['result'] = $request->input('result_note');
+        }
+        $meta = is_array($interview->meta) ? $interview->meta : [];
+        foreach (['interviewer', 'location', 'meeting_link', 'duration_minutes', 'confirmation_deadline'] as $field) {
+            if ($request->exists($field)) {
+                $meta[$field] = $request->input($field);
+            }
+        }
+        $data['meta'] = array_filter($meta, static fn ($value) => $value !== null && $value !== '');
 
         $interview->update($data);
 
@@ -736,7 +855,7 @@ class RecruitmentController extends Controller
     /** GET /recruitment-ai/feedback-stats — Thống kê feedback AI. */
     public function aiFeedbackStats(): JsonResponse
     {
-        $service = new AiFeedbackService();
+        $service = new AiFeedbackService;
         $stats = $service->getStats();
         $adjustments = $service->getAdjustments();
 

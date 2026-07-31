@@ -7,6 +7,11 @@ export const attendanceDeviceService = {
     return Array.isArray(res.data) ? res.data : (res.data?.items || res.data || []);
   },
 
+  getById: async (id) => {
+    const res = await axiosClient.get(`/attendance-devices/${id}`);
+    return res.data;
+  },
+
   create: async (payload) => {
     const res = await axiosClient.post('/attendance-devices', payload);
     return res.data;

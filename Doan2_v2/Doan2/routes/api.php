@@ -229,6 +229,7 @@ Route::prefix('v1')->group(function (): void {
         // Quản lý máy chấm công (đa-tenant device registry).
         Route::get('/attendance-devices', [AttendanceDeviceController::class, 'index']);
         Route::post('/attendance-devices', [AttendanceDeviceController::class, 'store']);
+        Route::get('/attendance-devices/{id}', [AttendanceDeviceController::class, 'show'])->whereNumber('id');
         Route::patch('/attendance-devices/{id}', [AttendanceDeviceController::class, 'update'])->whereNumber('id');
         Route::delete('/attendance-devices/{id}', [AttendanceDeviceController::class, 'destroy'])->whereNumber('id');
         Route::post('/attendance-devices/{id}/rotate-token', [AttendanceDeviceController::class, 'rotateToken'])->whereNumber('id');
@@ -361,6 +362,7 @@ Route::prefix('v1')->group(function (): void {
         // ─── Settings (tenant business-rule config) ──────
         Route::get('/settings/catalog', [SettingsController::class, 'catalog']);
         Route::post('/settings/save', [SettingsController::class, 'save']);
+        Route::get('/settings/integrations/autorecruit/health', [SettingsController::class, 'autoRecruitHealth']);
 
         // ─── Holidays (statutory VN holiday seeding) ─────
         // MUST precede the generic /{resource} catch-all below.
