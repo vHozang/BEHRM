@@ -128,7 +128,7 @@
             </div>
             <div>
               <label class="text-xs text-muted-foreground">Số điện thoại</label>
-              <p class="font-semibold">{{ selectedCandidate.phone || '-' }}</p>
+              <p class="font-semibold">{{ selectedCandidate.phone || selectedCandidate.phone_number || '-' }}</p>
             </div>
             <div>
               <label class="text-xs text-muted-foreground">Vị trí ứng tuyển</label>
@@ -153,7 +153,7 @@
             <h3 class="font-bold text-foreground border-b pb-2">Hồ sơ CV (PDF)</h3>
             <div class="flex items-center justify-between gap-4">
               <span v-if="selectedCandidate.cv_path" class="text-sm font-medium text-green-600 truncate">
-                {{ selectedCandidate.cv_path.split('/').pop() }}
+                {{ selectedCandidate.cv_original_filename || selectedCandidate.cv_path.split('/').pop() }}
               </span>
               <span v-else class="text-sm text-amber-500 font-medium">Chưa có tệp CV nào được tải lên.</span>
               
@@ -600,7 +600,10 @@ const handleCvUpload = async (event) => {
   try {
     const res = await recruitmentService.uploadCv(selectedCandidate.value.id, file);
     toast.success('Tải lên CV thành công!');
-    selectedCandidate.value.cv_path = res?.data?.cv_path || res?.cv_path || 'cv_uploaded.pdf';
+    const cv = res?.data || res || {};
+    selectedCandidate.value.cv = cv;
+    selectedCandidate.value.cv_path = cv.storage_path || cv.cv_path || 'cv_uploaded.pdf';
+    selectedCandidate.value.cv_original_filename = cv.original_filename || file.name;
     
     // Auto score after upload
     await runAiScoring();

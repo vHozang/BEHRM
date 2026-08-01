@@ -6,6 +6,7 @@ use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class RecruitmentCandidate extends Model
 {
@@ -30,6 +31,11 @@ class RecruitmentCandidate extends Model
     public function interviews()
     {
         return $this->hasMany(InterviewSchedule::class, 'candidate_id');
+    }
+
+    public function cv(): HasOne
+    {
+        return $this->hasOne(RecruitmentCandidateCv::class, 'candidate_id');
     }
 
     public function isInProcess(): bool

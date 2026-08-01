@@ -8,6 +8,7 @@ use App\Models\InterviewSchedule;
 use App\Models\RecruitmentCandidate;
 use App\Services\AiFeedbackService;
 use App\Services\AutoRecruitScreeningService;
+use App\Services\GoogleMeetService;
 use App\Services\RecruitmentMailService;
 use App\Support\TenantContext;
 use Carbon\Carbon;
@@ -52,7 +53,10 @@ class RecruitmentController extends Controller
     {
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
 
-        $query = RecruitmentCandidate::with(['position:id,position_name'])
+        $query = RecruitmentCandidate::with([
+            'position:id,position_name',
+            'cv:id,candidate_id,original_filename,storage_path,mime_type,file_size',
+        ])
             ->orderByDesc('id');
 
         foreach (['recruitment_position_id', 'application_status'] as $field) {
@@ -101,9 +105,15 @@ class RecruitmentController extends Controller
             }
         }
 
-        $validator = Validator::make($request->all(), [
+        $input = $request->all();
+        if (array_key_exists('phone', $input) && ! array_key_exists('phone_number', $input)) {
+            $input['phone_number'] = $input['phone'];
+        }
+
+        $validator = Validator::make($input, [
             'full_name' => 'required|string|max:255',
             'email' => 'required|email',
+            'phone_number' => 'nullable|string|max:50',
             'recruitment_position_id' => 'nullable|exists:recruitment_positions,id',
         ], [
             'full_name.required' => 'Họ tên ứng viên là bắt buộc',
@@ -125,7 +135,7 @@ class RecruitmentController extends Controller
         }
 
         $columns = Schema::getColumnListing('recruitment_candidates');
-        $data = collect($request->all())->only($columns)->toArray();
+        $data = collect($input)->only($columns)->toArray();
         $data['application_status'] = $data['application_status'] ?? 'PENDING';
         $data['tenant_id'] = $tenantId;
         $data['created_at'] = now();
@@ -301,6 +311,7 @@ class RecruitmentController extends Controller
     {
         $candidate = RecruitmentCandidate::with([
             'position:id,position_name',
+            'cv:id,candidate_id,original_filename,storage_path,mime_type,file_size',
             'interviews',
         ])->find($id);
 
@@ -324,8 +335,13 @@ class RecruitmentController extends Controller
             return $this->notFound();
         }
 
+        $input = $request->except(['id', 'created_at', 'updated_at']);
+        if (array_key_exists('phone', $input) && ! array_key_exists('phone_number', $input)) {
+            $input['phone_number'] = $input['phone'];
+        }
+
         $columns = Schema::getColumnListing('recruitment_candidates');
-        $data = collect($request->except(['id', 'created_at', 'updated_at']))->only($columns)->toArray();
+        $data = collect($input)->only($columns)->toArray();
 
         $candidate->update($data);
 
@@ -692,12 +708,13 @@ class RecruitmentController extends Controller
         $validator = Validator::make($request->all(), [
             'candidate_id' => 'required|exists:recruitment_candidates,id',
             'interview_date' => 'required|date',
-            'interview_time' => ['nullable', 'date_format:H:i'],
+            'interview_time' => ['nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
             'interview_mode' => ['nullable', 'in:ONSITE,ONLINE,HYBRID'],
             'interviewer_id' => ['nullable', 'integer', 'exists:employees,id'],
             'interviewer' => ['nullable', 'string', 'max:255'],
             'location' => ['nullable', 'string', 'max:500'],
             'meeting_link' => ['nullable', 'url', 'max:1000'],
+            'auto_create_meeting' => ['nullable', 'boolean'],
             'duration_minutes' => ['nullable', 'integer', 'min:15', 'max:480'],
             'confirmation_deadline' => ['nullable', 'date'],
         ]);
@@ -706,11 +723,17 @@ class RecruitmentController extends Controller
             return $this->validationError($validator->errors()->toArray());
         }
 
-        $scheduledAt = Carbon::parse($request->input('interview_date'));
+        $timezone = (string) config('services.google_calendar.timezone', 'Asia/Ho_Chi_Minh');
+        $parsedDate = Carbon::parse($request->input('interview_date'), $timezone)->setTimezone($timezone);
+        $interviewTime = $request->input('interview_time', $parsedDate->format('H:i'));
+        $scheduledAt = Carbon::parse(
+            $parsedDate->toDateString().' '.substr((string) $interviewTime, 0, 5),
+            $timezone,
+        );
         $columns = Schema::getColumnListing('interview_schedules');
         $data = collect($request->all())->only($columns)->toArray();
         $data['interview_date'] = $scheduledAt->toDateString();
-        $data['interview_time'] = $request->input('interview_time', $scheduledAt->format('H:i'));
+        $data['interview_time'] = $scheduledAt->format('H:i');
         $data['interview_mode'] = $request->input(
             'interview_mode',
             $request->filled('meeting_link') || filter_var($request->input('location'), FILTER_VALIDATE_URL)
@@ -723,19 +746,41 @@ class RecruitmentController extends Controller
             'failed', 'cancelled' => 'CANCELLED',
             default => strtoupper((string) $data['status']),
         };
+        $candidate = RecruitmentCandidate::with('position:id,position_name')
+            ->findOrFail($request->integer('candidate_id'));
+        $durationMinutes = $request->integer('duration_minutes')
+            ?: (int) config('recruitment.mail.interview_duration_minutes', 60);
+
+        try {
+            $meetingMeta = $this->resolveMeetingMeta(
+                $request,
+                $candidate,
+                $scheduledAt,
+                (string) $data['interview_mode'],
+                $durationMinutes,
+            );
+        } catch (\Throwable $exception) {
+            Log::warning('Could not prepare interview meeting link', [
+                'candidate_id' => $candidate->id,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return $this->validationError([
+                'meeting_link' => [$exception->getMessage()],
+            ]);
+        }
+
         $data['meta'] = array_filter([
             'interviewer' => $request->input('interviewer'),
             'location' => $request->input('location'),
-            'meeting_link' => $request->input('meeting_link')
-                ?: (filter_var($request->input('location'), FILTER_VALIDATE_URL) ? $request->input('location') : null),
-            'duration_minutes' => $request->integer('duration_minutes') ?: null,
+            'duration_minutes' => $durationMinutes,
             'confirmation_deadline' => $request->input('confirmation_deadline'),
+            ...$meetingMeta,
         ], static fn ($value) => $value !== null && $value !== '');
         $data['created_at'] = now();
         $data['updated_at'] = now();
 
         $interview = InterviewSchedule::create($data);
-        $candidate = RecruitmentCandidate::findOrFail($request->integer('candidate_id'));
         if (in_array($candidate->application_status, ['PENDING', 'SCREENING'], true)) {
             $candidate->update(['application_status' => 'INTERVIEWING']);
         }
@@ -793,11 +838,12 @@ class RecruitmentController extends Controller
 
         $validator = Validator::make($request->all(), [
             'interview_date' => ['sometimes', 'date'],
-            'interview_time' => ['nullable', 'date_format:H:i'],
+            'interview_time' => ['nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
             'interview_mode' => ['nullable', 'in:ONSITE,ONLINE,HYBRID'],
             'interviewer' => ['nullable', 'string', 'max:255'],
             'location' => ['nullable', 'string', 'max:500'],
             'meeting_link' => ['nullable', 'url', 'max:1000'],
+            'auto_create_meeting' => ['nullable', 'boolean'],
             'duration_minutes' => ['nullable', 'integer', 'min:15', 'max:480'],
             'confirmation_deadline' => ['nullable', 'date'],
             'result_note' => ['nullable', 'string', 'max:5000'],
@@ -806,12 +852,25 @@ class RecruitmentController extends Controller
             return $this->validationError($validator->errors()->toArray());
         }
 
+        $timezone = (string) config('services.google_calendar.timezone', 'Asia/Ho_Chi_Minh');
+        $dateValue = $request->input(
+            'interview_date',
+            Carbon::parse($interview->getRawOriginal('interview_date'), $timezone)->toDateString(),
+        );
+        $parsedDate = Carbon::parse($dateValue, $timezone)->setTimezone($timezone);
+        $timeValue = $request->input('interview_time', $interview->interview_time ?: '09:00');
+        $scheduledAt = Carbon::parse(
+            $parsedDate->toDateString().' '.substr((string) $timeValue, 0, 5),
+            $timezone,
+        );
+
         $columns = Schema::getColumnListing('interview_schedules');
         $data = collect($request->all())->only($columns)->toArray();
         if ($request->filled('interview_date')) {
-            $scheduledAt = Carbon::parse($request->input('interview_date'));
             $data['interview_date'] = $scheduledAt->toDateString();
-            $data['interview_time'] = $request->input('interview_time', $scheduledAt->format('H:i'));
+        }
+        if ($request->exists('interview_time') || $request->filled('interview_date')) {
+            $data['interview_time'] = $scheduledAt->format('H:i');
         }
         if ($request->filled('status')) {
             $data['status'] = match (strtolower((string) $request->input('status'))) {
@@ -825,16 +884,97 @@ class RecruitmentController extends Controller
             $data['result'] = $request->input('result_note');
         }
         $meta = is_array($interview->meta) ? $interview->meta : [];
-        foreach (['interviewer', 'location', 'meeting_link', 'duration_minutes', 'confirmation_deadline'] as $field) {
+        foreach (['interviewer', 'location', 'duration_minutes', 'confirmation_deadline'] as $field) {
             if ($request->exists($field)) {
                 $meta[$field] = $request->input($field);
             }
+        }
+        $candidate = RecruitmentCandidate::with('position:id,position_name')->findOrFail($interview->candidate_id);
+        $mode = (string) ($data['interview_mode'] ?? $interview->interview_mode ?? 'ONSITE');
+        $durationMinutes = (int) ($request->input('duration_minutes')
+            ?? $meta['duration_minutes']
+            ?? config('recruitment.mail.interview_duration_minutes', 60));
+
+        try {
+            $meta = array_merge($meta, $this->resolveMeetingMeta(
+                $request,
+                $candidate,
+                $scheduledAt,
+                $mode,
+                $durationMinutes,
+                $meta,
+            ));
+        } catch (\Throwable $exception) {
+            Log::warning('Could not update interview meeting link', [
+                'interview_id' => $interview->id,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return $this->validationError([
+                'meeting_link' => [$exception->getMessage()],
+            ]);
         }
         $data['meta'] = array_filter($meta, static fn ($value) => $value !== null && $value !== '');
 
         $interview->update($data);
 
         return $this->ok($interview->fresh()->load('candidate:id,full_name'), 'Lịch phỏng vấn đã được cập nhật');
+    }
+
+    /**
+     * @param  array<string, mixed>  $existingMeta
+     * @return array<string, mixed>
+     */
+    private function resolveMeetingMeta(
+        Request $request,
+        RecruitmentCandidate $candidate,
+        Carbon $scheduledAt,
+        string $interviewMode,
+        int $durationMinutes,
+        array $existingMeta = [],
+    ): array {
+        $meetService = app(GoogleMeetService::class);
+        $meetingLink = $request->exists('meeting_link')
+            ? trim((string) $request->input('meeting_link'))
+            : trim((string) ($existingMeta['meeting_link'] ?? ''));
+
+        if ($meetingLink === '' && filter_var($request->input('location'), FILTER_VALIDATE_URL)) {
+            $meetingLink = trim((string) $request->input('location'));
+        }
+
+        $mode = strtoupper($interviewMode);
+        $needsOnlineRoom = in_array($mode, ['ONLINE', 'HYBRID'], true);
+        if ($meetingLink === '' && $needsOnlineRoom && $request->boolean('auto_create_meeting')) {
+            $positionName = $candidate->position?->position_name ?: 'Vị trí tuyển dụng';
+            $created = $meetService->createMeeting(
+                $scheduledAt,
+                $durationMinutes,
+                "Phỏng vấn {$candidate->full_name} - {$positionName}",
+                "Lịch phỏng vấn ứng viên {$candidate->full_name} cho vị trí {$positionName}.",
+                $candidate->email,
+            );
+
+            return [
+                'meeting_link' => $created['meeting_link'],
+                'meeting_provider' => 'GOOGLE_MEET',
+                'google_calendar_event_id' => $created['event_id'],
+                'google_calendar_event_url' => $created['event_url'],
+            ];
+        }
+
+        if ($meetingLink !== '' && ! $meetService->isUsableMeetingLink($meetingLink)) {
+            throw new \RuntimeException(
+                'Link Google Meet phải là link phòng cụ thể, ví dụ https://meet.google.com/abc-defg-hij; không dùng trang chủ Google Meet.'
+            );
+        }
+
+        if ($needsOnlineRoom && $meetingLink === '') {
+            throw new \RuntimeException(
+                'Phỏng vấn trực tuyến cần link phòng họp. Hãy nhập link hợp lệ hoặc bật tạo Google Meet tự động.'
+            );
+        }
+
+        return ['meeting_link' => $meetingLink ?: null];
     }
 
     public function destroyInterview(int $id): JsonResponse

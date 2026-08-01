@@ -16,7 +16,8 @@ class InterviewSchedule extends Model
     protected function casts(): array
     {
         return [
-            'interview_date' => 'date',
+            // A date-only field must not be serialized as a UTC timestamp.
+            'interview_date' => 'date:Y-m-d',
             'meta' => 'array',
         ];
     }

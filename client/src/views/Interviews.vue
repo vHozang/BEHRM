@@ -34,13 +34,15 @@
         </template>
 
         <template #cell-location="{ item }">
-          <span v-if="isLink(item.location)">
-            <a :href="item.location" target="_blank" class="text-blue-500 hover:underline flex items-center gap-1 text-xs">
+          <div class="flex flex-col gap-1">
+            <span v-if="item.location && !isLink(item.location)" class="text-xs text-muted-foreground">{{ item.location }}</span>
+            <a v-if="meetingUrl(item)" :href="meetingUrl(item)" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline flex items-center gap-1 text-xs">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-              Online Meeting
+              Mở phòng họp trực tuyến
             </a>
-          </span>
-          <span v-else class="text-xs text-muted-foreground">{{ item.location || '-' }}</span>
+            <span v-else-if="['ONLINE', 'HYBRID'].includes(item.interview_mode)" class="text-xs text-amber-500">Chưa có link phòng hợp lệ</span>
+            <span v-else-if="!item.location" class="text-xs text-muted-foreground">-</span>
+          </div>
         </template>
 
         <template #cell-result="{ item }">
@@ -124,8 +126,16 @@
           v-model="form.meeting_link"
           type="url"
           label="Link Google Meet / Zoom"
-          placeholder="https://meet.google.com/..."
+          placeholder="https://meet.google.com/abc-defg-hij"
+          :disabled="form.auto_create_meeting"
         />
+        <label v-if="form.interview_mode !== 'ONSITE'" class="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3 text-sm">
+          <input v-model="form.auto_create_meeting" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-input" @change="handleAutoMeetingChange" />
+          <span>
+            <strong class="block text-foreground">Tự động tạo phòng Google Meet</strong>
+            <span class="text-xs text-muted-foreground">Tạo sự kiện Google Calendar và chèn link phòng thật vào email mời.</span>
+          </span>
+        </label>
         <BaseInput v-model="form.confirmation_deadline" type="date" label="Hạn ứng viên xác nhận tham dự" />
 
         <div>
@@ -192,7 +202,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import BaseButton from '../components/BaseButton.vue';
 import BaseCard from '../components/BaseCard.vue';
 import BaseTable from '../components/BaseTable.vue';
@@ -201,6 +211,13 @@ import BaseInput from '../components/BaseInput.vue';
 import BaseBadge from '../components/BaseBadge.vue';
 import { recruitmentService } from '../services/recruitmentService';
 import { useToast } from '../composables/useToast';
+import {
+  formatInterviewDateTime,
+  interviewDateOnly,
+  isLink,
+  isUsableMeetingLink,
+  meetingUrl
+} from '../utils/interview';
 
 const toast = useToast();
 const interviews = ref([]);
@@ -224,6 +241,7 @@ const form = ref({
   interview_mode: 'ONSITE',
   location: '',
   meeting_link: '',
+  auto_create_meeting: false,
   duration_minutes: 60,
   confirmation_deadline: '',
   status: 'pending',
@@ -250,24 +268,7 @@ const loadData = async () => {
   }
 };
 
-const formatDateTime = (item) => {
-  if (!item?.interview_date) return '-';
-  const datePart = String(item.interview_date).slice(0, 10);
-  const timePart = item.interview_time ? String(item.interview_time).slice(0, 8) : '00:00:00';
-  const date = new Date(`${datePart}T${timePart}`);
-  return date.toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
-
-const isLink = (str) => {
-  if (!str) return false;
-  return str.startsWith('http://') || str.startsWith('https://');
-};
+const formatDateTime = formatInterviewDateTime;
 
 const openCreateModal = () => {
   form.value = {
@@ -277,6 +278,7 @@ const openCreateModal = () => {
     interview_mode: 'ONSITE',
     location: '',
     meeting_link: '',
+    auto_create_meeting: false,
     duration_minutes: 60,
     confirmation_deadline: '',
     status: 'pending',
@@ -286,12 +288,15 @@ const openCreateModal = () => {
 };
 
 const editItem = (item) => {
+  const existingMeetingLink = meetingUrl(item);
   form.value = { 
     ...item,
     interview_date: item.interview_date
-      ? `${String(item.interview_date).slice(0, 10)}T${String(item.interview_time || '09:00').slice(0, 5)}`
+      ? `${interviewDateOnly(item.interview_date)}T${String(item.interview_time || '09:00').slice(0, 5)}`
       : '',
     interview_mode: item.interview_mode || 'ONSITE',
+    meeting_link: existingMeetingLink,
+    auto_create_meeting: !existingMeetingLink && ['ONLINE', 'HYBRID'].includes(item.interview_mode),
     duration_minutes: item.duration_minutes || 60,
     confirmation_deadline: item.confirmation_deadline || ''
   };
@@ -301,6 +306,12 @@ const editItem = (item) => {
 const submitForm = async () => {
   if (!form.value.interview_date || !form.value.interviewer || (!form.value.id && !form.value.candidate_id)) {
     toast.error('Vui lòng điền đầy đủ các thông tin bắt buộc');
+    return;
+  }
+  if (form.value.interview_mode !== 'ONSITE'
+    && !form.value.auto_create_meeting
+    && !isUsableMeetingLink(form.value.meeting_link)) {
+    toast.error('Hãy nhập link phòng họp cụ thể hoặc bật tạo Google Meet tự động');
     return;
   }
   try {
@@ -315,9 +326,24 @@ const submitForm = async () => {
     await loadData();
   } catch (err) {
     console.error('Error saving interview:', err);
-    toast.error('Có lỗi xảy ra khi lưu lịch phỏng vấn');
+    const meetingError = err.response?.data?.data?.errors?.meeting_link?.[0];
+    toast.error(meetingError || 'Có lỗi xảy ra khi lưu lịch phỏng vấn');
   }
 };
+
+const handleAutoMeetingChange = () => {
+  if (form.value.auto_create_meeting) form.value.meeting_link = '';
+};
+
+watch(() => form.value.interview_mode, (mode) => {
+  if (mode === 'ONSITE') {
+    form.value.auto_create_meeting = false;
+    return;
+  }
+  if (!form.value.id && !form.value.meeting_link) {
+    form.value.auto_create_meeting = true;
+  }
+});
 
 const openManagerReview = (item) => {
   reviewForm.value = {

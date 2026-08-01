@@ -21,18 +21,25 @@ const backendToStage = {
 const normalizeCandidate = (candidate) => {
   if (!candidate || typeof candidate !== 'object') return candidate;
   const status = candidate.status || backendToStage[candidate.application_status] || 'applied';
+  const cv = candidate.cv && typeof candidate.cv === 'object' ? candidate.cv : null;
   return {
     ...candidate,
     status,
     application_status: candidate.application_status || stageToBackend[status] || status,
+    phone: candidate.phone || candidate.phone_number || '',
+    phone_number: candidate.phone_number || candidate.phone || '',
     recruitment_position_title:
       candidate.recruitment_position_title ||
+      candidate.position?.position_name ||
       candidate.position?.position_title ||
       candidate.position?.title ||
+      candidate.job_title_name ||
       candidate.position_title ||
       candidate.position_name ||
       '',
-    cv_path: candidate.cv_path || candidate.cv?.storage_path || candidate.storage_path || ''
+    cv,
+    cv_path: candidate.cv_path || cv?.storage_path || candidate.storage_path || '',
+    cv_original_filename: candidate.cv_original_filename || cv?.original_filename || ''
   };
 };
 
@@ -41,7 +48,11 @@ const candidatePayload = (data) => {
   if (payload.status && !payload.application_status) {
     payload.application_status = stageToBackend[payload.status] || payload.status;
   }
+  if (payload.phone && !payload.phone_number) {
+    payload.phone_number = payload.phone;
+  }
   delete payload.status;
+  delete payload.phone;
   return payload;
 };
 

@@ -152,6 +152,29 @@ docker compose exec -T php php artisan optimize:clear
 docker compose exec -T php php artisan config:cache
 ```
 
+### Tự động tạo link Google Meet
+
+Lịch phỏng vấn trực tuyến chỉ chấp nhận link phòng cụ thể, ví dụ
+`https://meet.google.com/abc-defg-hij`; trang chủ `https://meet.google.com/`
+không được coi là phòng họp. HR có thể nhập link thủ công hoặc bật tùy chọn tạo
+Google Meet tự động trên màn hình lịch phỏng vấn.
+
+Để tạo tự động, bật Google Calendar API trong Google Cloud, tạo OAuth client,
+ủy quyền scope `https://www.googleapis.com/auth/calendar.events` cho tài khoản
+quản lý lịch tuyển dụng và lấy refresh token. Sau đó thêm vào `.env` trên VPS:
+
+```dotenv
+GOOGLE_CALENDAR_CLIENT_ID=<OAUTH_CLIENT_ID>
+GOOGLE_CALENDAR_CLIENT_SECRET=<OAUTH_CLIENT_SECRET>
+GOOGLE_CALENDAR_REFRESH_TOKEN=<OAUTH_REFRESH_TOKEN>
+GOOGLE_CALENDAR_ID=primary
+GOOGLE_CALENDAR_TIMEZONE=Asia/Ho_Chi_Minh
+```
+
+Không commit hoặc gửi các giá trị OAuth lên GitHub. Sau khi cập nhật, chạy lại
+`optimize:clear` và `config:cache` như phần cấu hình email. Nếu chưa có OAuth,
+HR vẫn có thể tạo phòng trên Google Meet/Calendar rồi dán link phòng cụ thể vào form.
+
 ## 2. Cấu hình GitHub Actions
 
 Trong GitHub repository, vào **Settings → Environments → New environment**, tạo environment tên `production`. Thêm environment secret:

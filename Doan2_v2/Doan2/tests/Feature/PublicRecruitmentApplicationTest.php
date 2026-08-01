@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -69,12 +70,18 @@ class PublicRecruitmentApplicationTest extends TestCase
             'id' => $candidateId,
             'tenant_id' => $tenantId,
             'email' => 'candidate@example.com',
+            'phone_number' => '0900000000',
             'ai_scoring_status' => 'DONE',
         ]);
         $this->assertDatabaseHas('recruitment_candidate_cvs', [
             'candidate_id' => $candidateId,
             'original_filename' => 'candidate.pdf',
         ]);
+        $this->withToken($this->adminToken())->getJson("/api/v1/recruitment-candidates/{$candidateId}")
+            ->assertOk()
+            ->assertJsonPath('data.phone_number', '0900000000')
+            ->assertJsonPath('data.cv.original_filename', 'candidate.pdf')
+            ->assertJsonPath('data.cv.mime_type', 'application/pdf');
         Http::assertSent(fn ($request) => $request->url() === 'http://resume-backend.test/screen');
         Mail::assertSent(RecruitmentNotificationMail::class, function (RecruitmentNotificationMail $mail): bool {
             return $mail->notificationType === RecruitmentNotificationMail::APPLICATION_RECEIVED
@@ -188,5 +195,26 @@ class PublicRecruitmentApplicationTest extends TestCase
         DB::table('recruitment_posts')->insert($post);
 
         return [$tenantId, $post];
+    }
+
+    private function adminToken(): string
+    {
+        DB::table('employees')->insert([
+            'employee_code' => 'PUBLICAPPADMIN',
+            'full_name' => 'Public Application Admin',
+            'company_email' => 'public.application.admin@example.test',
+            'password_hash' => Hash::make('password'),
+            'status' => 'ACTIVE',
+            'is_super_admin' => true,
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $this->postJson('/api/v1/auth/login', [
+            'company_email' => 'public.application.admin@example.test',
+            'password' => 'password',
+        ])->assertOk()->json('data.access_token');
     }
 }

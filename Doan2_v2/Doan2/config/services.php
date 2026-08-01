@@ -38,6 +38,14 @@ return [
         'timeout' => (int) env('AUTORECRUIT_TIMEOUT', 120),
     ],
 
+    'google_calendar' => [
+        'client_id' => env('GOOGLE_CALENDAR_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CALENDAR_CLIENT_SECRET'),
+        'refresh_token' => env('GOOGLE_CALENDAR_REFRESH_TOKEN'),
+        'calendar_id' => env('GOOGLE_CALENDAR_ID', 'primary'),
+        'timezone' => env('GOOGLE_CALENDAR_TIMEZONE', 'Asia/Ho_Chi_Minh'),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

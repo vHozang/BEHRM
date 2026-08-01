@@ -33,6 +33,7 @@ jobs:
         run: |
           npm run test:csv
           npm run test:lookup-cache
+          npm run test:recruitment
           npm run build
 
   backend:

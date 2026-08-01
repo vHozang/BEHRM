@@ -6,6 +6,7 @@ use App\Support\AccessControl;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -51,6 +52,12 @@ class RoleJourneyTest extends TestCase
 
         $this->withToken($hr['token'])->getJson('/api/v1/assets')->assertOk();
         $this->withToken($hr['token'])->getJson('/api/v1/recruitment-candidates')->assertOk();
+        $this->withToken($hr['token'])->getJson('/api/v1/recruitment-posts')->assertOk();
+        Http::fake([
+            '*/feedback/stats' => Http::response(['total_feedback' => 0]),
+            '*/feedback/adjustments' => Http::response(['adjustments' => []]),
+        ]);
+        $this->withToken($hr['token'])->getJson('/api/v1/recruitment-ai/feedback-stats')->assertOk();
         $this->withToken($hr['token'])->getJson('/api/v1/salary-periods')->assertForbidden();
 
         $this->withToken($manager['token'])->getJson('/api/v1/attendances')->assertOk();

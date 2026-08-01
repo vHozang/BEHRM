@@ -75,7 +75,8 @@ class AccessControl
         'insurance-types' => 'payroll',
 
         'recruitment-candidates' => 'recruitment',
-        'recruitment-positions' => 'recruitment', 'interviews' => 'recruitment',
+        'recruitment-positions' => 'recruitment', 'recruitment-posts' => 'recruitment',
+        'recruitment-ai' => 'recruitment', 'interviews' => 'recruitment',
 
         'news' => 'communications', 'news-categories' => 'communications',
         'news-reads' => 'communications', 'policies' => 'communications',

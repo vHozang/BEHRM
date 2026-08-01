@@ -6,6 +6,7 @@ use App\Mail\RecruitmentNotificationMail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -65,11 +66,12 @@ class RecruitmentEmailNotificationTest extends TestCase
             'interview_date' => '2026-08-10T09:30',
             'interviewer' => 'Nguyễn Văn A - Tech Lead',
             'interview_mode' => 'ONLINE',
-            'meeting_link' => 'https://meet.google.com/test-room',
+            'meeting_link' => 'https://meet.google.com/xyz-abcd-efg',
             'duration_minutes' => 60,
             'confirmation_deadline' => '2026-08-08',
         ])->assertCreated()
             ->assertJsonPath('data.invitation_email_sent', true)
+            ->assertJsonPath('data.interview_date', '2026-08-10')
             ->assertJsonPath('data.interview_time', '09:30');
 
         $this->assertDatabaseHas('recruitment_candidates', [
@@ -80,9 +82,98 @@ class RecruitmentEmailNotificationTest extends TestCase
             return $mail->notificationType === RecruitmentNotificationMail::INTERVIEW_INVITATION
                 && $mail->hasTo('interview@example.test')
                 && $mail->mailData['interview_time'] === '09:30'
-                && $mail->mailData['meeting_link'] === 'https://meet.google.com/test-room'
+                && $mail->mailData['meeting_link'] === 'https://meet.google.com/xyz-abcd-efg'
                 && str_contains($mail->render(), 'Nguyễn Văn A - Tech Lead');
         });
+    }
+
+    public function test_online_interview_can_create_a_real_google_meet_room(): void
+    {
+        $candidateId = $this->candidate('SCREENING', 'auto-meet@example.test');
+        config([
+            'services.google_calendar.client_id' => 'calendar-client-id',
+            'services.google_calendar.client_secret' => 'calendar-client-secret',
+            'services.google_calendar.refresh_token' => 'calendar-refresh-token',
+            'services.google_calendar.calendar_id' => 'hr@example.test',
+            'services.google_calendar.timezone' => 'Asia/Ho_Chi_Minh',
+        ]);
+        Http::fake([
+            'https://oauth2.googleapis.com/token' => Http::response([
+                'access_token' => 'google-access-token',
+            ]),
+            'https://www.googleapis.com/calendar/v3/calendars/*' => Http::response([
+                'id' => 'google-event-123',
+                'htmlLink' => 'https://calendar.google.com/calendar/event?eid=123',
+                'hangoutLink' => 'https://meet.google.com/abc-defg-hij',
+            ]),
+        ]);
+
+        $this->withToken($this->token)->postJson('/api/v1/interviews', [
+            'candidate_id' => $candidateId,
+            'interview_date' => '2026-08-10T09:30',
+            'interviewer' => 'HR Auto Meet',
+            'interview_mode' => 'ONLINE',
+            'auto_create_meeting' => true,
+            'duration_minutes' => 60,
+        ])->assertCreated()
+            ->assertJsonPath('data.interview_date', '2026-08-10')
+            ->assertJsonPath('data.meta.meeting_link', 'https://meet.google.com/abc-defg-hij')
+            ->assertJsonPath('data.meta.google_calendar_event_id', 'google-event-123')
+            ->assertJsonPath('data.invitation_email_sent', true);
+
+        Http::assertSent(function ($request): bool {
+            return str_contains($request->url(), '/calendar/v3/calendars/hr%40example.test/events')
+                && $request['conferenceData']['createRequest']['conferenceSolutionKey']['type'] === 'hangoutsMeet'
+                && $request['start']['timeZone'] === 'Asia/Ho_Chi_Minh';
+        });
+        Mail::assertSent(RecruitmentNotificationMail::class, function (RecruitmentNotificationMail $mail): bool {
+            return $mail->hasTo('auto-meet@example.test')
+                && $mail->mailData['meeting_link'] === 'https://meet.google.com/abc-defg-hij';
+        });
+    }
+
+    public function test_online_interview_rejects_the_google_meet_home_page(): void
+    {
+        $candidateId = $this->candidate('SCREENING', 'invalid-meet@example.test');
+
+        $this->withToken($this->token)->postJson('/api/v1/interviews', [
+            'candidate_id' => $candidateId,
+            'interview_date' => '2026-08-10T09:30',
+            'interviewer' => 'HR Invalid Meet',
+            'interview_mode' => 'ONLINE',
+            'meeting_link' => 'https://meet.google.com/',
+        ])->assertUnprocessable()
+            ->assertJsonPath(
+                'data.errors.meeting_link.0',
+                'Link Google Meet phải là link phòng cụ thể, ví dụ https://meet.google.com/abc-defg-hij; không dùng trang chủ Google Meet.'
+            );
+
+        $this->assertDatabaseMissing('interview_schedules', ['candidate_id' => $candidateId]);
+        Mail::assertNothingSent();
+    }
+
+    public function test_auto_meet_requires_google_calendar_configuration(): void
+    {
+        $candidateId = $this->candidate('SCREENING', 'missing-calendar-config@example.test');
+        config([
+            'services.google_calendar.client_id' => null,
+            'services.google_calendar.client_secret' => null,
+            'services.google_calendar.refresh_token' => null,
+        ]);
+
+        $this->withToken($this->token)->postJson('/api/v1/interviews', [
+            'candidate_id' => $candidateId,
+            'interview_date' => '2026-08-10T09:30',
+            'interviewer' => 'HR Missing Config',
+            'interview_mode' => 'ONLINE',
+            'auto_create_meeting' => true,
+        ])->assertUnprocessable()
+            ->assertJsonPath(
+                'data.errors.meeting_link.0',
+                'Chưa cấu hình Google Calendar API. Hãy nhập link phòng họp thủ công hoặc cấu hình OAuth cho Google Calendar.'
+            );
+
+        $this->assertDatabaseMissing('interview_schedules', ['candidate_id' => $candidateId]);
     }
 
     public function test_hiring_candidate_sends_job_offer_email_from_hr_address(): void
