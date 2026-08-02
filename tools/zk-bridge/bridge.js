@@ -16,6 +16,8 @@
  * employees.profile.enroll_id trong HRM (xem README).
  */
 const ZKLib = require('node-zklib');
+const fs = require('fs');
+const path = require('path');
 
 const DEVICE_IP = process.env.DEVICE_IP || '192.168.1.201';
 const DEVICE_PORT = Number(process.env.DEVICE_PORT || 4370);
@@ -31,9 +33,33 @@ if (!DEVICE_TOKEN && !TOKEN) {
 const authHeader = DEVICE_TOKEN ? { 'x-device-token': DEVICE_TOKEN } : { 'x-internal-token': TOKEN };
 const POLL_MS = Number(process.env.POLL_MS || 30000); // 30s
 const DEVICE_ID = process.env.DEVICE_ID || 'wiseeye-3';
+const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, '.zk-bridge-state.json');
+const INITIAL_SYNC_MODE = String(process.env.INITIAL_SYNC_MODE || 'all').toLowerCase();
 
-let lastSent = null; // mốc thời gian punch cuối đã gửi (tránh gửi lặp)
+const savedState = loadState();
+let lastSent = savedState.lastSent; // mốc thời gian punch cuối đã gửi (tránh gửi lặp)
+let initialized = savedState.initialized;
 let isRunning = false;
+
+function loadState() {
+  try {
+    const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    const lastSentValue = typeof state.last_sent === 'string' ? state.last_sent : null;
+    return {
+      lastSent: lastSentValue,
+      initialized: state.initialized === true || lastSentValue !== null,
+    };
+  } catch (_) {
+    return { lastSent: null, initialized: false };
+  }
+}
+
+function saveState(value) {
+  const tempFile = `${STATE_FILE}.tmp`;
+  fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+  fs.writeFileSync(tempFile, JSON.stringify({ initialized: true, last_sent: value }), 'utf8');
+  fs.renameSync(tempFile, STATE_FILE);
+}
 
 async function readAndForward() {
   if (isRunning) return;
@@ -51,6 +77,20 @@ async function readAndForward() {
       device_id: DEVICE_ID,
       verify_method: mapVerify(r.verifyMode ?? r.type),
     }));
+
+    // Khi lắp máy vào production lần đầu, có thể chỉ lấy mốc mới nhất để không
+    // nhập toàn bộ lịch sử đang lưu trong thiết bị.
+    if (!initialized && INITIAL_SYNC_MODE === 'latest') {
+      lastSent = punches.length > 0
+        ? punches.reduce((max, p) => (p.timestamp > max ? p.timestamp : max), '')
+        : null;
+      initialized = true;
+      saveState(lastSent);
+      console.log(new Date().toISOString(), punches.length > 0
+        ? `đã tạo mốc ban đầu ${lastSent}; bỏ qua ${punches.length} punch cũ`
+        : 'đã khởi tạo máy không có punch cũ; lượt chấm công đầu tiên sẽ được gửi');
+      return;
+    }
 
     // Chỉ gửi các punch mới hơn lần trước (theo timestamp).
     if (lastSent) {
@@ -71,6 +111,8 @@ async function readAndForward() {
 
     if (r.ok) {
       lastSent = punches.reduce((m, p) => (p.timestamp > m ? p.timestamp : m), lastSent || '');
+      initialized = true;
+      saveState(lastSent);
     }
   } catch (e) {
     const message = typeof e?.toast === 'function'

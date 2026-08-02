@@ -40,6 +40,25 @@ Bridge sẽ poll máy mỗi 30s (đổi qua `POLL_MS`), gửi các punch mới l
 Backend tự quyết định **check-in / check-out** theo thời gian, phân loại trễ/sớm theo ca,
 ghi vào `attendances` (meta.source = `device`).
 
+Bridge lưu mốc đã gửi trong `.zk-bridge-state.json`, nên khởi động lại không đọc lại
+toàn bộ lịch sử. Khi lắp máy thật vào production lần đầu, đặt
+`INITIAL_SYNC_MODE=latest` để lấy bản ghi mới nhất làm mốc và bỏ qua log cũ đang có
+trong máy.
+
+## Cài tự động trên Windows
+
+Thư mục `windows/` có bộ cài chạy bridge bằng Windows Task Scheduler. Bộ cài sẽ:
+
+1. kiểm tra IP Ethernet và tìm thiết bị đang mở TCP `4370`;
+2. kiểm tra kết nối tới HRM API và device token;
+3. cài bridge vào `C:\ProgramData\HRM-ZK-Bridge`;
+4. chạy bridge cùng Windows bằng task `HRM-ZK-Bridge`;
+5. dùng `INITIAL_SYNC_MODE=latest` để không nhập lịch sử cũ ở lần chạy đầu.
+
+Trước khi gửi bộ cài cho máy Windows, đặt token thật vào `windows/device-token.txt`
+và IP dự kiến vào `windows/device-ip.txt`, sau đó chạy `INSTALL.cmd` bằng tài khoản
+có quyền Administrator. Hai file cấu hình này không được commit vào Git.
+
 ## Nếu máy KHÔNG nói chuyện được qua 4370 (một số đời Wise Eye khoá SDK)
 
 Dùng phần mềm **Wise Eye On 39** đi kèm máy để **xuất Excel/CSV** log chấm công, rồi
