@@ -578,7 +578,10 @@ const onlineDeviceCount = computed(() => (deviceSync.value.devices || []).filter
 const currentSyncDevices = computed(() => {
   const requestId = deviceSync.value.latest_request_id;
   if (!requestId) return [];
-  return (deviceSync.value.devices || []).filter((device) => device.sync_request?.id === requestId);
+  return (deviceSync.value.devices || []).filter((device) => {
+    if (device.sync_request?.id !== requestId) return false;
+    return device.online || ['SUCCESS', 'FAILED'].includes(device.sync_request?.status);
+  });
 });
 const syncInProgress = computed(() => currentSyncDevices.value.some((device) =>
   ['PENDING', 'RUNNING'].includes(device.sync_request?.status)
