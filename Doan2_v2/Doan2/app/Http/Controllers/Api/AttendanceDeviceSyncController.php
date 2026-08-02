@@ -43,10 +43,19 @@ class AttendanceDeviceSyncController extends Controller
             ->when($request->filled('device_id'), fn ($query) => $query->where('id', $request->integer('device_id')))
             ->get();
 
+        // Nút mặc định chỉ gọi các bridge đang heartbeat. Không tạo lệnh treo
+        // cho thiết bị demo/đã mất kết nối; device_id tường minh vẫn cho phép
+        // quản trị viên nhắm tới một máy cụ thể.
+        if (! $request->filled('device_id')) {
+            $devices = $devices
+                ->filter(fn ($device) => $this->bridgeOnline($this->decodeMeta($device->meta)))
+                ->values();
+        }
+
         if ($devices->isEmpty()) {
             return response()->json([
                 'status' => 422,
-                'message' => 'Không có máy chấm công đang hoạt động để đồng bộ',
+                'message' => 'Không có bridge máy chấm công nào đang online để đồng bộ',
                 'data' => null,
             ], 422);
         }
@@ -215,20 +224,12 @@ class AttendanceDeviceSyncController extends Controller
             ->map(function ($device): array {
                 $meta = $this->decodeMeta($device->meta);
                 $lastControlAt = $meta['last_control_at'] ?? null;
-                $online = false;
-                if ($lastControlAt) {
-                    try {
-                        $online = Carbon::parse($lastControlAt)->greaterThanOrEqualTo(now()->subMinutes(2));
-                    } catch (\Throwable) {
-                        $online = false;
-                    }
-                }
 
                 return [
                     'id' => (int) $device->id,
                     'name' => $device->name,
                     'location' => $device->location,
-                    'online' => $online,
+                    'online' => $this->bridgeOnline($meta),
                     'last_seen_at' => $device->last_seen_at,
                     'last_control_at' => $lastControlAt,
                     'sync_request' => $meta['sync_request'] ?? null,
@@ -238,10 +239,30 @@ class AttendanceDeviceSyncController extends Controller
             ->values()
             ->all();
 
+        $latestRequest = collect($devices)
+            ->pluck('sync_request')
+            ->filter(fn ($request) => is_array($request) && ! empty($request['id']))
+            ->sortByDesc(fn ($request) => $request['requested_at'] ?? '')
+            ->first();
+
         return [
             'upload_delay_minutes' => $this->uploadDelayMinutes(),
+            'latest_request_id' => $latestRequest['id'] ?? null,
             'devices' => $devices,
         ];
+    }
+
+    private function bridgeOnline(array $meta): bool
+    {
+        if (empty($meta['last_control_at'])) {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($meta['last_control_at'])->greaterThanOrEqualTo(now()->subMinutes(2));
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function uploadDelayMinutes(): int

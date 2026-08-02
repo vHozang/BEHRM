@@ -49,7 +49,7 @@
             </div>
           </div>
         </div>
-        <BaseButton @click="syncAttendanceDevices" :disabled="syncingDevices || !deviceSync.devices?.length" class="shrink-0">
+        <BaseButton @click="syncAttendanceDevices" :disabled="syncingDevices || !onlineDeviceCount" class="shrink-0">
           {{ syncingDevices ? 'Đang đồng bộ…' : 'Đồng bộ ngay' }}
         </BaseButton>
       </div>
@@ -575,15 +575,20 @@ let syncPollTimer = null;
 let syncPollAttempts = 0;
 
 const onlineDeviceCount = computed(() => (deviceSync.value.devices || []).filter((device) => device.online).length);
-const syncInProgress = computed(() => (deviceSync.value.devices || []).some((device) =>
+const currentSyncDevices = computed(() => {
+  const requestId = deviceSync.value.latest_request_id;
+  if (!requestId) return [];
+  return (deviceSync.value.devices || []).filter((device) => device.sync_request?.id === requestId);
+});
+const syncInProgress = computed(() => currentSyncDevices.value.some((device) =>
   ['PENDING', 'RUNNING'].includes(device.sync_request?.status)
 ));
 const deviceSyncMessage = computed(() => {
   const devices = deviceSync.value.devices || [];
   if (!devices.length) return 'Chưa có máy chấm công đang hoạt động.';
 
-  const running = devices.filter((device) => device.sync_request?.status === 'RUNNING').length;
-  const pending = devices.filter((device) => device.sync_request?.status === 'PENDING').length;
+  const running = currentSyncDevices.value.filter((device) => device.sync_request?.status === 'RUNNING').length;
+  const pending = currentSyncDevices.value.filter((device) => device.sync_request?.status === 'PENDING').length;
   if (running) return `Bridge đang đọc dữ liệu từ ${running} máy.`;
   if (pending) return `Đã gửi lệnh, đang chờ ${pending} bridge nhận yêu cầu.`;
 
@@ -980,7 +985,7 @@ const scheduleDeviceSyncPoll = () => {
         toast.error('Bridge chưa phản hồi sau 90 giây. Lệnh vẫn được giữ và sẽ chạy khi laptop online.');
         return;
       }
-      const failed = (deviceSync.value.devices || []).some((device) => device.sync_request?.status === 'FAILED');
+      const failed = currentSyncDevices.value.some((device) => device.sync_request?.status === 'FAILED');
       if (failed) toast.error('Có máy chấm công đồng bộ thất bại; hãy kiểm tra trạng thái bridge.');
       else toast.success('Đã đồng bộ xong dữ liệu máy chấm công.');
       await loadData();

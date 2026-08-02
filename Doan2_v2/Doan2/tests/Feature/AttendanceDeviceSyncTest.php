@@ -43,6 +43,7 @@ class AttendanceDeviceSyncTest extends TestCase
         $manager = $this->actor('MANAGER', ['time']);
         $deviceToken = 'dev_'.Str::random(48);
         $deviceId = $this->device($deviceToken);
+        $offlineId = $this->device('dev_'.Str::random(48), false, 'ZZ Offline attendance device');
 
         $this->withToken($manager['token'])
             ->getJson('/api/v1/attendance/device-sync')
@@ -59,6 +60,8 @@ class AttendanceDeviceSyncTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.devices.0.sync_request.status', 'PENDING');
         $requestId = $requested->json('data.devices.0.sync_request.id');
+        $offlineMeta = json_decode((string) DB::table('attendance_devices')->where('id', $offlineId)->value('meta'), true);
+        $this->assertArrayNotHasKey('sync_request', $offlineMeta);
 
         $this->withHeader('x-device-token', $deviceToken)
             ->getJson('/api/v1/internal/attendance/device-control')
@@ -170,18 +173,21 @@ class AttendanceDeviceSyncTest extends TestCase
         return ['id' => $employeeId, 'token' => $token];
     }
 
-    private function device(string $token): int
+    private function device(string $token, bool $online = true, string $name = 'QA attendance device'): int
     {
         return DB::table('attendance_devices')->insertGetId([
             'tenant_id' => 1,
             'legal_entity_id' => 1,
-            'name' => 'QA attendance device',
+            'name' => $name,
             'brand' => 'wiseeye',
             'protocol' => 'zk_pull',
             'device_token' => $token,
             'status' => 'ACTIVE',
             'location' => 'QA room',
-            'meta' => json_encode(['ip' => '169.254.248.131']),
+            'meta' => json_encode(array_filter([
+                'ip' => '169.254.248.131',
+                'last_control_at' => $online ? now()->toIso8601String() : null,
+            ])),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
