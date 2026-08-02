@@ -29,12 +29,21 @@ function Test-ZkPort([string]$address) {
 Write-Host '=== HRM attendance bridge installer ===' -ForegroundColor Cyan
 
 $tokenFile = Join-Path $packageDir 'device-token.txt'
-if (-not (Test-Path $tokenFile)) {
-    throw 'Khong tim thay device-token.txt trong bo cai.'
+$deviceToken = ''
+if (Test-Path $tokenFile) {
+    $deviceToken = (Get-Content $tokenFile -Raw).Trim()
+} else {
+    Write-Warning 'Khong co device-token.txt vi token production khong duoc luu tren GitHub.'
+    $secureToken = Read-Host 'Nhap device token cua may (bat dau bang dev_)' -AsSecureString
+    $tokenPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
+    try {
+        $deviceToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($tokenPointer).Trim()
+    } finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($tokenPointer)
+    }
 }
-$deviceToken = (Get-Content $tokenFile -Raw).Trim()
 if (-not $deviceToken.StartsWith('dev_')) {
-    throw 'Device token khong hop le.'
+    throw 'Device token khong hop le. Hay dung bo cai production hoac lay token tai man hinh May cham cong.'
 }
 
 $localAddresses = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
@@ -130,7 +139,7 @@ Copy-Item (Join-Path $packageDir '..\bridge.js') $installDir -Force
 Copy-Item (Join-Path $packageDir '..\package.json') $installDir -Force
 Copy-Item (Join-Path $packageDir '..\package-lock.json') $installDir -Force
 Copy-Item (Join-Path $packageDir 'run-bridge.ps1') $installDir -Force
-Copy-Item $tokenFile (Join-Path $installDir 'device-token.txt') -Force
+Set-Content (Join-Path $installDir 'device-token.txt') -Value $deviceToken -Encoding ASCII
 
 $config = @{
     device_ip = $deviceIp
