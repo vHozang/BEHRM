@@ -248,6 +248,18 @@ const form = ref({
   result_note: ''
 });
 
+const interviewDisplayStatus = (item) => {
+  if (item.status === 'SCHEDULED') return 'pending';
+  if (item.status === 'CANCELLED') return 'failed';
+
+  const outcome = String(item.manager_decision || item.result || '').toUpperCase();
+  if (item.status === 'COMPLETED') {
+    return ['REJECTED', 'FAILED'].includes(outcome) ? 'failed' : 'passed';
+  }
+
+  return item.status;
+};
+
 const loadData = async () => {
   try {
     const [intRes, candRes] = await Promise.all([
@@ -256,11 +268,10 @@ const loadData = async () => {
     ]);
     interviews.value = (intRes?.data || intRes || []).map((item) => ({
       ...item,
-      status: {
-        SCHEDULED: 'pending',
-        COMPLETED: 'passed',
-        CANCELLED: 'failed'
-      }[item.status] || item.status
+      status: interviewDisplayStatus(item),
+      result_note: item.result_note
+        || item.meta?.result_note
+        || (!['PASSED', 'FAILED'].includes(String(item.result || '').toUpperCase()) ? item.result : '')
     }));
     candidates.value = (candRes?.data || candRes || []).filter(c => c.status === 'applied' || c.status === 'shortlisted' || c.status === 'interviewing');
   } catch (err) {

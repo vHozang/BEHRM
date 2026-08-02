@@ -467,17 +467,53 @@ class RecruitmentController extends Controller
             return $this->notFound();
         }
 
-        $data = $request->all();
-        $data['candidate_id'] = $id;
-        $data['reviewed_by'] = $request->attributes->get('auth_employee_id');
-        $data['updated_at'] = now();
+        $validator = Validator::make($request->all(), [
+            'decision' => ['required', 'string', 'in:approved,rejected'],
+            'note' => ['nullable', 'string', 'max:5000'],
+            'manager_score' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        ]);
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
+        }
 
-        DB::table('recruitment_candidate_manager_reviews')->updateOrInsert(
-            ['candidate_id' => $id],
-            TenantContext::stamp($data + ['created_at' => now()])
-        );
+        $validated = $validator->validated();
+        $decision = strtoupper($validated['decision']);
+        $reviewedBy = $request->attributes->get('auth_employee_id');
+        $storedMeta = DB::table('recruitment_candidate_manager_reviews')
+            ->where('candidate_id', $id)
+            ->value('meta');
+        $reviewMeta = is_array($storedMeta)
+            ? $storedMeta
+            : (json_decode((string) ($storedMeta ?? '{}'), true) ?: []);
+        if ($request->exists('note')) {
+            $reviewMeta['note'] = $validated['note'] ?? null;
+        }
+        $reviewMeta['reviewed_at'] = now()->toIso8601String();
 
-        $managerScore = $request->input('manager_score');
+        DB::transaction(function () use ($candidate, $decision, $id, $reviewedBy, $reviewMeta, $validated): void {
+            DB::table('recruitment_candidate_manager_reviews')->updateOrInsert(
+                ['candidate_id' => $id],
+                TenantContext::stamp([
+                    'manager_id' => $reviewedBy,
+                    'workflow_status' => $decision,
+                    'manager_decision_proposal' => $decision,
+                    'manager_score' => $validated['manager_score'] ?? null,
+                    'meta' => json_encode($reviewMeta, JSON_UNESCAPED_UNICODE),
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ])
+            );
+
+            $nextStatus = $this->candidateStatusAfterManagerDecision(
+                (string) $candidate->application_status,
+                $decision,
+            );
+            if ($nextStatus !== $candidate->application_status) {
+                $candidate->update(['application_status' => $nextStatus]);
+            }
+        });
+
+        $managerScore = $validated['manager_score'] ?? null;
         $aiScore = $candidate->ai_score;
         $feedbackAnalysis = null;
 
@@ -489,9 +525,15 @@ class RecruitmentController extends Controller
                 $requiredSkills = $position
                     ? (json_decode($position->required_skills_json ?? '[]', true) ?: [])
                     : [];
-                $candidateMeta = json_decode($candidate->meta ?? '{}', true) ?: [];
-                $matchedSkills = json_decode($candidate->ai_matched_skills_json ?? '[]', true) ?: [];
-                $missingSkills = json_decode($candidate->ai_missing_skills_json ?? '[]', true) ?: [];
+                $candidateMeta = is_array($candidate->meta)
+                    ? $candidate->meta
+                    : (json_decode((string) ($candidate->meta ?? '{}'), true) ?: []);
+                $matchedSkills = is_array($candidate->ai_matched_skills_json)
+                    ? $candidate->ai_matched_skills_json
+                    : (json_decode((string) ($candidate->ai_matched_skills_json ?? '[]'), true) ?: []);
+                $missingSkills = is_array($candidate->ai_missing_skills_json)
+                    ? $candidate->ai_missing_skills_json
+                    : (json_decode((string) ($candidate->ai_missing_skills_json ?? '[]'), true) ?: []);
 
                 $feedbackResult = (new AiFeedbackService)->sendFeedback(
                     candidateId: $id,
@@ -528,6 +570,7 @@ class RecruitmentController extends Controller
         if ($feedbackAnalysis) {
             $responseData['ai_feedback_analysis'] = $feedbackAnalysis;
         }
+        $responseData['candidate'] = $candidate->fresh();
 
         return $this->ok($responseData, 'Đánh giá quản lý đã được lưu');
     }
@@ -599,6 +642,7 @@ class RecruitmentController extends Controller
             }
 
             $candidate->update(['application_status' => 'REJECTED']);
+            $this->closeScheduledInterviews($candidate->id, 'FAILED', 'REJECTED');
         });
 
         $candidate->refresh();
@@ -643,6 +687,7 @@ class RecruitmentController extends Controller
 
         $employee = DB::transaction(function () use ($candidate, $request) {
             $candidate->update(['application_status' => 'HIRED']);
+            $this->closeScheduledInterviews($candidate->id, 'PASSED', 'APPROVED');
 
             // Create employee from candidate
             $employee = Employee::create([
@@ -820,12 +865,56 @@ class RecruitmentController extends Controller
             return $this->notFound();
         }
 
-        $columns = Schema::getColumnListing('interview_schedules');
-        $data = collect($request->all())->only($columns)->toArray();
+        $validator = Validator::make($request->all(), [
+            'decision' => ['required', 'string', 'in:approved,rejected'],
+            'note' => ['nullable', 'string', 'max:5000'],
+        ]);
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
+        }
 
-        $interview->update($data);
+        $validated = $validator->validated();
+        $decision = strtoupper($validated['decision']);
+        $result = $decision === 'APPROVED' ? 'PASSED' : 'FAILED';
+        $reviewedBy = $request->attributes->get('auth_employee_id');
 
-        return $this->ok($interview->fresh(), 'Đánh giá phỏng vấn đã được lưu');
+        DB::transaction(function () use ($decision, $interview, $request, $result, $reviewedBy, $validated): void {
+            $meta = is_array($interview->meta) ? $interview->meta : [];
+            if ($request->exists('note')) {
+                $meta['result_note'] = $validated['note'] ?? null;
+            }
+            $meta['manager_reviewed_at'] = now()->toIso8601String();
+
+            $interviewData = [
+                'status' => 'COMPLETED',
+                'result' => $result,
+                'manager_decision' => $decision,
+                'meta' => array_filter($meta, static fn ($value) => $value !== null && $value !== ''),
+            ];
+            if ($reviewedBy) {
+                $interviewData['department_manager_id'] = $reviewedBy;
+            }
+            $interview->update($interviewData);
+
+            $candidate = RecruitmentCandidate::find($interview->candidate_id);
+            if (! $candidate) {
+                return;
+            }
+
+            $nextStatus = $this->candidateStatusAfterManagerDecision(
+                (string) $candidate->application_status,
+                $decision,
+                true,
+            );
+            if ($nextStatus !== $candidate->application_status) {
+                $candidate->update(['application_status' => $nextStatus]);
+            }
+        });
+
+        return $this->ok(
+            $interview->fresh()->load('candidate:id,full_name,application_status'),
+            'Đánh giá phỏng vấn đã được lưu',
+        );
     }
 
     public function updateInterview(Request $request, int $id): JsonResponse
@@ -873,21 +962,27 @@ class RecruitmentController extends Controller
             $data['interview_time'] = $scheduledAt->format('H:i');
         }
         if ($request->filled('status')) {
-            $data['status'] = match (strtolower((string) $request->input('status'))) {
+            $status = strtolower((string) $request->input('status'));
+            $data['status'] = match ($status) {
                 'pending', 'scheduled' => 'SCHEDULED',
-                'passed', 'completed' => 'COMPLETED',
-                'failed', 'cancelled' => 'CANCELLED',
+                'passed', 'failed', 'completed' => 'COMPLETED',
+                'cancelled' => 'CANCELLED',
                 default => strtoupper((string) $request->input('status')),
             };
-        }
-        if ($request->filled('result_note')) {
-            $data['result'] = $request->input('result_note');
+            if ($status === 'passed') {
+                $data['result'] = 'PASSED';
+            } elseif ($status === 'failed') {
+                $data['result'] = 'FAILED';
+            }
         }
         $meta = is_array($interview->meta) ? $interview->meta : [];
         foreach (['interviewer', 'location', 'duration_minutes', 'confirmation_deadline'] as $field) {
             if ($request->exists($field)) {
                 $meta[$field] = $request->input($field);
             }
+        }
+        if ($request->exists('result_note')) {
+            $meta['result_note'] = $request->input('result_note');
         }
         $candidate = RecruitmentCandidate::with('position:id,position_name')->findOrFail($interview->candidate_id);
         $mode = (string) ($data['interview_mode'] ?? $interview->interview_mode ?? 'ONSITE');
@@ -919,6 +1014,44 @@ class RecruitmentController extends Controller
         $interview->update($data);
 
         return $this->ok($interview->fresh()->load('candidate:id,full_name'), 'Lịch phỏng vấn đã được cập nhật');
+    }
+
+    private function candidateStatusAfterManagerDecision(
+        string $currentStatus,
+        string $decision,
+        bool $interviewDecision = false,
+    ): string {
+        if (in_array($currentStatus, ['HIRED', 'REJECTED'], true)) {
+            return $currentStatus;
+        }
+
+        if ($decision === 'REJECTED') {
+            return 'REJECTED';
+        }
+
+        if ($interviewDecision) {
+            return 'OFFERED';
+        }
+
+        return match ($currentStatus) {
+            'PENDING' => 'SCREENING',
+            'SCREENING' => 'INTERVIEWING',
+            'INTERVIEWING' => 'OFFERED',
+            default => $currentStatus,
+        };
+    }
+
+    private function closeScheduledInterviews(int $candidateId, string $result, string $managerDecision): void
+    {
+        InterviewSchedule::query()
+            ->where('candidate_id', $candidateId)
+            ->where('status', 'SCHEDULED')
+            ->update([
+                'status' => 'COMPLETED',
+                'result' => $result,
+                'manager_decision' => $managerDecision,
+                'updated_at' => now(),
+            ]);
     }
 
     /**
