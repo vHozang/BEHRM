@@ -71,18 +71,24 @@ async function readAndForward() {
     const rows = (res && res.data) || [];
 
     // Chuẩn hoá: deviceUserId = enroll_id, recordTime = thời điểm.
-    let punches = rows.map((r) => ({
-      enroll_id: String(r.deviceUserId ?? r.userId ?? r.uid),
-      timestamp: new Date(r.recordTime).toISOString(),
-      device_id: DEVICE_ID,
-      verify_method: mapVerify(r.verifyMode ?? r.type),
-    }));
+    let punches = rows.map((r) => {
+      const recordTime = new Date(r.recordTime);
+      return {
+        enroll_id: String(r.deviceUserId ?? r.userId ?? r.uid),
+        // Máy chấm công lưu giờ địa phương; payload giữ nguyên giờ trên máy.
+        timestamp: formatLocalDateTime(recordTime),
+        // Cursor UTC chỉ dùng nội bộ để so sánh và tương thích state cũ.
+        cursor: recordTime.toISOString(),
+        device_id: DEVICE_ID,
+        verify_method: mapVerify(r.verifyMode ?? r.type),
+      };
+    });
 
     // Khi lắp máy vào production lần đầu, có thể chỉ lấy mốc mới nhất để không
     // nhập toàn bộ lịch sử đang lưu trong thiết bị.
     if (!initialized && INITIAL_SYNC_MODE === 'latest') {
       lastSent = punches.length > 0
-        ? punches.reduce((max, p) => (p.timestamp > max ? p.timestamp : max), '')
+        ? punches.reduce((max, p) => (p.cursor > max ? p.cursor : max), '')
         : null;
       initialized = true;
       saveState(lastSent);
@@ -94,23 +100,24 @@ async function readAndForward() {
 
     // Chỉ gửi các punch mới hơn lần trước (theo timestamp).
     if (lastSent) {
-      punches = punches.filter((p) => p.timestamp > lastSent);
+      punches = punches.filter((p) => p.cursor > lastSent);
     }
     if (punches.length === 0) {
       console.log(new Date().toISOString(), 'không có punch mới');
       return;
     }
 
+    const payloadPunches = punches.map(({ cursor, ...punch }) => punch);
     const r = await fetch(`${API_BASE}/internal/attendance/device-punch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeader },
-      body: JSON.stringify({ punches }),
+      body: JSON.stringify({ punches: payloadPunches }),
     });
     const body = await r.json();
-    console.log(new Date().toISOString(), `gửi ${punches.length} punch →`, r.status, JSON.stringify(body.data || body));
+    console.log(new Date().toISOString(), `gửi ${payloadPunches.length} punch →`, r.status, JSON.stringify(body.data || body));
 
     if (r.ok) {
-      lastSent = punches.reduce((m, p) => (p.timestamp > m ? p.timestamp : m), lastSent || '');
+      lastSent = punches.reduce((m, p) => (p.cursor > m ? p.cursor : m), lastSent || '');
       initialized = true;
       saveState(lastSent);
     }
@@ -130,6 +137,12 @@ function mapVerify(v) {
   if (v === 15 || v === 'face') return 'face';
   if (v === 2 || v === 3 || v === 'card') return 'card';
   return 'fingerprint';
+}
+
+function formatLocalDateTime(value) {
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} `
+    + `${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
 }
 
 console.log(`ZK bridge: máy ${DEVICE_IP}:${DEVICE_PORT} → ${API_BASE} (mỗi ${POLL_MS / 1000}s)`);

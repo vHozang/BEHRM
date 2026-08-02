@@ -82,15 +82,22 @@ class DeviceAttendanceController extends Controller
         if ($enroll === '' || ! $ts) {
             throw new \RuntimeException('Thiếu enroll_id hoặc timestamp');
         }
-        $when = Carbon::parse($ts);
-        $workDate = $when->toDateString();
-        $time = $when->toTimeString();
-
         // Khi xác thực bằng device token → chỉ tìm nhân viên trong đúng tenant.
         $employee = $this->resolveEmployee($enroll, $device->tenant_id ?? null);
         if (! $employee) {
             throw new \RuntimeException("Không tìm thấy nhân viên cho enroll_id={$enroll}");
         }
+
+        $timezone = DB::table('tenants')->where('id', $employee->tenant_id)->value('timezone')
+            ?: 'Asia/Ho_Chi_Minh';
+        $timestamp = trim((string) $ts);
+        $hasExplicitTimezone = (bool) preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/i', $timestamp);
+        $when = $hasExplicitTimezone
+            ? Carbon::parse($timestamp)->setTimezone($timezone)
+            : Carbon::parse($timestamp, $timezone);
+        $workDate = $when->toDateString();
+        $time = $when->toTimeString();
+
         // device_id ưu tiên tên máy đã đăng ký.
         if ($device) {
             $p['device_id'] = $p['device_id'] ?? $device->name;
