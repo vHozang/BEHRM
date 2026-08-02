@@ -45,11 +45,12 @@ Kiểm tra từ VPS:
 curl -fsS http://100.95.129.101:8000/health
 ```
 
-VPS dùng Windows làm endpoint mặc định và tự chuyển sang Mac nếu Windows tắt:
+VPS ưu tiên Mac và tự chuyển sang Windows nếu Mac tắt. Nếu cả hai máy cùng online,
+request được xử lý trên Mac; nếu chỉ một máy online, request tự chuyển tới máy đó:
 
 ```dotenv
-AUTORECRUIT_URL=http://100.95.129.101:8000
-AUTORECRUIT_FALLBACK_URLS=http://100.105.84.89:8000
+AUTORECRUIT_URL=http://100.105.84.89:8000
+AUTORECRUIT_FALLBACK_URLS=http://100.95.129.101:8000
 AUTORECRUIT_CONNECT_TIMEOUT=5
 AUTORECRUIT_TIMEOUT=120
 ```

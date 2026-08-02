@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Support\AccessControl;
 use App\Support\HrmConfig;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -143,7 +144,7 @@ class SettingsController extends Controller
     {
         // Toggleable modules (settings is always on — excluded from the toggle list).
         $moduleOptions = [];
-        foreach (\App\Support\AccessControl::MODULES as $key => $label) {
+        foreach (AccessControl::MODULES as $key => $label) {
             if ($key === 'settings') {
                 continue;
             }
@@ -155,7 +156,7 @@ class SettingsController extends Controller
             $items = array_map(function ($item) use ($moduleOptions) {
                 if ($item['type'] === 'modules') {
                     return array_merge($item, [
-                        'value' => array_values(array_filter(\App\Support\AccessControl::enabledModules(), fn ($m) => $m !== 'settings')),
+                        'value' => array_values(array_filter(AccessControl::enabledModules(), fn ($m) => $m !== 'settings')),
                         'options' => $moduleOptions,
                     ]);
                 }
@@ -206,6 +207,7 @@ class SettingsController extends Controller
         ))));
         $checks = [];
         $available = false;
+        $selectedUrl = null;
 
         foreach ($urls as $url) {
             $startedAt = microtime(true);
@@ -222,6 +224,9 @@ class SettingsController extends Controller
                     'latency_ms' => (int) round((microtime(true) - $startedAt) * 1000),
                 ];
                 $available = $available || $healthy;
+                if ($healthy && $selectedUrl === null) {
+                    $selectedUrl = $url;
+                }
             } catch (\Throwable $exception) {
                 $checks[] = [
                     'url' => $url,
@@ -236,7 +241,11 @@ class SettingsController extends Controller
         return response()->json([
             'status' => $available ? 200 : 503,
             'message' => $available ? 'Resume backend đang hoạt động' : 'Resume backend không khả dụng',
-            'data' => ['available' => $available, 'checks' => $checks],
+            'data' => [
+                'available' => $available,
+                'selected_url' => $selectedUrl,
+                'checks' => $checks,
+            ],
         ], $available ? 200 : 503);
     }
 
@@ -260,7 +269,7 @@ class SettingsController extends Controller
             'float' => is_numeric($value) ? (float) $value : null,
             'bool' => filter_var($value, FILTER_VALIDATE_BOOLEAN),
             'list' => is_array($value) ? array_values(array_filter(array_map(fn ($x) => trim((string) $x), $value), fn ($x) => $x !== '')) : null,
-            'modules' => is_array($value) ? array_values(array_filter($value, fn ($m) => isset(\App\Support\AccessControl::MODULES[$m]) && $m !== 'settings')) : null,
+            'modules' => is_array($value) ? array_values(array_filter($value, fn ($m) => isset(AccessControl::MODULES[$m]) && $m !== 'settings')) : null,
             'json' => is_array($value) ? $value : (is_string($value) ? json_decode($value, true) : null),
             default => is_scalar($value) ? (string) $value : null,
         };

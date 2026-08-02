@@ -6,8 +6,8 @@ use App\Mail\RecruitmentNotificationMail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -135,12 +135,12 @@ class PublicRecruitmentApplicationTest extends TestCase
         $this->createPublishedPost();
         Storage::fake('local');
         config([
-            'services.autorecruit.url' => 'http://resume-primary.test',
-            'services.autorecruit.fallback_urls' => ['http://resume-fallback.test'],
+            'services.autorecruit.url' => 'http://mac-resume.test',
+            'services.autorecruit.fallback_urls' => ['http://windows-resume.test'],
         ]);
         Http::fake([
-            'http://resume-primary.test/screen' => Http::response([], 503),
-            'http://resume-fallback.test/screen' => Http::response([
+            'http://mac-resume.test/screen' => Http::response([], 503),
+            'http://windows-resume.test/screen' => Http::response([
                 'job_id' => 99,
                 'candidate' => ['scores' => ['final_score' => 0.75]],
             ]),
@@ -157,6 +157,43 @@ class PublicRecruitmentApplicationTest extends TestCase
             ->assertJsonPath('data.ai_score', 75);
 
         Http::assertSentCount(2);
+        $this->assertSame([
+            'http://mac-resume.test/screen',
+            'http://windows-resume.test/screen',
+        ], Http::recorded()->map(fn ($recorded) => $recorded[0]->url())->all());
+    }
+
+    public function test_public_application_prefers_mac_when_both_resume_backends_are_online(): void
+    {
+        $this->createPublishedPost();
+        Storage::fake('local');
+        config([
+            'services.autorecruit.url' => 'http://mac-resume.test',
+            'services.autorecruit.fallback_urls' => ['http://windows-resume.test'],
+        ]);
+        Http::fake([
+            'http://mac-resume.test/screen' => Http::response([
+                'job_id' => 100,
+                'candidate' => ['scores' => ['final_score' => 0.91]],
+            ]),
+            'http://windows-resume.test/screen' => Http::response([
+                'job_id' => 101,
+                'candidate' => ['scores' => ['final_score' => 0.50]],
+            ]),
+        ]);
+
+        $this->post('/api/v1/public/recruitment/applications', [
+            'tenant_code' => 'DEFAULT',
+            'post_slug' => 'ai-hr-analyst',
+            'full_name' => 'Mac Preferred Candidate',
+            'email' => 'mac-preferred@example.com',
+            'cv' => UploadedFile::fake()->create('mac-preferred.pdf', 100, 'application/pdf'),
+        ])->assertCreated()
+            ->assertJsonPath('data.ai_scoring_status', 'DONE')
+            ->assertJsonPath('data.ai_score', 91);
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => $request->url() === 'http://mac-resume.test/screen');
     }
 
     private function createPublishedPost(): array

@@ -30,6 +30,23 @@ if ! grep -Eq '^APP_DEBUG=(false|0)$' "$BACKEND_DIR/.env"; then
   exit 1
 fi
 
+set_env_value() {
+  local key="$1"
+  local value="$2"
+
+  if grep -q "^${key}=" "$BACKEND_DIR/.env"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$BACKEND_DIR/.env"
+  else
+    printf '\n%s=%s\n' "$key" "$value" >> "$BACKEND_DIR/.env"
+  fi
+}
+
+# Prefer the Mac resume backend and fail over to Windows when Mac is offline.
+set_env_value AUTORECRUIT_URL "${AUTORECRUIT_URL:-http://100.105.84.89:8000}"
+set_env_value AUTORECRUIT_FALLBACK_URLS "${AUTORECRUIT_FALLBACK_URLS:-http://100.95.129.101:8000}"
+set_env_value AUTORECRUIT_CONNECT_TIMEOUT "${AUTORECRUIT_CONNECT_TIMEOUT:-5}"
+set_env_value AUTORECRUIT_TIMEOUT "${AUTORECRUIT_TIMEOUT:-120}"
+
 if [ ! -s "$FRONTEND_DIR/index.html" ]; then
   echo "Missing frontend build at $FRONTEND_DIR/index.html" >&2
   exit 1

@@ -27,8 +27,29 @@ class AutoRecruitHealthTest extends TestCase
             ->getJson('/api/v1/settings/integrations/autorecruit/health')
             ->assertOk()
             ->assertJsonPath('data.available', true)
+            ->assertJsonPath('data.selected_url', 'http://resume-fallback.test')
             ->assertJsonPath('data.checks.0.healthy', false)
             ->assertJsonPath('data.checks.1.healthy', true);
+    }
+
+    public function test_health_selects_mac_when_both_resume_backends_are_online(): void
+    {
+        config([
+            'services.autorecruit.url' => 'http://mac-resume.test',
+            'services.autorecruit.fallback_urls' => ['http://windows-resume.test'],
+        ]);
+        Http::fake([
+            'http://mac-resume.test/health' => Http::response(['status' => 'ok']),
+            'http://windows-resume.test/health' => Http::response(['status' => 'ok']),
+        ]);
+
+        $this->withToken($this->adminToken())
+            ->getJson('/api/v1/settings/integrations/autorecruit/health')
+            ->assertOk()
+            ->assertJsonPath('data.available', true)
+            ->assertJsonPath('data.selected_url', 'http://mac-resume.test')
+            ->assertJsonPath('data.checks.0.url', 'http://mac-resume.test')
+            ->assertJsonPath('data.checks.1.url', 'http://windows-resume.test');
     }
 
     private function adminToken(): string
