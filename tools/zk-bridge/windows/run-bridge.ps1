@@ -11,6 +11,7 @@ $env:API_BASE = $config.api_base
 $env:DEVICE_TOKEN = $token
 $env:DEVICE_ID = $config.device_id
 $env:POLL_MS = [string]$config.poll_ms
+$env:CONTROL_POLL_MS = [string]$config.control_poll_ms
 $env:INITIAL_SYNC_MODE = 'latest'
 $env:STATE_FILE = Join-Path $installDir 'state.json'
 

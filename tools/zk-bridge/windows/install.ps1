@@ -147,6 +147,7 @@ $config = @{
     api_base = $apiBase
     device_id = 'bill-huynh-attendance'
     poll_ms = 30000
+    control_poll_ms = 5000
     node_path = $nodeCommand.Source
 }
 $config | ConvertTo-Json | Set-Content (Join-Path $installDir 'config.json') -Encoding UTF8

@@ -36,9 +36,12 @@ $env:DEVICE_TOKEN = "dev_token_cua_may"
 npm start
 ```
 
-Bridge sẽ poll máy mỗi 30s (đổi qua `POLL_MS`), gửi các punch mới lên API.
-Backend tự quyết định **check-in / check-out** theo thời gian, phân loại trễ/sớm theo ca,
-ghi vào `attendances` (meta.source = `device`).
+Bridge đọc máy mỗi 30s (đổi qua `POLL_MS`) nhưng chỉ tự gửi punch đã đủ thời gian
+chờ do Admin đặt tại **Cấu hình nghiệp vụ → Công & Tăng ca**. Mặc định là 15 phút.
+HR có nút **Đồng bộ ngay** ở màn hình Chấm công; bridge hỏi lệnh từ VPS mỗi 5s
+(`CONTROL_POLL_MS`) và bỏ qua thời gian chờ cho riêng lượt đó. Laptop không cần mở
+cổng inbound. Backend tự quyết định **check-in / check-out**, phân loại trễ/sớm theo
+ca và ghi vào `attendances` (`meta.source = device`).
 
 Bridge lưu mốc đã gửi trong `.zk-bridge-state.json`, nên khởi động lại không đọc lại
 toàn bộ lịch sử. Khi lắp máy thật vào production lần đầu, đặt
@@ -54,6 +57,7 @@ Thư mục `windows/` có bộ cài chạy bridge bằng Windows Task Scheduler.
 3. cài bridge vào `C:\ProgramData\HRM-ZK-Bridge`;
 4. chạy bridge cùng Windows bằng task `HRM-ZK-Bridge`;
 5. dùng `INITIAL_SYNC_MODE=latest` để không nhập lịch sử cũ ở lần chạy đầu.
+6. nhận cấu hình thời gian chờ và lệnh đồng bộ tức thời từ HRM.
 
 Trước khi gửi bộ cài cho máy Windows, đặt token thật vào `windows/device-token.txt`
 và IP dự kiến vào `windows/device-ip.txt`, sau đó chạy `INSTALL.cmd` bằng tài khoản

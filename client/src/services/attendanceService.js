@@ -183,6 +183,17 @@ export const attendanceService = {
     return response.data; // { scanned, updated }
   },
 
+  // HR/Admin theo dõi bridge và yêu cầu lấy dữ liệu máy chấm công ngay lập tức.
+  getDeviceSyncStatus: async () => {
+    const response = await axiosClient.get('/attendance/device-sync');
+    return response.data;
+  },
+
+  requestDeviceSync: async (deviceId = null) => {
+    const response = await axiosClient.post('/attendance/device-sync', deviceId ? { device_id: deviceId } : {});
+    return response.data;
+  },
+
   // Chốt: tổng hợp công của kỳ lương (feed payroll).
   runSummary: async (salaryPeriodId) => {
     const response = await axiosClient.post('/attendance/summary/run', { salary_period_id: salaryPeriodId });

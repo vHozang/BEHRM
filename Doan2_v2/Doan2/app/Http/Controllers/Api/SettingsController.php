@@ -94,6 +94,7 @@ class SettingsController extends Controller
                 ['key' => 'attendance.standard_days_per_week', 'label' => 'Số ngày làm chuẩn / tuần', 'type' => 'int'],
                 ['key' => 'attendance.weekly_rest_weekday', 'label' => 'Ngày nghỉ hằng tuần (0=CN..6=T7)', 'type' => 'int'],
                 ['key' => 'attendance.late_grace_minutes', 'label' => 'Dung sai đi trễ (phút)', 'type' => 'int'],
+                ['key' => 'attendance.device_upload_delay_minutes', 'label' => 'Thời gian chờ tự động tải dữ liệu máy chấm công (phút)', 'type' => 'int', 'min' => 1, 'max' => 1440],
                 ['key' => 'attendance.half_day_hours', 'label' => 'Ngưỡng nửa công (giờ)', 'type' => 'float'],
                 ['key' => 'overtime.daily_max_hours', 'label' => 'OT tối đa / ngày (Đ.107: ≤4h)', 'type' => 'float'],
                 ['key' => 'overtime.monthly_max_hours', 'label' => 'OT tối đa / tháng (≤40h)', 'type' => 'float'],
@@ -187,6 +188,11 @@ class SettingsController extends Controller
             $value = $this->cast($item['value'] ?? null, $types[$key]);
             if ($value === null) {
                 continue;
+            }
+            if ($key === 'attendance.device_upload_delay_minutes' && ($value < 1 || $value > 1440)) {
+                return $this->validationError([
+                    $key => ['Thời gian tải dữ liệu phải từ 1 đến 1440 phút'],
+                ]);
             }
             HrmConfig::set($key, $value);
             $saved[] = $key;
