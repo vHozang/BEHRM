@@ -147,6 +147,12 @@ export const recruitmentService = {
     });
     return response.data;
   },
+  downloadCv: async (candidateId) => {
+    const response = await axiosClient.get(`/recruitment-candidates/${candidateId}/cv`, {
+      responseType: 'blob'
+    });
+    return response.data;
+  },
   retryAiScore: async (candidateId) => {
     const response = await axiosClient.post(`/recruitment-candidates/${candidateId}/ai-score/retry`);
     return response.data;

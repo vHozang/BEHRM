@@ -150,14 +150,23 @@
 
           <!-- Tài liệu CV -->
           <div class="bg-muted/30 p-4 rounded-xl space-y-3">
-            <h3 class="font-bold text-foreground border-b pb-2">Hồ sơ CV (PDF)</h3>
-            <div class="flex items-center justify-between gap-4">
-              <span v-if="selectedCandidate.cv_path" class="text-sm font-medium text-green-600 truncate">
-                {{ selectedCandidate.cv_original_filename || selectedCandidate.cv_path.split('/').pop() }}
-              </span>
+            <h3 class="font-bold text-foreground border-b pb-2">Hồ sơ CV</h3>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <button
+                v-if="selectedCandidate.cv_path"
+                type="button"
+                class="group flex min-w-0 items-center gap-2 text-left text-sm font-semibold text-primary hover:underline"
+                title="Nhấn để xem CV"
+                @click="openCvPreview"
+              >
+                <svg class="h-4 w-4 shrink-0 transition-transform group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m6 4H9m8 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span class="truncate">{{ cvFilename(selectedCandidate) }}</span>
+              </button>
               <span v-else class="text-sm text-amber-500 font-medium">Chưa có tệp CV nào được tải lên.</span>
               
-              <div class="flex gap-2">
+              <div class="flex shrink-0 gap-2">
                 <input 
                   type="file" 
                   ref="cvFileInput" 
@@ -165,6 +174,9 @@
                   accept=".pdf,.doc,.docx"
                   @change="handleCvUpload"
                 />
+                <BaseButton v-if="selectedCandidate.cv_path" variant="outline" size="sm" @click="openCvPreview">
+                  Xem CV
+                </BaseButton>
                 <BaseButton variant="outline" size="sm" @click="triggerCvUpload">
                   {{ selectedCandidate.cv_path ? 'Thay đổi CV' : 'Tải lên CV' }}
                 </BaseButton>
@@ -256,6 +268,38 @@
       <template #footer>
         <BaseButton variant="outline" @click="showDetailModal = false">Đóng</BaseButton>
         <BaseButton variant="destructive" @click="deleteCandidate(selectedCandidate.id)" class="mr-auto">Xóa hồ sơ</BaseButton>
+      </template>
+    </BaseModal>
+
+    <BaseModal v-model="showCvPreviewModal" :title="`CV · ${cvPreviewName}`" size="xl">
+      <div class="min-h-[55vh]">
+        <div v-if="cvPreviewLoading" class="flex min-h-[55vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+          <span class="h-9 w-9 animate-spin rounded-full border-4 border-primary/20 border-t-primary"></span>
+          <p class="text-sm">Đang tải CV...</p>
+        </div>
+
+        <div v-else-if="cvPreviewError" class="flex min-h-[45vh] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center">
+          <svg class="h-10 w-10 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+          </svg>
+          <p class="max-w-lg text-sm text-muted-foreground">{{ cvPreviewError }}</p>
+        </div>
+
+        <iframe
+          v-else-if="cvPreviewType === 'pdf' && cvPreviewUrl"
+          :src="cvPreviewUrl"
+          :title="`Xem trước ${cvPreviewName}`"
+          class="h-[68vh] w-full rounded-lg border border-border bg-white"
+        ></iframe>
+
+        <div v-show="!cvPreviewLoading && cvPreviewType === 'docx'" class="max-h-[68vh] overflow-auto rounded-lg bg-slate-200 p-2 sm:p-4">
+          <div ref="cvPreviewStyle"></div>
+          <div ref="cvPreviewBody"></div>
+        </div>
+      </div>
+      <template #footer>
+        <BaseButton variant="outline" @click="showCvPreviewModal = false">Đóng</BaseButton>
+        <BaseButton :disabled="!cvPreviewCanDownload" @click="downloadCurrentCv">Tải CV xuống</BaseButton>
       </template>
     </BaseModal>
 
@@ -371,7 +415,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue';
 import BaseButton from '../components/BaseButton.vue';
 import BaseCard from '../components/BaseCard.vue';
 import BaseModal from '../components/BaseModal.vue';
@@ -379,12 +423,24 @@ import BaseInput from '../components/BaseInput.vue';
 import BaseBadge from '../components/BaseBadge.vue';
 import { recruitmentService } from '../services/recruitmentService';
 import { useToast } from '../composables/useToast';
+import { cvFilename, cvPreviewKind } from '../utils/cvPreview';
 
 const toast = useToast();
 
 const candidates = ref([]);
 const positions = ref([]);
 const cvFileInput = ref(null);
+const showCvPreviewModal = ref(false);
+const cvPreviewLoading = ref(false);
+const cvPreviewError = ref('');
+const cvPreviewName = ref('CV ứng viên');
+const cvPreviewType = ref('');
+const cvPreviewUrl = ref('');
+const cvPreviewCanDownload = ref(false);
+const cvPreviewStyle = ref(null);
+const cvPreviewBody = ref(null);
+let cvPreviewBlob = null;
+let cvPreviewRequestId = 0;
 
 const filters = ref({
   search: '',
@@ -593,6 +649,85 @@ const triggerCvUpload = () => {
   }
 };
 
+const clearCvPreview = () => {
+  cvPreviewRequestId += 1;
+  if (cvPreviewUrl.value) URL.revokeObjectURL(cvPreviewUrl.value);
+  cvPreviewUrl.value = '';
+  cvPreviewBlob = null;
+  cvPreviewCanDownload.value = false;
+  cvPreviewType.value = '';
+  cvPreviewError.value = '';
+  if (cvPreviewStyle.value) cvPreviewStyle.value.innerHTML = '';
+  if (cvPreviewBody.value) cvPreviewBody.value.innerHTML = '';
+};
+
+const openCvPreview = async () => {
+  const candidate = selectedCandidate.value;
+  if (!candidate?.id || !candidate.cv_path) return;
+
+  clearCvPreview();
+  const requestId = cvPreviewRequestId;
+  cvPreviewName.value = cvFilename(candidate);
+  cvPreviewType.value = cvPreviewKind(cvPreviewName.value, candidate.cv?.mime_type);
+  cvPreviewLoading.value = true;
+  showCvPreviewModal.value = true;
+
+  try {
+    const blob = await recruitmentService.downloadCv(candidate.id);
+    if (requestId !== cvPreviewRequestId) return;
+    cvPreviewBlob = blob;
+    cvPreviewCanDownload.value = true;
+
+    if (cvPreviewType.value === 'pdf') {
+      const pdfBlob = blob.type === 'application/pdf'
+        ? blob
+        : new Blob([blob], { type: 'application/pdf' });
+      cvPreviewUrl.value = URL.createObjectURL(pdfBlob);
+      return;
+    }
+
+    if (cvPreviewType.value === 'docx') {
+      await nextTick();
+      const { renderAsync } = await import('docx-preview');
+      if (requestId !== cvPreviewRequestId || !cvPreviewBody.value || !cvPreviewStyle.value) return;
+      await renderAsync(await blob.arrayBuffer(), cvPreviewBody.value, cvPreviewStyle.value, {
+        inWrapper: true,
+        ignoreWidth: false,
+        ignoreHeight: false,
+        breakPages: true,
+        ignoreLastRenderedPageBreak: false,
+        experimental: true
+      });
+      return;
+    }
+
+    cvPreviewError.value = 'Định dạng DOC cũ chưa thể xem trực tiếp trên trình duyệt. Bạn có thể tải tệp xuống để mở bằng Microsoft Word hoặc LibreOffice.';
+  } catch (err) {
+    console.error('Error previewing CV:', err);
+    cvPreviewError.value = 'Không thể tải nội dung CV. Vui lòng thử lại hoặc tải tệp xuống.';
+    toast.error('Không thể mở CV ứng viên');
+  } finally {
+    cvPreviewLoading.value = false;
+  }
+};
+
+const downloadCurrentCv = async () => {
+  try {
+    const blob = cvPreviewBlob || await recruitmentService.downloadCv(selectedCandidate.value.id);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = cvPreviewName.value || cvFilename(selectedCandidate.value);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    console.error('Error downloading CV:', err);
+    toast.error('Không thể tải CV ứng viên');
+  }
+};
+
 const handleCvUpload = async (event) => {
   const file = event.target.files[0];
   if (!file) return;
@@ -683,6 +818,12 @@ const getAiScoreBorderClass = (score) => {
   if (score >= 60) return 'border-yellow-500';
   return 'border-red-500';
 };
+
+watch(showCvPreviewModal, (visible) => {
+  if (!visible) clearCvPreview();
+});
+
+onBeforeUnmount(clearCvPreview);
 
 onMounted(async () => {
   await Promise.all([loadPositions(), loadCandidates()]);
