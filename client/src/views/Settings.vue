@@ -25,6 +25,8 @@
               v-model="values[item.key]"
               type="number"
               :step="item.type === 'float' ? '0.01' : '1'"
+              :min="item.min"
+              :max="item.max"
               class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <!-- bool -->
@@ -72,6 +74,9 @@
             </button>
             <p v-if="item.key === 'attendance.enforce_mode'" class="text-xs text-muted-foreground mt-1">
               <code>off</code> = tắt · <code>flag</code> = đánh dấu để xem xét · <code>block</code> = chặn check-in ngoài phạm vi.
+            </p>
+            <p v-if="item.key === 'attendance.device_upload_delay_minutes'" class="text-xs text-muted-foreground mt-1">
+              Mặc định 15 phút. Nút “Đồng bộ ngay” của HR sẽ bỏ qua thời gian chờ cho lượt đồng bộ đó.
             </p>
           </div>
         </div>

@@ -36,6 +36,9 @@ jobs:
           npm run test:recruitment
           npm run build
 
+      - name: Run attendance bridge checks
+        run: npm test --prefix tools/zk-bridge
+
   backend:
     name: Backend checks
     runs-on: ubuntu-latest

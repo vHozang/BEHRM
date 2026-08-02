@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AiAssistantController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AttendanceDeviceController;
+use App\Http\Controllers\Api\AttendanceDeviceSyncController;
 use App\Http\Controllers\Api\AttendanceRegularizationController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
@@ -53,6 +54,8 @@ Route::prefix('v1')->group(function (): void {
 
     // Máy chấm công (vân tay/khuôn mặt/thẻ) — token nội bộ, gọi bởi bridge thiết bị.
     Route::post('/internal/attendance/device-punch', [DeviceAttendanceController::class, 'punch']);
+    Route::get('/internal/attendance/device-control', [AttendanceDeviceSyncController::class, 'control']);
+    Route::post('/internal/attendance/device-sync-status', [AttendanceDeviceSyncController::class, 'report']);
 
     // ─── Internal API ────────────────────────────────────
     Route::post('/internal/recruitment-ai-jobs/process', function (Request $request) {
@@ -226,6 +229,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/attendances/check-in', [AttendanceController::class, 'checkIn']);
         Route::post('/attendances/check-out', [AttendanceController::class, 'checkOut']);
         Route::post('/attendances/{id}/verify', [AttendanceController::class, 'verifyAttendance'])->whereNumber('id');
+        Route::get('/attendance/device-sync', [AttendanceDeviceSyncController::class, 'index']);
+        Route::post('/attendance/device-sync', [AttendanceDeviceSyncController::class, 'requestSync']);
         // Quản lý máy chấm công (đa-tenant device registry).
         Route::get('/attendance-devices', [AttendanceDeviceController::class, 'index']);
         Route::post('/attendance-devices', [AttendanceDeviceController::class, 'store']);

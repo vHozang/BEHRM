@@ -25,6 +25,36 @@
       </button>
     </div>
 
+    <BaseCard v-if="orgLens && syncAccessAvailable" class="border border-sky-500/20 bg-gradient-to-r from-sky-500/10 via-background to-background">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div class="flex items-start gap-3">
+          <div class="w-11 h-11 rounded-xl bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </div>
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <h2 class="font-semibold text-foreground">Đồng bộ máy chấm công</h2>
+              <span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-sky-500/15 text-sky-700 dark:text-sky-300">
+                Tự động sau {{ deviceSync.upload_delay_minutes || 15 }} phút
+              </span>
+            </div>
+            <p class="text-sm text-muted-foreground mt-1">{{ deviceSyncMessage }}</p>
+            <div v-if="deviceSync.devices?.length" class="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
+              <span>{{ deviceSync.devices.length }} máy đang bật</span>
+              <span :class="onlineDeviceCount ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
+                {{ onlineDeviceCount }}/{{ deviceSync.devices.length }} bridge online
+              </span>
+            </div>
+          </div>
+        </div>
+        <BaseButton @click="syncAttendanceDevices" :disabled="syncingDevices || !deviceSync.devices?.length" class="shrink-0">
+          {{ syncingDevices ? 'Đang đồng bộ…' : 'Đồng bộ ngay' }}
+        </BaseButton>
+      </div>
+    </BaseCard>
+
     <template v-if="orgLens">
       <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
         <BaseCard>
@@ -538,6 +568,34 @@ const workModes = [
   { value: 'on_site', label: '🚧 Công trình' },
 ];
 const needsReviewOnly = ref(false);
+const syncAccessAvailable = ref(false);
+const syncingDevices = ref(false);
+const deviceSync = ref({ upload_delay_minutes: 15, devices: [] });
+let syncPollTimer = null;
+let syncPollAttempts = 0;
+
+const onlineDeviceCount = computed(() => (deviceSync.value.devices || []).filter((device) => device.online).length);
+const syncInProgress = computed(() => (deviceSync.value.devices || []).some((device) =>
+  ['PENDING', 'RUNNING'].includes(device.sync_request?.status)
+));
+const deviceSyncMessage = computed(() => {
+  const devices = deviceSync.value.devices || [];
+  if (!devices.length) return 'Chưa có máy chấm công đang hoạt động.';
+
+  const running = devices.filter((device) => device.sync_request?.status === 'RUNNING').length;
+  const pending = devices.filter((device) => device.sync_request?.status === 'PENDING').length;
+  if (running) return `Bridge đang đọc dữ liệu từ ${running} máy.`;
+  if (pending) return `Đã gửi lệnh, đang chờ ${pending} bridge nhận yêu cầu.`;
+
+  const latest = devices
+    .map((device) => device.last_sync)
+    .filter((sync) => sync?.completed_at)
+    .sort((a, b) => new Date(b.completed_at) - new Date(a.completed_at))[0];
+  if (latest?.status === 'FAILED') return `Lần đồng bộ gần nhất thất bại: ${latest.error || 'không đọc được dữ liệu máy'}`;
+  if (latest) return `Đồng bộ gần nhất ${formatDateTime(latest.completed_at)}, nhận ${latest.processed || 0} lượt chấm công mới.`;
+
+  return 'Dữ liệu mới sẽ tự tải sau thời gian chờ; HR có thể lấy ngay khi cần.';
+});
 
 const showEditModal = ref(false);
 const editingRecord = ref(null);
@@ -885,6 +943,66 @@ const firstError = (err, fallback) => {
   return (Array.isArray(first) ? first[0] : first) || err.response?.data?.error || err.response?.data?.message || fallback;
 };
 
+const formatDateTime = (value) => {
+  if (!value) return '—';
+  try { return new Date(value).toLocaleString('vi-VN'); }
+  catch { return value; }
+};
+
+const loadDeviceSyncStatus = async (silent = true) => {
+  try {
+    deviceSync.value = await attendanceService.getDeviceSyncStatus();
+    syncAccessAvailable.value = true;
+    return true;
+  } catch (err) {
+    if (err.response?.status === 403) {
+      syncAccessAvailable.value = false;
+      return false;
+    }
+    if (!silent) toast.error(firstError(err, 'Không tải được trạng thái máy chấm công'));
+    return false;
+  }
+};
+
+const scheduleDeviceSyncPoll = () => {
+  if (syncPollTimer) clearTimeout(syncPollTimer);
+  syncPollTimer = setTimeout(async () => {
+    syncPollAttempts += 1;
+    const loaded = await loadDeviceSyncStatus(false);
+    if (loaded && syncInProgress.value && syncPollAttempts < 45) {
+      scheduleDeviceSyncPoll();
+      return;
+    }
+
+    syncingDevices.value = false;
+    if (loaded) {
+      if (syncInProgress.value) {
+        toast.error('Bridge chưa phản hồi sau 90 giây. Lệnh vẫn được giữ và sẽ chạy khi laptop online.');
+        return;
+      }
+      const failed = (deviceSync.value.devices || []).some((device) => device.sync_request?.status === 'FAILED');
+      if (failed) toast.error('Có máy chấm công đồng bộ thất bại; hãy kiểm tra trạng thái bridge.');
+      else toast.success('Đã đồng bộ xong dữ liệu máy chấm công.');
+      await loadData();
+    }
+  }, 2000);
+};
+
+const syncAttendanceDevices = async () => {
+  if (syncingDevices.value) return;
+  syncingDevices.value = true;
+  syncPollAttempts = 0;
+  try {
+    deviceSync.value = await attendanceService.requestDeviceSync();
+    syncAccessAvailable.value = true;
+    toast.success('Đã gửi lệnh đồng bộ tới bridge máy chấm công.');
+    scheduleDeviceSyncPoll();
+  } catch (err) {
+    syncingDevices.value = false;
+    toast.error(firstError(err, 'Không gửi được lệnh đồng bộ'));
+  }
+};
+
 const handleSelfCheckIn = async () => {
   if (clockProcessing.value) return;
   clockProcessing.value = true;
@@ -1075,10 +1193,12 @@ onMounted(() => {
   const pad = (n) => String(n).padStart(2, '0');
   filters.value.startDate = `${y}-${pad(m + 1)}-01`;
   filters.value.endDate = `${y}-${pad(m + 1)}-${pad(new Date(y, m + 1, 0).getDate())}`;
+  if (orgLens.value) loadDeviceSyncStatus();
   loadData();
 });
 
 onUnmounted(() => {
   if (clockInterval) clearInterval(clockInterval);
+  if (syncPollTimer) clearTimeout(syncPollTimer);
 });
 </script>

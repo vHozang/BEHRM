@@ -177,6 +177,9 @@ return [
         'weekly_rest_weekday' => 0,
         // Dung sai đi trễ (phút) trước khi tính LATE.
         'late_grace_minutes' => 5,
+        // Bridge giữ punch mới trong khoảng này trước khi tự động tải lên HRM.
+        // HR có thể dùng "Đồng bộ ngay" để bỏ qua thời gian chờ cho một lượt.
+        'device_upload_delay_minutes' => env('HRM_ATT_DEVICE_UPLOAD_DELAY_MINUTES', 15),
         // Ngưỡng giờ để tính nửa công.
         'half_day_hours' => 4,
 

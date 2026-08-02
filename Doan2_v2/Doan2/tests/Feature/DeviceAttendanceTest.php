@@ -42,6 +42,29 @@ class DeviceAttendanceTest extends TestCase
         $this->assertSame('17:00:00', substr((string) $attendance->check_out_time, 0, 8));
     }
 
+    public function test_utc_device_timestamp_is_stored_in_tenant_timezone(): void
+    {
+        config(['hrm.internal_service_token' => 'test-internal-token']);
+
+        $employeeId = DB::table('employees')->insertGetId([
+            'employee_code' => 'ZK002',
+            'full_name' => 'ZK Timezone Employee',
+            'status' => 'ACTIVE',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->punch($employeeId, '2026-08-02T04:20:59.000Z')
+            ->assertOk()
+            ->assertJsonPath('data.processed', 1);
+
+        $attendance = DB::table('attendances')->where('employee_id', $employeeId)->first();
+        $this->assertSame('2026-08-02', (string) $attendance->work_date);
+        $this->assertSame('11:20:59', substr((string) $attendance->check_in_time, 0, 8));
+    }
+
     private function punch(int $employeeId, string $timestamp)
     {
         return $this->withHeader('x-internal-token', 'test-internal-token')
