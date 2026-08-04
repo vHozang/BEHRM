@@ -80,13 +80,13 @@ class ShiftQuickLoginSeeder extends Seeder
 
                 DB::table('employee_roles')->where('employee_id', $employeeId)
                     ->where('role_id', '!=', $employeeRoleId)->update([
-                        'is_active' => false,
+                        'is_active' => DB::raw('false'),
                         'updated_at' => now(),
                     ]);
                 DB::table('employee_roles')->updateOrInsert(
                     ['tenant_id' => $tenantId, 'employee_id' => $employeeId, 'role_id' => $employeeRoleId],
                     [
-                        'is_active' => true,
+                        'is_active' => DB::raw('true'),
                         'effective_date' => now()->toDateString(),
                         'expiry_date' => null,
                         'updated_at' => now(),
@@ -105,7 +105,7 @@ class ShiftQuickLoginSeeder extends Seeder
                     'shift_type_id' => $shift->id,
                     'effective_date' => now()->toDateString(),
                     'expiry_date' => null,
-                    'is_permanent' => true,
+                    'is_permanent' => DB::raw('true'),
                     'status' => 'ACTIVE',
                     'legal_entity_id' => $legalEntityId,
                     'updated_at' => now(),

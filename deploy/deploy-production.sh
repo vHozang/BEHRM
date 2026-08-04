@@ -47,6 +47,14 @@ set_env_value AUTORECRUIT_FALLBACK_URLS "${AUTORECRUIT_FALLBACK_URLS:-http://100
 set_env_value AUTORECRUIT_CONNECT_TIMEOUT "${AUTORECRUIT_CONNECT_TIMEOUT:-5}"
 set_env_value AUTORECRUIT_TIMEOUT "${AUTORECRUIT_TIMEOUT:-120}"
 
+background_services_stopped=0
+restore_background_services() {
+  if [ "$background_services_stopped" -eq 1 ]; then
+    docker compose up -d worker scheduler >/dev/null 2>&1 || true
+  fi
+}
+trap restore_background_services EXIT
+
 if [ ! -s "$FRONTEND_DIR/index.html" ]; then
   echo "Missing frontend build at $FRONTEND_DIR/index.html" >&2
   exit 1
@@ -59,6 +67,7 @@ docker compose run --rm --no-deps --user root php composer install --no-dev --no
 
 # Prevent workers from reading a new release before its migrations finish.
 docker compose stop worker scheduler >/dev/null 2>&1 || true
+background_services_stopped=1
 docker compose up -d php nginx
 docker compose exec -T php php artisan migrate --force
 
@@ -82,6 +91,7 @@ docker compose exec -T php php artisan db:seed --class=ShiftQuickLoginSeeder --f
 docker compose exec -T php php artisan optimize:clear
 docker compose exec -T php php artisan config:cache
 docker compose up -d --remove-orphans
+background_services_stopped=0
 
 # Nginx resolves the PHP service at startup, so reload it after PHP recreation.
 docker compose restart nginx >/dev/null
