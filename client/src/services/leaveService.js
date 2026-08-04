@@ -108,5 +108,10 @@ export const leaveService = {
   cancel: async (id) => {
     const response = await axiosClient.post(`/leave-requests/${id}/cancel`);
     return normalizeLeaveRequest(response.data);
+  },
+
+  runAccrual: async (year) => {
+    const response = await axiosClient.post('/leave/accrual/run', { year });
+    return response.data;
   }
 };

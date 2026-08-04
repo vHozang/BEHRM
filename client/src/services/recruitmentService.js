@@ -173,6 +173,10 @@ export const recruitmentService = {
     const response = await axiosClient.patch(`/recruitment-candidates/${id}/manager-review`, payload);
     return normalizeCandidate(response.data);
   },
+  getAiFeedbackStats: async () => {
+    const response = await axiosClient.get('/recruitment-ai/feedback-stats');
+    return response.data;
+  },
 
   // --- Interviews ---
   getAllInterviews: async (params) => {

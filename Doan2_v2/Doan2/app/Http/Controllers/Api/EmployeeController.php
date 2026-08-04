@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\LegalEntity;
 use App\Repositories\OrganizationChartRepository;
+use App\Support\AccessControl;
 use App\Support\EmployeeStatus;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -816,14 +817,19 @@ class EmployeeController extends Controller
     /**
      * GET /employees/{id}/certificates
      */
-    public function certificates(int $id): JsonResponse
+    public function certificates(Request $request, int $id): JsonResponse
     {
+        if (! $this->canManageEmployeeRecords($request)) {
+            return $this->forbidden();
+        }
+
         if (! Employee::where('id', $id)->exists()) {
             return $this->notFound();
         }
 
         $certs = DB::table('certificates')
             ->where('employee_id', $id)
+            ->where('tenant_id', TenantContext::id())
             ->orderByDesc('id')
             ->get();
 
@@ -835,14 +841,38 @@ class EmployeeController extends Controller
      */
     public function storeCertificate(Request $request, int $id): JsonResponse
     {
+        if (! $this->canManageEmployeeRecords($request)) {
+            return $this->forbidden();
+        }
+
         if (! Employee::where('id', $id)->exists()) {
             return $this->notFound();
         }
 
-        $data = $request->all();
-        $data['employee_id'] = $id;
-        $data['created_at'] = now();
-        $data['updated_at'] = now();
+        $validator = Validator::make($request->all(), [
+            'certificate_name' => ['required', 'string', 'max:255'],
+            'certificate_type_id' => ['nullable', 'integer'],
+            'issued_by' => ['nullable', 'string', 'max:255'],
+            'issued_date' => ['nullable', 'date'],
+            'expiry_date' => ['nullable', 'date', 'after_or_equal:issued_date'],
+            'certificate_number' => ['nullable', 'string', 'max:255'],
+            'score' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'file_url' => ['nullable', 'url', 'max:2000'],
+        ]);
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
+        }
+
+        $data = $validator->validated();
+        if (! TenantContext::ownsRow('certificate_types', $data['certificate_type_id'] ?? null)) {
+            return $this->validationError(['certificate_type_id' => ['Loại chứng chỉ không hợp lệ']]);
+        }
+
+        $data = TenantContext::stamp(array_merge($data, [
+            'employee_id' => $id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]));
 
         $columns = Schema::getColumnListing('certificates');
         $data = collect($data)->only($columns)->toArray();
@@ -852,25 +882,36 @@ class EmployeeController extends Controller
         return response()->json([
             'status' => 201,
             'message' => 'Chứng chỉ đã được thêm',
-            'data' => DB::table('certificates')->where('id', $newId)->first(),
+            'data' => DB::table('certificates')
+                ->where('id', $newId)
+                ->where('tenant_id', TenantContext::id())
+                ->first(),
         ], 201);
     }
 
     /**
      * DELETE /employees/{id}/certificates/{certId} — Xóa chứng chỉ.
      */
-    public function destroyCertificate(int $id, int $certId): JsonResponse
+    public function destroyCertificate(Request $request, int $id, int $certId): JsonResponse
     {
+        if (! $this->canManageEmployeeRecords($request)) {
+            return $this->forbidden();
+        }
+
         $cert = DB::table('certificates')
             ->where('id', $certId)
             ->where('employee_id', $id)
+            ->where('tenant_id', TenantContext::id())
             ->first();
 
         if (! $cert) {
             return $this->notFound('Chứng chỉ không tồn tại');
         }
 
-        DB::table('certificates')->where('id', $certId)->delete();
+        DB::table('certificates')
+            ->where('id', $certId)
+            ->where('tenant_id', TenantContext::id())
+            ->delete();
 
         return $this->ok(['id' => $certId], 'Chứng chỉ đã được xóa');
     }
@@ -880,10 +921,12 @@ class EmployeeController extends Controller
      */
     public function importProbation(Request $request): JsonResponse
     {
+        if (! $this->canManageEmployeeRecords($request)) {
+            return $this->forbidden();
+        }
+
         $validator = Validator::make($request->all(), [
-            'employees' => 'required|array|min:1',
-            'employees.*.full_name' => 'required|string',
-            'employees.*.company_email' => 'required|email',
+            'employees' => 'required|array|min:1|max:2000',
         ]);
 
         if ($validator->fails()) {
@@ -894,26 +937,65 @@ class EmployeeController extends Controller
         $errors = [];
 
         foreach ($request->input('employees', []) as $i => $empData) {
-            if (Employee::where('company_email', $empData['company_email'])->exists()) {
-                $errors[] = "Dòng {$i}: Email {$empData['company_email']} đã tồn tại";
+            $line = $i + 2;
+            $rowValidator = Validator::make((array) $empData, [
+                'full_name' => ['required', 'string', 'max:255'],
+                'company_email' => ['required', 'email', 'max:255'],
+                'employee_code' => ['nullable', 'string', 'max:255'],
+            ]);
+            if ($rowValidator->fails()) {
+                $errors[] = "Dòng {$line}: ".collect($rowValidator->errors()->all())->join('; ');
 
                 continue;
             }
 
-            Employee::create([
-                'full_name' => $empData['full_name'],
-                'company_email' => $empData['company_email'],
-                'employee_code' => $empData['employee_code'] ?? null,
-                'status' => 'PROBATION',
-                'password_hash' => Hash::make($empData['employee_code'] ?? 'password'),
-            ]);
-            $imported++;
+            $row = $rowValidator->validated();
+            if (Employee::where('company_email', $row['company_email'])->exists()) {
+                $errors[] = "Dòng {$line}: Email {$row['company_email']} đã tồn tại";
+
+                continue;
+            }
+            if (! empty($row['employee_code']) && Employee::where('employee_code', $row['employee_code'])->exists()) {
+                $errors[] = "Dòng {$line}: Mã nhân viên {$row['employee_code']} đã tồn tại";
+
+                continue;
+            }
+
+            try {
+                Employee::create([
+                    'full_name' => $row['full_name'],
+                    'company_email' => $row['company_email'],
+                    'employee_code' => $row['employee_code'] ?? null,
+                    'status' => 'PROBATION',
+                    'password_hash' => Hash::make($row['employee_code'] ?? 'password'),
+                ]);
+                $imported++;
+            } catch (\Throwable $exception) {
+                $errors[] = "Dòng {$line}: Không thể tạo nhân viên thử việc";
+            }
         }
 
         return $this->ok([
             'imported' => $imported,
             'errors' => $errors,
         ], "Đã import {$imported} nhân viên thử việc");
+    }
+
+    private function canManageEmployeeRecords(Request $request): bool
+    {
+        return AccessControl::hasAnyRole(
+            (int) $request->attributes->get('auth_employee_id'),
+            ['ADMIN', 'TENANT_ADMIN', 'HR']
+        );
+    }
+
+    private function forbidden(): JsonResponse
+    {
+        return response()->json([
+            'status' => 403,
+            'message' => 'Bạn không có quyền quản lý hồ sơ nhân viên',
+            'data' => null,
+        ], 403);
     }
 
     // ═══════════════════════════════════════════════════════

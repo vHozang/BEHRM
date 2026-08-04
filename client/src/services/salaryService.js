@@ -83,6 +83,10 @@ export const salaryService = {
     const response = await axiosClient.post('/payroll/run', { salary_period_id: periodId });
     return response.data;
   },
+  runBonus: async (payload) => {
+    const response = await axiosClient.post('/payroll/bonus-run', payload);
+    return response.data;
+  },
   // Poll tiến độ tính lương chạy nền (queue). Trả { run_status: PROCESSING|DONE|FAILED|IDLE, processed, total, error }.
   runStatus: async (periodId) => {
     const response = await axiosClient.get('/payroll/run-status', { params: { salary_period_id: periodId } });

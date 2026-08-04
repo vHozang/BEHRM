@@ -152,8 +152,8 @@ Route::prefix('v1')->group(function (): void {
         // ─── Settings (Generic) ──────────────────────────
         Route::get('/settings/general', [GenericResourceController::class, 'index'])->defaults('resource', 'settings');
         Route::put('/settings/general', [GenericResourceController::class, 'store'])->defaults('resource', 'settings');
-        Route::get('/settings/notifications', [GenericResourceController::class, 'index'])->defaults('resource', 'settings');
-        Route::put('/settings/notifications', [GenericResourceController::class, 'store'])->defaults('resource', 'settings');
+        Route::get('/settings/notifications', [SettingsController::class, 'notificationTemplates']);
+        Route::put('/settings/notifications', [SettingsController::class, 'saveNotificationTemplates']);
 
         // ═══════════════════════════════════════════════════
         // NHÓM B: DEDICATED CONTROLLERS (Nghiệp vụ cốt lõi)

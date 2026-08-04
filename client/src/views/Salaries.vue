@@ -47,7 +47,15 @@
           </span>
           <span class="ml-2 text-xs text-muted-foreground">{{ selectedPeriod.start_date }} → {{ selectedPeriod.end_date }}</span>
         </div>
-        <div v-if="isAdmin" class="flex gap-2 lg:col-span-2 lg:justify-end">
+        <div v-if="isAdmin" class="flex flex-wrap gap-2 lg:col-span-2 lg:justify-end">
+          <BaseButton
+            variant="outline"
+            :disabled="!selectedPeriodId || periodLocked"
+            data-testid="button-run-bonus"
+            @click="openBonusModal"
+          >
+            Tạo thưởng đợt
+          </BaseButton>
           <BaseButton
             :disabled="!selectedPeriodId || periodLocked || runLoading"
             @click="runPayroll"
@@ -220,6 +228,30 @@
     </BaseCard>
 
     <!-- ═══ Modal phiếu lương chi tiết ═══ -->
+    <BaseModal v-model="bonusOpen" title="Tạo thưởng đợt">
+      <div class="space-y-4">
+        <div class="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+          <p class="text-muted-foreground">Kỳ lương đang chọn</p>
+          <p class="font-semibold">{{ selectedPeriod?.period_code || '—' }} · {{ periodStatusVN(selectedPeriod?.status) }}</p>
+        </div>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label class="text-sm font-medium">Từ ngày<input v-model="bonusForm.window_start" type="date" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2" /></label>
+          <label class="text-sm font-medium">Đến ngày<input v-model="bonusForm.window_end" type="date" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2" /></label>
+        </div>
+        <label class="block text-sm font-medium">Tỷ lệ thưởng (%)<input v-model.number="bonusForm.rate_percent" type="number" min="1" max="300" step="1" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2" /></label>
+        <p class="text-xs text-muted-foreground">Mặc định 50%. Chạy lại cùng khoảng thời gian sẽ thay batch cũ, không nhân đôi.</p>
+        <div v-if="bonusResult" class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <p class="font-semibold">Đã tạo thưởng cho {{ bonusResult.employees || 0 }} nhân viên</p>
+          <p class="mt-1">Tổng thưởng: <strong>{{ formatMoney(bonusResult.total) }}</strong></p>
+          <p class="mt-2 text-xs">{{ bonusResult.note || 'Hãy chạy lại tính lương để cập nhật bảng lương.' }}</p>
+        </div>
+      </div>
+      <template #footer>
+        <BaseButton variant="outline" :disabled="bonusLoading" @click="bonusOpen = false">Đóng</BaseButton>
+        <BaseButton :disabled="bonusLoading || periodLocked" @click="runBonus">{{ bonusLoading ? 'Đang tạo...' : 'Tạo thưởng đợt' }}</BaseButton>
+      </template>
+    </BaseModal>
+
     <BaseModal v-model="payslipOpen" :title="`Phiếu lương — ${payslip?.salary_detail?.employee?.full_name || ''}`" size="lg">
       <BaseSkeleton v-if="payslipLoading" type="block" />
       <div v-else-if="payslip" class="space-y-5">
@@ -345,6 +377,10 @@ const history = ref([]);        // NV: chi tiết lương của mình qua các k
 const loading = ref(false);
 const runLoading = ref(false);
 const runProgress = ref('');
+const bonusOpen = ref(false);
+const bonusLoading = ref(false);
+const bonusResult = ref(null);
+const bonusForm = ref({ window_start: '', window_end: '', rate_percent: 50 });
 
 const payslipOpen = ref(false);
 const payslipLoading = ref(false);
@@ -489,6 +525,35 @@ const loadHistory = async () => {
 };
 
 // ── Actions ──
+const openBonusModal = () => {
+  if (!selectedPeriod.value || periodLocked.value) return;
+  bonusResult.value = null;
+  bonusForm.value = {
+    window_start: String(selectedPeriod.value.start_date || '').slice(0, 10),
+    window_end: String(selectedPeriod.value.end_date || '').slice(0, 10),
+    rate_percent: 50
+  };
+  bonusOpen.value = true;
+};
+
+const runBonus = async () => {
+  if (!selectedPeriodId.value || periodLocked.value || bonusLoading.value) return;
+  if (!bonusForm.value.window_start || !bonusForm.value.window_end) return notificationStore.addError('Vui lòng chọn đủ khoảng thời gian thưởng');
+  if (Number(bonusForm.value.rate_percent) < 1 || Number(bonusForm.value.rate_percent) > 300) return notificationStore.addError('Tỷ lệ thưởng phải từ 1% đến 300%');
+  bonusLoading.value = true;
+  try {
+    bonusResult.value = await salaryService.runBonus({
+      salary_period_id: Number(selectedPeriodId.value),
+      ...bonusForm.value
+    });
+    notificationStore.addSuccess(`Đã tạo thưởng cho ${bonusResult.value?.employees || 0} nhân viên. Hãy chạy lại tính lương.`);
+  } catch (err) {
+    notificationStore.addError(err?.response?.data?.message || 'Không thể tạo thưởng đợt');
+  } finally {
+    bonusLoading.value = false;
+  }
+};
+
 const runPayroll = async () => {
   if (!selectedPeriodId.value || periodLocked.value) return;
   const periodId = Number(selectedPeriodId.value);

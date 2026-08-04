@@ -7,6 +7,7 @@ use App\Models\LegalEntity;
 use App\Models\SalaryDetail;
 use App\Models\SalaryPeriod;
 use App\Services\PayrollRunService;
+use App\Support\AccessControl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -176,6 +177,17 @@ class PayrollController extends Controller
      */
     public function bonusRun(Request $request): JsonResponse
     {
+        if (! AccessControl::hasAnyRole(
+            (int) $request->attributes->get('auth_employee_id'),
+            ['ADMIN', 'TENANT_ADMIN', 'ACCOUNTANT']
+        )) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Chỉ Kế toán hoặc Admin được chạy thưởng đợt',
+                'data' => null,
+            ], 403);
+        }
+
         $v = Validator::make($request->all(), [
             'salary_period_id' => 'required|integer|exists:salary_periods,id',
             'window_start' => 'required|date',

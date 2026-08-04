@@ -15,6 +15,24 @@ export const settingsService = {
     return response.data;
   },
 
+  getAutoRecruitHealth: async () => {
+    const response = await axiosClient.get('/settings/integrations/autorecruit/health');
+    return response.data;
+  },
+
+  getNotificationTemplates: async () => {
+    const response = await axiosClient.get('/settings/notifications');
+    return Array.isArray(response.data) ? response.data : (response.data?.items || []);
+  },
+
+  saveNotificationTemplates: async (items, deletedIds = []) => {
+    const response = await axiosClient.put('/settings/notifications', {
+      items,
+      deleted_ids: deletedIds
+    });
+    return Array.isArray(response.data) ? response.data : (response.data?.items || []);
+  },
+
   // Flat { key: value } map of all effective settings — for components that need
   // a few values (e.g. dependent deduction, contract thresholds). Returns {} on error.
   getEffectiveMap: async () => {

@@ -202,10 +202,106 @@ class RoleJourneyTest extends TestCase
             ->assertJsonPath('data.social_insurance.social_insurance_number', 'SI-SECRET');
     }
 
+    public function test_management_ui_endpoints_enforce_roles_tenants_and_idempotency(): void
+    {
+        DB::table('tenants')->insert([
+            'id' => 2, 'name' => 'Second tenant', 'code' => 'ROLE-TEST-2',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('legal_entities')->insert([
+            'id' => 2, 'tenant_id' => 2, 'name' => 'Second entity', 'code' => 'ROLE-TEST-2',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $admin = $this->actor('admin-ui', null, true);
+        $otherAdmin = $this->actor('admin-ui-2', null, true, 2);
+        $hr = $this->actor('hr', ['hr', 'time', 'recruitment']);
+        $manager = $this->actor('manager', ['time']);
+        $accountant = $this->actor('accountant', ['payroll']);
+        $target = $this->actor('certificate-target');
+
+        $template = [
+            'notification_type' => 'candidate_applied',
+            'recipients' => 'HR',
+            'template_subject' => 'Có ứng viên mới',
+            'template_body' => 'Ứng viên {{candidate_name}} vừa nộp hồ sơ.',
+            'status' => true,
+        ];
+        $this->withToken($admin['token'])->putJson('/api/v1/settings/notifications', ['items' => [$template]])
+            ->assertOk()->assertJsonPath('data.items.0.notification_type', 'candidate_applied');
+        $this->withToken($otherAdmin['token'])->getJson('/api/v1/settings/notifications')
+            ->assertOk()->assertJsonCount(0, 'data.items');
+        $this->withToken($hr['token'])->getJson('/api/v1/settings/notifications')->assertForbidden();
+
+        $probationEmail = 'probation.'.Str::lower(Str::random(8)).'@example.test';
+        $this->withToken($hr['token'])->postJson('/api/v1/employees/import-probation', [
+            'employees' => [
+                ['employee_code' => 'TV'.Str::upper(Str::random(6)), 'full_name' => 'Valid Probation', 'company_email' => $probationEmail],
+                ['employee_code' => 'TV'.Str::upper(Str::random(6)), 'full_name' => 'Missing Email'],
+            ],
+        ])->assertOk()
+            ->assertJsonPath('data.imported', 1)
+            ->assertJsonCount(1, 'data.errors');
+        $this->withToken($manager['token'])->postJson('/api/v1/employees/import-probation', [
+            'employees' => [['full_name' => 'Blocked', 'company_email' => 'blocked@example.test']],
+        ])->assertForbidden();
+
+        $certificateId = $this->withToken($hr['token'])->postJson('/api/v1/employees/'.$target['id'].'/certificates', [
+            'certificate_name' => 'AWS Developer',
+            'issued_by' => 'Amazon Web Services',
+            'issued_date' => '2026-01-01',
+            'expiry_date' => '2028-01-01',
+            'certificate_number' => 'AWS-QA-1',
+            'score' => 90,
+            'file_url' => 'https://example.test/aws-certificate',
+        ])->assertCreated()->json('data.id');
+        $this->withToken($hr['token'])->getJson('/api/v1/employees/'.$target['id'].'/certificates')
+            ->assertOk()->assertJsonPath('data.0.id', $certificateId);
+        $this->withToken($manager['token'])->deleteJson('/api/v1/employees/'.$target['id'].'/certificates/'.$certificateId)
+            ->assertForbidden();
+        $this->withToken($hr['token'])->deleteJson('/api/v1/employees/'.$target['id'].'/certificates/'.$certificateId)
+            ->assertOk();
+
+        Http::fake([
+            '*/feedback/stats' => Http::response(['total_feedbacks' => 3, 'distribution' => ['aligned_pct' => 66.7]]),
+            '*/feedback/adjustments' => Http::response(['total_feedbacks' => 3, 'adjustments' => []]),
+        ]);
+        $this->withToken($hr['token'])->getJson('/api/v1/recruitment-ai/feedback-stats')->assertOk();
+        $this->withToken($manager['token'])->getJson('/api/v1/recruitment-ai/feedback-stats')->assertForbidden();
+
+        DB::table('employees')->where('id', $target['id'])->update([
+            'base_salary' => 12000000,
+            'hire_date' => '2025-01-01',
+        ]);
+        $periodId = DB::table('salary_periods')->insertGetId([
+            'period_code' => 'QA-BONUS-2026', 'period_name' => 'QA Bonus', 'period_type' => 'MONTHLY',
+            'start_date' => '2026-06-01', 'end_date' => '2026-06-30', 'status' => 'OPEN',
+            'tenant_id' => 1, 'legal_entity_id' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $bonusPayload = [
+            'salary_period_id' => $periodId,
+            'window_start' => '2026-01-01',
+            'window_end' => '2026-06-30',
+            'rate_percent' => 50,
+        ];
+        $this->withToken($hr['token'])->postJson('/api/v1/payroll/bonus-run', $bonusPayload)->assertForbidden();
+        $this->withToken($accountant['token'])->postJson('/api/v1/payroll/bonus-run', $bonusPayload)
+            ->assertOk()->assertJsonPath('data.batch', 'BONUS-20260101-20260630');
+        $firstBatchCount = DB::table('payroll_adjustments')->where('paid_period_id', $periodId)->count();
+        $this->withToken($accountant['token'])->postJson('/api/v1/payroll/bonus-run', $bonusPayload)->assertOk();
+        $this->assertSame($firstBatchCount, DB::table('payroll_adjustments')->where('paid_period_id', $periodId)->count());
+        DB::table('salary_periods')->where('id', $periodId)->update(['status' => 'LOCKED']);
+        $this->withToken($accountant['token'])->postJson('/api/v1/payroll/bonus-run', $bonusPayload)->assertStatus(422);
+
+        $this->withToken($hr['token'])->postJson('/api/v1/leave/accrual/run', ['year' => 2026])
+            ->assertOk()->assertJsonPath('data.year', 2026);
+        $this->withToken($manager['token'])->postJson('/api/v1/leave/accrual/run', ['year' => 2026])->assertForbidden();
+    }
+
     /**
      * @return array{id:int, code:string, token:string}
      */
-    private function actor(string $name, ?array $modules = null, bool $admin = false): array
+    private function actor(string $name, ?array $modules = null, bool $admin = false, int $tenantId = 1): array
     {
         $employeeId = DB::table('employees')->insertGetId([
             'employee_code' => 'QA'.strtoupper(substr($name, 0, 6)).Str::upper(Str::random(4)),
@@ -213,8 +309,8 @@ class RoleJourneyTest extends TestCase
             'company_email' => $name.'.'.Str::lower(Str::random(6)).'@example.test',
             'status' => 'ACTIVE',
             'is_super_admin' => false,
-            'tenant_id' => 1,
-            'legal_entity_id' => 1,
+            'tenant_id' => $tenantId,
+            'legal_entity_id' => $tenantId,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -225,7 +321,7 @@ class RoleJourneyTest extends TestCase
                 'role_name' => Str::headline($name),
                 'is_system_role' => true,
                 'meta' => json_encode($admin ? ['is_admin' => true] : ['modules' => $modules]),
-                'tenant_id' => 1,
+                'tenant_id' => $tenantId,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -233,7 +329,7 @@ class RoleJourneyTest extends TestCase
                 'employee_id' => $employeeId,
                 'role_id' => $roleId,
                 'is_active' => true,
-                'tenant_id' => 1,
+                'tenant_id' => $tenantId,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -244,7 +340,7 @@ class RoleJourneyTest extends TestCase
             'employee_id' => $employeeId,
             'token_hash' => hash('sha256', $token),
             'expires_at' => now()->addHour(),
-            'tenant_id' => 1,
+            'tenant_id' => $tenantId,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

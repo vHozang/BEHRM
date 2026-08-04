@@ -10,6 +10,7 @@ use App\Services\AiFeedbackService;
 use App\Services\AutoRecruitScreeningService;
 use App\Services\GoogleMeetService;
 use App\Services\RecruitmentMailService;
+use App\Support\AccessControl;
 use App\Support\TenantContext;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -1195,8 +1196,19 @@ class RecruitmentController extends Controller
     // ── Response Helpers ─────────────────────────────────
 
     /** GET /recruitment-ai/feedback-stats — Thống kê feedback AI. */
-    public function aiFeedbackStats(): JsonResponse
+    public function aiFeedbackStats(Request $request): JsonResponse
     {
+        if (! AccessControl::hasAnyRole(
+            (int) $request->attributes->get('auth_employee_id'),
+            ['ADMIN', 'TENANT_ADMIN', 'HR']
+        )) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Chỉ HR hoặc Admin được xem thống kê hiệu chuẩn AI',
+                'data' => null,
+            ], 403);
+        }
+
         $service = new AiFeedbackService;
         $stats = $service->getStats();
         $adjustments = $service->getAdjustments();

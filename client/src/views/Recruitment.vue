@@ -12,7 +12,7 @@
     </div>
 
     <!-- Filters & Summary -->
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
       <!-- Search & Filters -->
       <BaseCard class="lg:col-span-3">
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -58,6 +58,22 @@
           </div>
         </div>
       </BaseCard>
+
+      <button type="button" class="text-left" @click="showAiFeedbackModal = true">
+        <BaseCard class="h-full border-sky-200 bg-gradient-to-br from-sky-50 to-cyan-50 transition hover:-translate-y-0.5 hover:shadow-md">
+          <div class="flex h-full items-center gap-3">
+            <div class="rounded-full bg-sky-100 p-3 text-sky-700">◎</div>
+            <div class="min-w-0">
+              <h3 class="text-sm font-semibold text-foreground">Độ khách quan AI</h3>
+              <p v-if="aiFeedbackLoading" class="mt-1 text-sm text-muted-foreground">Đang tải...</p>
+              <template v-else>
+                <p class="text-2xl font-bold text-sky-700">{{ aiAlignedPercent }}</p>
+                <p class="truncate text-xs text-muted-foreground">{{ aiFeedbackTotal }} feedback · lệch {{ aiAverageDelta }}</p>
+              </template>
+            </div>
+          </div>
+        </BaseCard>
+      </button>
     </div>
 
     <!-- Kanban Board Layout -->
@@ -462,6 +478,64 @@
         <BaseButton variant="destructive" :disabled="actionLoading" @click="submitRejectCandidate">Từ chối và gửi email</BaseButton>
       </template>
     </BaseModal>
+
+    <BaseModal v-model="showAiFeedbackModal" title="Độ khách quan của AI Resume" size="lg">
+      <div v-if="aiFeedbackLoading" class="py-10 text-center text-muted-foreground">Đang tải thống kê hiệu chuẩn AI...</div>
+      <div v-else-if="aiFeedbackError" class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+        {{ aiFeedbackError }}. Việc quản lý ứng viên vẫn hoạt động bình thường.
+      </div>
+      <div v-else-if="!aiFeedbackStats" class="py-10 text-center text-muted-foreground">Chưa có dữ liệu feedback từ AI Resume.</div>
+      <div v-else class="space-y-6">
+        <div class="grid gap-3 sm:grid-cols-3">
+          <div class="rounded-xl border border-border p-4"><p class="text-xs text-muted-foreground">Tổng feedback</p><p class="mt-1 text-2xl font-bold">{{ aiFeedbackTotal }}</p></div>
+          <div class="rounded-xl border border-border p-4"><p class="text-xs text-muted-foreground">Độ lệch AI - HR TB</p><p class="mt-1 text-2xl font-bold">{{ aiAverageDelta }}</p></div>
+          <div class="rounded-xl border border-border p-4"><p class="text-xs text-muted-foreground">Chấm tương đồng</p><p class="mt-1 text-2xl font-bold text-emerald-600">{{ aiAlignedPercent }}</p></div>
+        </div>
+
+        <div>
+          <h3 class="mb-3 font-semibold">Phân bố kết quả</h3>
+          <div class="grid gap-3 sm:grid-cols-3">
+            <div class="rounded-lg bg-amber-50 p-3 text-sm"><span class="block text-muted-foreground">AI chấm thấp</span><strong>{{ feedbackDistribution.ai_underscored ?? 0 }} ({{ formatPercent(feedbackDistribution.ai_underscored_pct) }})</strong></div>
+            <div class="rounded-lg bg-red-50 p-3 text-sm"><span class="block text-muted-foreground">AI chấm cao</span><strong>{{ feedbackDistribution.ai_overscored ?? 0 }} ({{ formatPercent(feedbackDistribution.ai_overscored_pct) }})</strong></div>
+            <div class="rounded-lg bg-emerald-50 p-3 text-sm"><span class="block text-muted-foreground">Tương đồng</span><strong>{{ feedbackDistribution.aligned ?? 0 }} ({{ formatPercent(feedbackDistribution.aligned_pct) }})</strong></div>
+          </div>
+          <p v-if="aiFeedbackTotal < 3" class="mt-3 text-xs text-amber-700">Cần tối thiểu 3 feedback để khuyến nghị điều chỉnh có ý nghĩa.</p>
+        </div>
+
+        <div class="grid gap-4 lg:grid-cols-2">
+          <div class="rounded-xl border border-border p-4">
+            <h3 class="font-semibold">Trọng số hiện tại</h3>
+            <div v-if="!weightEntries(currentWeights).length" class="mt-3 text-sm text-muted-foreground">Chưa có dữ liệu.</div>
+            <div v-for="entry in weightEntries(currentWeights)" :key="entry[0]" class="mt-2 flex justify-between gap-3 text-sm"><span>{{ entry[0] }}</span><strong>{{ formatWeight(entry[1]) }}</strong></div>
+          </div>
+          <div class="rounded-xl border border-sky-200 bg-sky-50/40 p-4">
+            <h3 class="font-semibold">Trọng số đề xuất</h3>
+            <div v-if="!weightEntries(suggestedWeights).length" class="mt-3 text-sm text-muted-foreground">Chưa đủ dữ liệu để đề xuất.</div>
+            <div v-for="entry in weightEntries(suggestedWeights)" :key="entry[0]" class="mt-2 flex justify-between gap-3 text-sm"><span>{{ entry[0] }}</span><strong>{{ formatWeight(entry[1]) }}</strong></div>
+          </div>
+        </div>
+
+        <div v-if="adjustmentMessages.length">
+          <h3 class="mb-3 font-semibold">Khuyến nghị điều chỉnh</h3>
+          <div class="space-y-2"><div v-for="(item, index) in adjustmentMessages" :key="index" class="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm">{{ item.message_vi || item.message || item.detail || item.type }}</div></div>
+        </div>
+
+        <div>
+          <h3 class="mb-3 font-semibold">10 feedback gần nhất</h3>
+          <div v-if="!recentFeedbacks.length" class="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">Chưa có feedback.</div>
+          <div v-else class="max-h-72 overflow-auto rounded-lg border border-border">
+            <table class="w-full text-left text-sm">
+              <thead class="sticky top-0 bg-muted"><tr><th class="p-2">Ứng viên</th><th class="p-2">AI</th><th class="p-2">HR</th><th class="p-2">Độ lệch</th><th class="p-2">Thời gian</th></tr></thead>
+              <tbody><tr v-for="(item, index) in recentFeedbacks" :key="item.id || index" class="border-t border-border"><td class="p-2">{{ item.candidate_name || item.candidate_id || '—' }}</td><td class="p-2">{{ formatScore(item.ai_score) }}</td><td class="p-2">{{ formatScore(item.human_score ?? item.manager_score) }}</td><td class="p-2">{{ formatScore(item.score_delta ?? item.delta, true) }}</td><td class="p-2 text-muted-foreground">{{ formatDateTime(item.created_at) }}</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <BaseButton variant="outline" :disabled="aiFeedbackLoading" @click="loadAiFeedback">Tải lại</BaseButton>
+        <BaseButton @click="showAiFeedbackModal = false">Đóng</BaseButton>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -476,11 +550,16 @@ import { recruitmentService } from '../services/recruitmentService';
 import { useToast } from '../composables/useToast';
 import { cvFilename, cvPreviewKind } from '../utils/cvPreview';
 import { buildIndependentReviewRubric, calculateWeightedReviewScore } from '../utils/recruitmentReview';
+import { normalizePercentage } from '../utils/managementUi';
 
 const toast = useToast();
 
 const candidates = ref([]);
 const positions = ref([]);
+const aiFeedback = ref(null);
+const aiFeedbackLoading = ref(false);
+const aiFeedbackError = ref('');
+const showAiFeedbackModal = ref(false);
 const cvFileInput = ref(null);
 const showCvPreviewModal = ref(false);
 const cvPreviewLoading = ref(false);
@@ -576,6 +655,47 @@ const getCandidatesByStatus = (status) => {
 const aiProcessedCount = computed(() => {
   return candidates.value.filter(c => c.ai_score !== null).length;
 });
+
+const aiFeedbackStats = computed(() => aiFeedback.value?.stats || null);
+const aiFeedbackAdjustments = computed(() => aiFeedback.value?.adjustments || {});
+const aiFeedbackTotal = computed(() => Number(aiFeedbackStats.value?.total_feedbacks ?? aiFeedbackAdjustments.value?.total_feedbacks ?? 0));
+const feedbackDistribution = computed(() => aiFeedbackStats.value?.distribution || {});
+const currentWeights = computed(() => aiFeedbackAdjustments.value?.current_weights || {});
+const suggestedWeights = computed(() => aiFeedbackAdjustments.value?.suggested_weights || {});
+const adjustmentMessages = computed(() => aiFeedbackAdjustments.value?.adjustments || []);
+const recentFeedbacks = computed(() => (aiFeedbackStats.value?.recent_feedbacks || []).slice(0, 10));
+
+const normalizedPercent = normalizePercentage;
+const formatPercent = (value) => `${normalizedPercent(value).toFixed(1)}%`;
+const aiAlignedPercent = computed(() => formatPercent(feedbackDistribution.value.aligned_pct));
+const aiAverageDelta = computed(() => formatPercent(aiFeedbackStats.value?.avg_abs_delta ?? aiFeedbackStats.value?.avg_delta));
+const formatScore = (value, signed = false) => {
+  if (value === null || value === undefined || value === '') return '—';
+  const result = normalizedPercent(value);
+  return `${signed && result > 0 ? '+' : ''}${result.toFixed(1)}`;
+};
+const formatWeight = (value) => typeof value === 'number' ? formatPercent(value) : String(value ?? '—');
+const weightEntries = (weights) => Object.entries(weights || {});
+const formatDateTime = (value) => value ? new Date(value).toLocaleString('vi-VN') : '—';
+
+const loadAiFeedback = async () => {
+  aiFeedbackLoading.value = true;
+  aiFeedbackError.value = '';
+  try {
+    const data = await recruitmentService.getAiFeedbackStats();
+    if (!data?.stats && !data?.adjustments) {
+      aiFeedback.value = null;
+      aiFeedbackError.value = data?.message || 'Dịch vụ AI chưa có dữ liệu feedback';
+    } else {
+      aiFeedback.value = data;
+    }
+  } catch (err) {
+    aiFeedback.value = null;
+    aiFeedbackError.value = err?.response?.data?.message || 'Không thể kết nối dịch vụ thống kê AI';
+  } finally {
+    aiFeedbackLoading.value = false;
+  }
+};
 
 const resetFilters = () => {
   filters.value.search = '';
@@ -915,6 +1035,6 @@ watch(showCvPreviewModal, (visible) => {
 onBeforeUnmount(clearCvPreview);
 
 onMounted(async () => {
-  await Promise.all([loadPositions(), loadCandidates()]);
+  await Promise.all([loadPositions(), loadCandidates(), loadAiFeedback()]);
 });
 </script>

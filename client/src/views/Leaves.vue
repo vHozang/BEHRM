@@ -5,13 +5,10 @@
         <h1 class="text-xl sm:text-2xl font-bold">{{ pageTitle }}</h1>
         <p class="text-muted-foreground mt-1">{{ pageSubtitle }}</p>
       </div>
-      <BaseButton
-        @click="openCreateModal"
-        data-testid="button-create-leave"
-        class="w-full sm:w-auto"
-      >
-        + Tạo đơn xin nghỉ
-      </BaseButton>
+      <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+        <BaseButton v-if="orgLens && canRunAccrual" variant="outline" data-testid="button-run-leave-accrual" @click="openAccrualModal">Đối soát phép năm</BaseButton>
+        <BaseButton data-testid="button-create-leave" @click="openCreateModal">+ Tạo đơn xin nghỉ</BaseButton>
+      </div>
     </div>
 
     <!-- Dual-lens tabs (admins only): toàn công ty vs của tôi -->
@@ -315,6 +312,27 @@
       </template>
     </BaseModal>
 
+    <BaseModal v-model="showAccrualModal" title="Đối soát phép năm toàn công ty">
+      <div class="space-y-4">
+        <div class="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          Thao tác này tính lại hạn mức và số dư phép cho toàn bộ nhân viên trong công ty. Dữ liệu của năm đã chọn sẽ được cập nhật.
+        </div>
+        <BaseInput v-model.number="accrualYear" type="number" label="Năm đối soát" min="2000" max="2100" />
+        <label class="flex items-start gap-2 rounded-lg border border-border p-3 text-sm">
+          <input v-model="accrualConfirmed" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-input" />
+          <span>Tôi xác nhận đối soát phép năm cho toàn công ty.</span>
+        </label>
+        <div v-if="accrualResult" class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <p class="font-semibold">Đối soát năm {{ accrualResult.year }} hoàn tất</p>
+          <p class="mt-1">{{ accrualResult.employees || 0 }} nhân viên · {{ accrualResult.balances_upserted || 0 }} số dư được cập nhật · {{ accrualResult.transactions_written || 0 }} giao dịch ghi nhận.</p>
+        </div>
+      </div>
+      <template #footer>
+        <BaseButton variant="outline" :disabled="accrualLoading" @click="showAccrualModal = false">Đóng</BaseButton>
+        <BaseButton :disabled="!accrualConfirmed || accrualLoading" @click="runAccrual">{{ accrualLoading ? 'Đang đối soát...' : 'Xác nhận đối soát' }}</BaseButton>
+      </template>
+    </BaseModal>
+
     <BaseModal
       v-model="showDetailModal"
       title="Chi tiết đơn nghỉ phép"
@@ -385,6 +403,10 @@ import { authService } from '../services/authService';
 
 const isAdmin = computed(() => authService.isAdmin());
 const currentUser = computed(() => authService.getUser());
+const canRunAccrual = computed(() => {
+  const access = authService.getAccess();
+  return access.full || access.modules.includes('hr');
+});
 
 // Dual-lens: admins toggle between the company-wide view and their own ("My Space").
 const viewMode = ref('org'); // 'org' = toàn công ty | 'mine' = của tôi
@@ -420,7 +442,38 @@ const approvalSteps = computed(() => {
 
 const showCreateModal = ref(false);
 const showDetailModal = ref(false);
+const showAccrualModal = ref(false);
+const accrualLoading = ref(false);
+const accrualYear = ref(new Date().getFullYear());
+const accrualConfirmed = ref(false);
+const accrualResult = ref(null);
 const selectedRequest = ref(null);
+
+const openAccrualModal = () => {
+  accrualYear.value = new Date().getFullYear();
+  accrualConfirmed.value = false;
+  accrualResult.value = null;
+  showAccrualModal.value = true;
+};
+
+const runAccrual = async () => {
+  if (!accrualConfirmed.value || accrualLoading.value) return;
+  const year = Number(accrualYear.value);
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    alert('Năm đối soát phải từ 2000 đến 2100');
+    return;
+  }
+  accrualLoading.value = true;
+  try {
+    accrualResult.value = await leaveService.runAccrual(year);
+    await loadRequests();
+    if (myEmployeeId.value) await loadBalances(myEmployeeId.value);
+  } catch (err) {
+    alert(err?.response?.data?.message || 'Không thể đối soát phép năm');
+  } finally {
+    accrualLoading.value = false;
+  }
+};
 
 const requests = ref([]);
 const leaveTypes = ref([]);

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Services\LeavePolicyService;
+use App\Support\AccessControl;
 use App\Support\ApprovalFlow;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -590,6 +591,17 @@ class LeaveController extends Controller
      */
     public function accrualRun(Request $request): JsonResponse
     {
+        if (! AccessControl::hasAnyRole(
+            (int) $request->attributes->get('auth_employee_id'),
+            ['ADMIN', 'TENANT_ADMIN', 'HR']
+        )) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Chỉ HR hoặc Admin được đối soát phép năm',
+                'data' => null,
+            ], 403);
+        }
+
         $year = (int) ($request->input('year') ?: now()->year);
         if ($year < 2000 || $year > 2100) {
             return $this->validationError(['year' => ['Năm không hợp lệ (2000–2100)']]);

@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Services\AutoRecruitEndpointResolver;
 use App\Support\AccessControl;
 use App\Support\HrmConfig;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Validator;
 
 /**
  * Tenant business-rule settings (Cấu hình nghiệp vụ).
@@ -203,8 +206,12 @@ class SettingsController extends Controller
     }
 
     /** GET /settings/integrations/autorecruit/health — admin-only connectivity check. */
-    public function autoRecruitHealth(): JsonResponse
+    public function autoRecruitHealth(Request $request): JsonResponse
     {
+        if (! $this->isSettingsAdmin($request)) {
+            return $this->forbidden();
+        }
+
         $urls = app(AutoRecruitEndpointResolver::class)->urls();
         $checks = [];
         $available = false;
@@ -250,6 +257,90 @@ class SettingsController extends Controller
         ], $available ? 200 : 503);
     }
 
+    /** GET /settings/notifications — tenant-wide email/notification templates. */
+    public function notificationTemplates(Request $request): JsonResponse
+    {
+        if (! $this->isSettingsAdmin($request)) {
+            return $this->forbidden();
+        }
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Danh sách mẫu thông báo',
+            'data' => ['items' => $this->notificationTemplateRows()],
+        ]);
+    }
+
+    /** PUT /settings/notifications — bulk upsert/delete tenant templates. */
+    public function saveNotificationTemplates(Request $request): JsonResponse
+    {
+        if (! $this->isSettingsAdmin($request)) {
+            return $this->forbidden();
+        }
+
+        $validator = Validator::make($request->all(), [
+            'items' => ['required', 'array', 'max:100'],
+            'items.*.id' => ['nullable', 'integer'],
+            'items.*.notification_type' => ['required', 'string', 'max:255', 'distinct'],
+            'items.*.recipients' => ['nullable', 'string', 'max:255'],
+            'items.*.template_subject' => ['nullable', 'string', 'max:255'],
+            'items.*.template_body' => ['nullable', 'string', 'max:20000'],
+            'items.*.status' => ['required', 'boolean'],
+            'deleted_ids' => ['sometimes', 'array', 'max:100'],
+            'deleted_ids.*' => ['integer'],
+        ]);
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
+        }
+
+        $tenantId = (int) TenantContext::id();
+        $items = $validator->validated()['items'];
+        $deletedIds = $validator->validated()['deleted_ids'] ?? [];
+
+        DB::transaction(function () use ($tenantId, $items, $deletedIds): void {
+            if ($deletedIds !== []) {
+                DB::table('notification_configs')
+                    ->where('tenant_id', $tenantId)
+                    ->whereIn('id', $deletedIds)
+                    ->delete();
+            }
+
+            foreach ($items as $item) {
+                $payload = [
+                    'notification_type' => trim($item['notification_type']),
+                    'recipients' => trim((string) ($item['recipients'] ?? '')) ?: null,
+                    'template_subject' => trim((string) ($item['template_subject'] ?? '')) ?: null,
+                    'template_body' => trim((string) ($item['template_body'] ?? '')) ?: null,
+                    'status' => $item['status'] ? 'ACTIVE' : 'INACTIVE',
+                    'updated_at' => now(),
+                ];
+
+                $query = DB::table('notification_configs')->where('tenant_id', $tenantId);
+                if (! empty($item['id'])) {
+                    $existingId = (clone $query)->where('id', (int) $item['id'])->value('id');
+                } else {
+                    $existingId = (clone $query)
+                        ->where('notification_type', $payload['notification_type'])
+                        ->value('id');
+                }
+
+                if ($existingId) {
+                    DB::table('notification_configs')->where('id', $existingId)->update($payload);
+                } else {
+                    DB::table('notification_configs')->insert(TenantContext::stamp(array_merge($payload, [
+                        'created_at' => now(),
+                    ])));
+                }
+            }
+        });
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Đã lưu mẫu thông báo',
+            'data' => ['items' => $this->notificationTemplateRows()],
+        ]);
+    }
+
     /** @return array<string,string> key => type */
     private function keyTypes(): array
     {
@@ -279,5 +370,40 @@ class SettingsController extends Controller
     private function validationError(array $errors): JsonResponse
     {
         return response()->json(['status' => 422, 'message' => 'Dữ liệu không hợp lệ', 'data' => ['errors' => $errors]], 422);
+    }
+
+    private function notificationTemplateRows(): array
+    {
+        return DB::table('notification_configs')
+            ->where('tenant_id', TenantContext::id())
+            ->orderBy('notification_type')
+            ->get(['id', 'notification_type', 'recipients', 'template_subject', 'template_body', 'status', 'updated_at'])
+            ->map(fn ($row) => [
+                'id' => (int) $row->id,
+                'notification_type' => $row->notification_type,
+                'recipients' => $row->recipients,
+                'template_subject' => $row->template_subject,
+                'template_body' => $row->template_body,
+                'status' => in_array(strtoupper((string) $row->status), ['ACTIVE', 'TRUE', '1'], true),
+                'updated_at' => $row->updated_at,
+            ])
+            ->all();
+    }
+
+    private function isSettingsAdmin(Request $request): bool
+    {
+        return AccessControl::hasAnyRole(
+            (int) $request->attributes->get('auth_employee_id'),
+            ['ADMIN', 'TENANT_ADMIN']
+        );
+    }
+
+    private function forbidden(): JsonResponse
+    {
+        return response()->json([
+            'status' => 403,
+            'message' => 'Bạn không có quyền thực hiện thao tác này',
+            'data' => null,
+        ], 403);
     }
 }

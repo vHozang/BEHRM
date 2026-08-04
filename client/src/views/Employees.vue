@@ -22,10 +22,23 @@
     <!-- Import CSV modal: tải mẫu → HR điền bằng Excel → lưu CSV UTF-8 → upload → preview → import -->
     <BaseModal v-model="showImportModal" title="Import nhân viên từ Excel/CSV">
       <div class="space-y-4">
+        <div class="grid grid-cols-2 rounded-lg bg-muted p-1">
+          <button
+            v-for="mode in importModes"
+            :key="mode.id"
+            type="button"
+            class="rounded-md px-3 py-2 text-sm font-medium"
+            :class="importMode === mode.id ? 'bg-background shadow-sm' : 'text-muted-foreground'"
+            @click="changeImportMode(mode.id)"
+          >
+            {{ mode.label }}
+          </button>
+        </div>
         <div class="text-sm text-muted-foreground space-y-1">
           <p>1. Tải file mẫu, mở bằng Excel và điền danh sách nhân viên.</p>
           <p>2. Lưu dạng <b>CSV UTF-8</b> (File → Save As → CSV UTF-8) rồi tải lên đây.</p>
-          <p>Chỉ <b>Họ tên</b> là bắt buộc; mã NV/email trùng sẽ tự bỏ qua (import lại an toàn).</p>
+          <p v-if="importMode === 'official'">Chỉ <b>Họ tên</b> là bắt buộc; mã NV/email trùng sẽ tự bỏ qua.</p>
+          <p v-else><b>Họ tên và email công ty</b> là bắt buộc. Hệ thống báo lỗi riêng theo từng dòng và vẫn nhập các dòng hợp lệ.</p>
         </div>
         <div class="flex gap-2">
           <BaseButton variant="outline" size="sm" @click="downloadImportTemplate">⬇ Tải file mẫu</BaseButton>
@@ -49,13 +62,20 @@
           </div>
         </div>
 
-        <div v-if="importResult" class="text-sm space-y-1">
+        <div v-if="importResult && importMode === 'official'" class="text-sm space-y-1">
           <p class="font-medium" :class="importResult.skipped ? 'text-amber-600' : 'text-green-600'">
             ✔ Đã tạo {{ importResult.created }} nhân viên<span v-if="importResult.skipped"> · bỏ qua {{ importResult.skipped }} dòng</span>
           </p>
           <ul v-if="importResult.skipped" class="text-xs text-muted-foreground max-h-28 overflow-y-auto list-disc pl-4">
             <li v-for="r in importResult.results.filter(x => x.status === 'skipped')" :key="r.line">Dòng {{ r.line }}: {{ r.reason }}</li>
           </ul>
+        </div>
+        <div v-else-if="importResult" class="space-y-2 text-sm">
+          <p class="font-medium text-green-600">Đã tạo {{ importResult.imported || 0 }} nhân viên thử việc.</p>
+          <div v-if="importResult.errors?.length" class="rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <p class="font-medium text-amber-800">{{ importResult.errors.length }} dòng có lỗi:</p>
+            <ul class="mt-1 max-h-32 list-disc overflow-y-auto pl-4 text-xs text-amber-800"><li v-for="message in importResult.errors" :key="message">{{ message }}</li></ul>
+          </div>
         </div>
       </div>
       <template #footer>
@@ -415,15 +435,30 @@ const showImportModal = ref(false);
 const importRows = ref([]);
 const importing = ref(false);
 const importResult = ref(null);
+const importMode = ref('official');
+const importModes = [
+  { id: 'official', label: 'Nhân viên chính thức' },
+  { id: 'probation', label: 'Nhân viên thử việc' }
+];
 // Cột khớp payload backend /employees/import; header tiếng Việt cho HR.
-const importKeys = ['employee_code', 'full_name', 'gender', 'date_of_birth', 'phone_number', 'company_email', 'department', 'position', 'hire_date', 'base_salary', 'id_number', 'tax_number', 'insurance_number', 'bank_name', 'bank_account', 'address'];
-const importHeaderLabels = ['Mã NV (trống = tự sinh)', 'Họ tên *', 'Giới tính (Nam/Nữ)', 'Ngày sinh (dd/mm/yyyy)', 'Số điện thoại', 'Email công ty', 'Phòng ban', 'Chức danh', 'Ngày vào làm (dd/mm/yyyy)', 'Lương cơ bản', 'CCCD', 'Mã số thuế', 'Số sổ BHXH', 'Ngân hàng', 'Số tài khoản', 'Địa chỉ'];
+const officialImportKeys = ['employee_code', 'full_name', 'gender', 'date_of_birth', 'phone_number', 'company_email', 'department', 'position', 'hire_date', 'base_salary', 'id_number', 'tax_number', 'insurance_number', 'bank_name', 'bank_account', 'address'];
+const officialImportLabels = ['Mã NV (trống = tự sinh)', 'Họ tên *', 'Giới tính (Nam/Nữ)', 'Ngày sinh (dd/mm/yyyy)', 'Số điện thoại', 'Email công ty', 'Phòng ban', 'Chức danh', 'Ngày vào làm (dd/mm/yyyy)', 'Lương cơ bản', 'CCCD', 'Mã số thuế', 'Số sổ BHXH', 'Ngân hàng', 'Số tài khoản', 'Địa chỉ'];
+const probationImportKeys = ['employee_code', 'full_name', 'company_email'];
+const probationImportLabels = ['Mã NV (không bắt buộc)', 'Họ tên *', 'Email công ty *'];
+const importKeys = computed(() => importMode.value === 'probation' ? probationImportKeys : officialImportKeys);
+const importHeaderLabels = computed(() => importMode.value === 'probation' ? probationImportLabels : officialImportLabels);
+
+const changeImportMode = (mode) => {
+  importMode.value = mode;
+  importRows.value = [];
+  importResult.value = null;
+};
 
 const downloadImportTemplate = () => {
-  downloadCsv([
-    importHeaderLabels,
-    ['', 'Nguyễn Văn Mẫu', 'Nam', '15/03/1995', '0901234567', 'mau.nguyen@congty.vn', 'Phân xưởng A', 'Công nhân', '01/08/2026', '6500000', '012345678901', '', '', 'Vietcombank', '0123456789', 'Số 1, đường ABC, Hà Nội'],
-  ], 'mau-import-nhan-vien');
+  const example = importMode.value === 'probation'
+    ? ['TV0001', 'Nguyễn Văn Thử Việc', 'thuviec.nguyen@devtapcode.io.vn']
+    : ['', 'Nguyễn Văn Mẫu', 'Nam', '15/03/1995', '0901234567', 'mau.nguyen@congty.vn', 'Phân xưởng A', 'Công nhân', '01/08/2026', '6500000', '012345678901', '', '', 'Vietcombank', '0123456789', 'Số 1, đường ABC, Hà Nội'];
+  downloadCsv([importHeaderLabels.value, example], importMode.value === 'probation' ? 'mau-import-thu-viec' : 'mau-import-nhan-vien');
 };
 
 const onImportFile = (e) => {
@@ -437,7 +472,7 @@ const onImportFile = (e) => {
     // Bỏ header (dòng 1), map theo THỨ TỰ cột của file mẫu.
     importRows.value = grid.slice(1).map(cells => {
       const row = {};
-      importKeys.forEach((k, idx) => { row[k] = (cells[idx] ?? '').trim(); });
+      importKeys.value.forEach((k, idx) => { row[k] = (cells[idx] ?? '').trim(); });
       return row;
     }).filter(r => Object.values(r).some(v => v !== ''));
   };
@@ -449,9 +484,12 @@ const runImport = async () => {
   if (!importRows.value.length || importing.value) return;
   try {
     importing.value = true;
-    importResult.value = await employeeService.import(importRows.value);
+    importResult.value = importMode.value === 'probation'
+      ? await employeeService.importProbation(importRows.value)
+      : await employeeService.import(importRows.value);
     await loadEmployees();
-    if (importResult.value?.created) notificationStore.addSuccess(`Đã import ${importResult.value.created} nhân viên`);
+    const created = importMode.value === 'probation' ? importResult.value?.imported : importResult.value?.created;
+    if (created) notificationStore.addSuccess(`Đã import ${created} nhân viên`);
   } catch (err) {
     notificationStore.addError(err.response?.data?.message || 'Import thất bại');
   } finally {
@@ -463,6 +501,7 @@ const closeImportModal = () => {
   showImportModal.value = false;
   importRows.value = [];
   importResult.value = null;
+  importMode.value = 'official';
 };
 
 const router = useRouter();

@@ -345,18 +345,53 @@
               </p>
             </div>
           </div>
-          <h4 class="font-semibold mb-4">Chứng chỉ</h4>
+          <div class="mb-4 flex items-center justify-between gap-3">
+            <h4 class="font-semibold">Chứng chỉ</h4>
+            <BaseButton size="sm" @click="openCertificateModal">+ Thêm chứng chỉ</BaseButton>
+          </div>
           <div v-if="certificates.length === 0" class="text-sm text-muted-foreground">Chưa có chứng chỉ</div>
           <div v-else class="space-y-2">
-            <div v-for="c in certificates" :key="c.id" class="p-3 border border-border rounded-lg">
-              <p class="font-medium">{{ c.certificate_name || 'Chứng chỉ' }}</p>
-              <p class="text-sm text-muted-foreground">
-                {{ c.issued_by || '' }}{{ c.issued_date ? ` · cấp ${formatDate(c.issued_date)}` : '' }}{{ c.expiry_date ? ` · hết hạn ${formatDate(c.expiry_date)}` : '' }}
-              </p>
+            <div v-for="c in certificates" :key="c.id" class="rounded-lg border border-border p-3">
+              <div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                <div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="font-medium">{{ c.certificate_name || 'Chứng chỉ' }}</p>
+                    <BaseBadge size="sm" :variant="certificateStatus(c).variant">{{ certificateStatus(c).label }}</BaseBadge>
+                  </div>
+                  <p class="mt-1 text-sm text-muted-foreground">{{ c.issued_by || 'Chưa có đơn vị cấp' }}{{ c.issued_date ? ` · cấp ${formatDate(c.issued_date)}` : '' }}{{ c.expiry_date ? ` · hết hạn ${formatDate(c.expiry_date)}` : '' }}</p>
+                  <p v-if="c.certificate_number || c.score" class="mt-1 text-xs text-muted-foreground">{{ c.certificate_number ? `Số: ${c.certificate_number}` : '' }}{{ c.score ? ` · Điểm: ${c.score}` : '' }}</p>
+                  <a v-if="c.file_url" :href="c.file_url" target="_blank" rel="noopener noreferrer" class="mt-2 inline-block text-sm font-medium text-primary hover:underline">Mở tài liệu</a>
+                </div>
+                <BaseButton variant="destructive" size="sm" :disabled="certificateSaving" @click="deleteCertificate(c)">Xóa</BaseButton>
+              </div>
             </div>
           </div>
         </div>
       </BaseCard>
+
+      <BaseModal v-model="showCertificateModal" title="Thêm chứng chỉ" size="lg">
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <BaseInput v-model="certificateForm.certificate_name" label="Tên chứng chỉ" required />
+          <label class="text-sm font-medium">
+            Loại chứng chỉ
+            <select v-model="certificateForm.certificate_type_id" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 font-normal">
+              <option value="">-- Chưa phân loại --</option>
+              <option v-for="type in certificateTypes" :key="type.id" :value="type.id">{{ type.certificate_type_name || type.name || type.certificate_type_code }}</option>
+            </select>
+          </label>
+          <BaseInput v-model="certificateForm.issued_by" label="Đơn vị cấp" />
+          <BaseInput v-model="certificateForm.certificate_number" label="Số chứng chỉ" />
+          <BaseInput v-model="certificateForm.issued_date" type="date" label="Ngày cấp" />
+          <BaseInput v-model="certificateForm.expiry_date" type="date" label="Ngày hết hạn" />
+          <label class="text-sm font-medium">Điểm<input v-model="certificateForm.score" type="number" min="0" max="100" step="0.01" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 font-normal" /></label>
+          <BaseInput v-model="certificateForm.file_url" type="url" label="URL tài liệu" placeholder="https://..." />
+        </div>
+        <p class="mt-3 text-xs text-muted-foreground">Đợt này chỉ lưu URL tài liệu, chưa upload file trực tiếp.</p>
+        <template #footer>
+          <BaseButton variant="outline" :disabled="certificateSaving" @click="showCertificateModal = false">Hủy</BaseButton>
+          <BaseButton :disabled="certificateSaving" @click="saveCertificate">{{ certificateSaving ? 'Đang lưu...' : 'Thêm chứng chỉ' }}</BaseButton>
+        </template>
+      </BaseModal>
 
       <!-- Edit profile modal -->
       <BaseModal v-model="showEditModal" title="Chỉnh sửa hồ sơ nhân viên" size="lg">
@@ -489,6 +524,7 @@ import { settingsService } from '../services/settingsService';
 import { onboardingService } from '../services/onboardingService';
 import { contractService } from '../services/contractService';
 import { useToast } from '../composables/useToast';
+import { certificateExpiryStatus } from '../utils/managementUi';
 
 const route = useRoute();
 const toast = useToast();
@@ -503,9 +539,66 @@ const salaryPeriodLabel = ref('');   // mã kỳ của phiếu lương đang xem
 const dependents = ref([]);
 const qualifications = ref([]);
 const certificates = ref([]);
+const certificateTypes = ref([]);
+const showCertificateModal = ref(false);
+const certificateSaving = ref(false);
+const certificateForm = ref({});
 const loading = ref(true);
 const error = ref('');
 const activeTab = ref('personal');
+
+const emptyCertificateForm = () => ({
+  certificate_name: '',
+  certificate_type_id: '',
+  issued_by: '',
+  issued_date: '',
+  expiry_date: '',
+  certificate_number: '',
+  score: '',
+  file_url: ''
+});
+
+const loadCertificates = async () => {
+  certificates.value = await employeeService.getCertificates(route.params.id);
+};
+
+const openCertificateModal = () => {
+  certificateForm.value = emptyCertificateForm();
+  showCertificateModal.value = true;
+};
+
+const certificateStatus = (certificate) => certificateExpiryStatus(certificate?.expiry_date);
+
+const saveCertificate = async () => {
+  if (!certificateForm.value.certificate_name.trim()) return toast.error('Vui lòng nhập tên chứng chỉ');
+  certificateSaving.value = true;
+  try {
+    const payload = Object.fromEntries(Object.entries(certificateForm.value).filter(([, value]) => value !== ''));
+    if (payload.certificate_type_id) payload.certificate_type_id = Number(payload.certificate_type_id);
+    await employeeService.addCertificate(route.params.id, payload);
+    await loadCertificates();
+    showCertificateModal.value = false;
+    toast.success('Đã thêm chứng chỉ');
+  } catch (err) {
+    toast.error(err?.response?.data?.message || 'Không thể thêm chứng chỉ');
+  } finally {
+    certificateSaving.value = false;
+  }
+};
+
+const deleteCertificate = async (certificate) => {
+  if (!window.confirm(`Xóa chứng chỉ "${certificate.certificate_name || 'Chứng chỉ'}"?`)) return;
+  certificateSaving.value = true;
+  try {
+    await employeeService.deleteCertificate(route.params.id, certificate.id);
+    await loadCertificates();
+    toast.success('Đã xóa chứng chỉ');
+  } catch (err) {
+    toast.error(err?.response?.data?.message || 'Không thể xóa chứng chỉ');
+  } finally {
+    certificateSaving.value = false;
+  }
+};
 
 const showEditModal = ref(false);
 const saving = ref(false);
@@ -851,9 +944,20 @@ onMounted(async () => {
       const p = profileRes?.data || profileRes || {};
       dependents.value = Array.isArray(p.dependents) ? p.dependents : [];
       qualifications.value = Array.isArray(p.qualifications) ? p.qualifications : [];
-      certificates.value = Array.isArray(p.certificates) ? p.certificates : [];
     } catch (e) {
       console.log('Could not load extended profile');
+    }
+
+    try {
+      await loadCertificates();
+    } catch (e) {
+      console.log('Could not load employee certificates');
+    }
+
+    try {
+      certificateTypes.value = await employeeService.getCertificateTypes();
+    } catch (e) {
+      console.log('Could not load certificate types');
     }
 
     try {

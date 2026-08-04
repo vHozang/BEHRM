@@ -188,6 +188,52 @@ class AccessControl
         return ['full' => false, 'modules' => $modules, 'enabled' => $enabled];
     }
 
+    /** Check an employee's active roles for sensitive actions within a module. */
+    public static function hasAnyRole(?int $employeeId, array $roleCodes): bool
+    {
+        if (! $employeeId) {
+            return false;
+        }
+
+        if (DB::table('employees')->where('id', $employeeId)->value('is_super_admin')) {
+            return true;
+        }
+
+        $codes = array_values(array_unique(array_map(
+            fn ($code) => strtoupper((string) $code),
+            $roleCodes
+        )));
+        if ($codes === []) {
+            return false;
+        }
+
+        $roles = DB::table('employee_roles as er')
+            ->join('roles as r', 'r.id', '=', 'er.role_id')
+            ->where('er.employee_id', $employeeId)
+            ->where('er.is_active', true)
+            ->where(function ($query): void {
+                $query->whereNull('er.effective_date')->orWhere('er.effective_date', '<=', now());
+            })
+            ->where(function ($query): void {
+                $query->whereNull('er.expiry_date')->orWhere('er.expiry_date', '>=', now());
+            })
+            ->get(['r.role_code', 'r.meta']);
+
+        foreach ($roles as $role) {
+            if (in_array(strtoupper((string) $role->role_code), $codes, true)) {
+                return true;
+            }
+            if (in_array('ADMIN', $codes, true)) {
+                $meta = is_string($role->meta) ? json_decode($role->meta, true) : (array) ($role->meta ?? []);
+                if (($meta['is_admin'] ?? false) === true) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Whether a request (method + path) is permitted for the given access set.
      * $path is the path after the /api/v1/ prefix (e.g. "salary-details/3").

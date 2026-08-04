@@ -286,6 +286,31 @@ export const employeeService = {
     return response.data;
   },
 
+  importProbation: async (employees) => {
+    const response = await axiosClient.post('/employees/import-probation', { employees });
+    return response.data;
+  },
+
+  getCertificates: async (employeeId) => {
+    const response = await axiosClient.get(`/employees/${employeeId}/certificates`);
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  getCertificateTypes: async () => {
+    const response = await axiosClient.get('/certificate-types', { params: { per_page: 500 } });
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  addCertificate: async (employeeId, payload) => {
+    const response = await axiosClient.post(`/employees/${employeeId}/certificates`, payload);
+    return response.data;
+  },
+
+  deleteCertificate: async (employeeId, certificateId) => {
+    const response = await axiosClient.delete(`/employees/${employeeId}/certificates/${certificateId}`);
+    return response.data;
+  },
+
   // Create employee salary
   createSalary: async (employeeId, data) => {
     const payload = { ...data, employee_id: employeeId };
