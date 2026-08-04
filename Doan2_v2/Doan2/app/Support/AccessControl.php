@@ -210,7 +210,9 @@ class AccessControl
         $roles = DB::table('employee_roles as er')
             ->join('roles as r', 'r.id', '=', 'er.role_id')
             ->where('er.employee_id', $employeeId)
-            ->where('er.is_active', true)
+            // `IS TRUE` works on PostgreSQL and SQLite; bound booleans become
+            // integer `1` on PostgreSQL and cause `boolean = integer` errors.
+            ->whereRaw('er.is_active IS TRUE')
             ->where(function ($query): void {
                 $query->whereNull('er.effective_date')->orWhere('er.effective_date', '<=', now());
             })
