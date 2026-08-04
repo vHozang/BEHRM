@@ -34,6 +34,7 @@ jobs:
           npm run test:csv
           npm run test:lookup-cache
           npm run test:recruitment
+          npm run test:employee-self-service
           npm run build
 
       - name: Run attendance bridge checks

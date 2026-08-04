@@ -76,6 +76,9 @@ fi
 # idempotent and does not touch employee, attendance, or payroll data.
 docker compose exec -T php php artisan db:seed --class=RecruitmentPostDemoSeeder --force
 
+# Keep the three employee shift demo accounts usable on existing databases.
+docker compose exec -T php php artisan db:seed --class=ShiftQuickLoginSeeder --force
+
 docker compose exec -T php php artisan optimize:clear
 docker compose exec -T php php artisan config:cache
 docker compose up -d --remove-orphans

@@ -677,25 +677,17 @@
 
         <!-- Hợp đồng của tôi -->
         <BaseCard class="mt-6">
-          <h3 class="text-lg font-bold mb-3">Hợp đồng của tôi</h3>
-          <div v-if="!myContracts.length" class="text-sm text-muted-foreground">Chưa có hợp đồng nào.</div>
-          <div v-else class="space-y-2">
-            <div v-for="c in myContracts" :key="c.id" class="flex flex-wrap items-center justify-between gap-3 border border-border rounded-lg p-3">
-              <div class="min-w-0">
-                <p class="font-medium text-foreground">{{ c.contract_number || ('HĐ #' + c.id) }}
-                  <span class="text-sm text-muted-foreground">· {{ c.contract_type?.contract_type_name || '' }}</span>
-                </p>
-                <p class="text-xs text-muted-foreground">
-                  Hiệu lực: {{ formatDate(c.start_date) }} → {{ c.end_date ? formatDate(c.end_date) : 'Vô thời hạn' }}
-                </p>
-              </div>
-              <div class="flex items-center gap-2">
-                <BaseBadge v-if="contractSignStatus(c) === 'SIGNED'" variant="success">Đã ký</BaseBadge>
-                <BaseBadge v-else-if="contractSignStatus(c) === 'PENDING_SIGN'" variant="warning">Cần ký</BaseBadge>
-                <button @click="viewMyContract(c)" class="text-xs px-2.5 py-1.5 rounded-md bg-violet-500/10 text-violet-600 hover:bg-violet-500/20">Xem &amp; In</button>
-                <button v-if="contractSignStatus(c) === 'PENDING_SIGN'" @click="openSign(c)" class="text-xs px-2.5 py-1.5 rounded-md bg-sky-500/10 text-sky-600 hover:bg-sky-500/20">Ký hợp đồng</button>
-              </div>
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 class="text-lg font-bold">Hợp đồng lao động</h3>
+              <p class="mt-1 text-sm text-muted-foreground">
+                {{ myContracts.length ? `${myContracts.length} hợp đồng` : 'Chưa có hợp đồng' }}
+                <span v-if="myContracts.some(c => contractSignStatus(c) === 'PENDING_SIGN')" class="font-semibold text-warning"> · Có hợp đồng cần ký</span>
+              </p>
             </div>
+            <router-link to="/employee-contracts" class="inline-flex min-h-10 items-center justify-center rounded-xl bg-primary px-5 py-2.5 font-medium text-primary-foreground transition-all hover:shadow-md">
+              Xem hợp đồng
+            </router-link>
           </div>
         </BaseCard>
 
@@ -796,48 +788,6 @@
       </template>
     </BaseModal>
 
-    <!-- ===== CONTRACT SIGN MODAL ===== -->
-    <BaseModal v-model="showSignModal" title="Ký hợp đồng lao động" size="lg">
-      <div v-if="signContract" class="space-y-4">
-        <div class="bg-muted/50 rounded-lg p-3 text-sm">
-          <p class="font-semibold text-foreground">{{ signContract.contract_number || ('HĐ #' + signContract.id) }}</p>
-          <p class="text-muted-foreground">Vui lòng đọc kỹ hợp đồng trước khi ký. Bạn có thể bấm "Xem &amp; In" để xem toàn văn.</p>
-          <button @click="viewMyContract(signContract)" class="text-xs text-violet-600 hover:underline mt-1">Xem toàn văn hợp đồng →</button>
-        </div>
-
-        <!-- Bước 1: OTP -->
-        <div class="border border-border rounded-lg p-3">
-          <p class="text-sm font-medium mb-2">Bước 1 — Mã xác nhận (OTP)</p>
-          <div class="flex items-center gap-2">
-            <input v-model="signOtp" type="text" inputmode="numeric" maxlength="6" placeholder="Nhập mã 6 số"
-              class="w-40 px-3 py-2 rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
-            <BaseButton variant="outline" size="sm" @click="requestSignOtp" :disabled="signBusy">Gửi mã OTP</BaseButton>
-          </div>
-          <p v-if="signOtpHint" class="text-xs text-amber-600 mt-1">{{ signOtpHint }}</p>
-        </div>
-
-        <!-- Bước 2: chữ ký -->
-        <div class="border border-border rounded-lg p-3">
-          <p class="text-sm font-medium mb-2">Bước 2 — Chữ ký của bạn</p>
-          <div v-if="signSignature" class="flex items-center gap-3">
-            <div class="bg-white p-2 rounded-xl border border-border w-max"><img :src="signSignature" class="h-16 object-contain" /></div>
-            <button class="text-xs text-muted-foreground hover:underline" @click="signSignature = ''">Ký lại</button>
-          </div>
-          <SignaturePad v-else @save="onSignatureSaved" />
-        </div>
-
-        <div v-if="signError" class="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-          <p class="text-destructive text-sm">{{ signError }}</p>
-        </div>
-      </div>
-      <template #footer>
-        <BaseButton variant="outline" @click="showSignModal = false" :disabled="signBusy">Hủy</BaseButton>
-        <BaseButton @click="submitSign" :disabled="signBusy || !signOtp || !signSignature">
-          {{ signBusy ? 'Đang ký...' : 'Xác nhận ký' }}
-        </BaseButton>
-      </template>
-    </BaseModal>
-
     <!-- ===== LEAVE REQUEST MODAL ===== -->
     <BaseModal v-model="showLeaveModal" title="Tạo đơn xin nghỉ">
       <div class="space-y-4">
@@ -896,8 +846,7 @@ import { workShiftService } from '../services/workShiftService';
 import { shiftCoverageService } from '../services/shiftCoverageService';
 import { onboardingService } from '../services/onboardingService';
 import { profileChangeService } from '../services/profileChangeService';
-import { contractService, printContractHtml } from '../services/contractService';
-import SignaturePad from '../components/SignaturePad.vue';
+import { contractService } from '../services/contractService';
 import { useNotificationStore } from '../stores/notificationStore';
 import { downloadCsv } from '../utils/csv';
 
@@ -908,13 +857,6 @@ const pageLoading = ref(true);
 
 // ── Hợp đồng của tôi (xem + ký OTP) ──
 const myContracts = ref([]);
-const showSignModal = ref(false);
-const signContract = ref(null);
-const signOtp = ref('');
-const signOtpHint = ref('');
-const signSignature = ref('');
-const signError = ref('');
-const signBusy = ref(false);
 
 // ── Profile change requests (đơn đổi thông tin nhạy cảm) ──
 const sensitiveFields = ref([]);
@@ -1369,59 +1311,6 @@ const loadMyContracts = async (empId) => {
     myContracts.value = Array.isArray(res) ? res : (res?.items || res?.data || []);
   } catch (e) {
     console.error('Error loading my contracts:', e);
-  }
-};
-
-const viewMyContract = async (c) => {
-  try {
-    const res = await contractService.render(c.id);
-    if (res?.html) printContractHtml(res.html, `Hợp đồng ${c.contract_number || ''}`);
-  } catch (e) {
-    notificationStore.addError('Không thể hiển thị hợp đồng');
-  }
-};
-
-const openSign = (c) => {
-  signContract.value = c;
-  signOtp.value = '';
-  signOtpHint.value = '';
-  signSignature.value = '';
-  signError.value = '';
-  showSignModal.value = true;
-};
-
-const requestSignOtp = async () => {
-  if (!signContract.value) return;
-  signBusy.value = true;
-  try {
-    const res = await contractService.requestOtp(signContract.value.id);
-    // Demo: backend trả mã trực tiếp (thực tế gửi qua email/SMS).
-    signOtpHint.value = res?.dev_otp
-      ? `Mã OTP (demo): ${res.dev_otp} — hiệu lực 10 phút. (Thực tế sẽ gửi qua email/SMS của bạn.)`
-      : 'Đã gửi mã OTP, vui lòng kiểm tra email/SMS.';
-  } catch (e) {
-    notificationStore.addError('Không thể gửi mã OTP');
-  } finally {
-    signBusy.value = false;
-  }
-};
-
-const onSignatureSaved = (dataUrl) => { signSignature.value = dataUrl; };
-
-const submitSign = async () => {
-  signError.value = '';
-  if (!signOtp.value || !signSignature.value) { signError.value = 'Cần nhập OTP và ký tên'; return; }
-  signBusy.value = true;
-  try {
-    await contractService.sign(signContract.value.id, { otp: signOtp.value, signature: signSignature.value });
-    notificationStore.addSuccess('Đã ký hợp đồng thành công');
-    showSignModal.value = false;
-    await loadMyContracts(currentEmployee.value.id);
-  } catch (err) {
-    signError.value = err.response?.data?.data?.errors?.otp?.[0]
-      || err.response?.data?.message || 'Không thể ký hợp đồng';
-  } finally {
-    signBusy.value = false;
   }
 };
 

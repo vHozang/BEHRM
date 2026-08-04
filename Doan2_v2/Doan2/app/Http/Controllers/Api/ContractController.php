@@ -508,10 +508,19 @@ class ContractController extends Controller
         if (! $contract) {
             return $this->notFound();
         }
+        if ((int) $request->attributes->get('auth_employee_id') !== (int) $contract->employee_id) {
+            return $this->forbidden('Chỉ nhân viên sở hữu hợp đồng mới có thể yêu cầu OTP');
+        }
+
+        $meta = is_array($contract->meta) ? $contract->meta : [];
+        if (($meta['sign_status'] ?? null) !== 'PENDING_SIGN') {
+            return $this->validationError([
+                'sign_status' => ['Hợp đồng chưa được gửi ký hoặc đã hoàn tất ký'],
+            ]);
+        }
 
         $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
-        $meta = is_array($contract->meta) ? $contract->meta : [];
         $meta['sign_otp'] = [
             'hash' => Hash::make($otp),
             'expires_at' => now()->addMinutes(10)->toIso8601String(),
@@ -550,6 +559,16 @@ class ContractController extends Controller
         if (! $contract) {
             return $this->notFound();
         }
+        if ((int) $request->attributes->get('auth_employee_id') !== (int) $contract->employee_id) {
+            return $this->forbidden('Chỉ nhân viên sở hữu hợp đồng mới có thể ký');
+        }
+
+        $meta = is_array($contract->meta) ? $contract->meta : [];
+        if (($meta['sign_status'] ?? null) !== 'PENDING_SIGN') {
+            return $this->validationError([
+                'sign_status' => ['Hợp đồng chưa được gửi ký hoặc đã hoàn tất ký'],
+            ]);
+        }
 
         $validator = Validator::make($request->all(), [
             'otp' => 'required|string',
@@ -562,7 +581,6 @@ class ContractController extends Controller
             return $this->validationError($validator->errors()->toArray());
         }
 
-        $meta = is_array($contract->meta) ? $contract->meta : [];
         $otpRec = $meta['sign_otp'] ?? null;
 
         if (! is_array($otpRec) || empty($otpRec['hash'])) {
@@ -627,6 +645,11 @@ class ContractController extends Controller
     private function notFound(string $message = 'Record not found'): JsonResponse
     {
         return response()->json(['status' => 404, 'message' => $message, 'data' => null], 404);
+    }
+
+    private function forbidden(string $message): JsonResponse
+    {
+        return response()->json(['status' => 403, 'message' => $message, 'data' => null], 403);
     }
 
     private function conflict(array $violations, string $resourceName): JsonResponse

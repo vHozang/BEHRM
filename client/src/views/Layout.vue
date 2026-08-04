@@ -815,6 +815,7 @@ const filteredGroups = computed(() => {
         isOpen: true,
         items: [
           { path: '/employee-portal', name: 'employee-portal', label: 'Tổng quan Portal', icon: IconDashboard, adminOnly: false },
+          { path: '/employee-contracts', name: 'employee-contracts', label: 'Hợp đồng lao động', icon: IconFileText, adminOnly: false },
           { path: '/attendance', name: 'attendance', label: 'Chấm công', icon: IconClock, adminOnly: false },
           { path: '/leaves', name: 'leaves', label: 'Nghỉ phép', icon: IconCalendar, adminOnly: false },
           { path: '/work-schedules', name: 'work-schedules', label: 'Lịch làm việc', icon: IconCalendar, adminOnly: false },

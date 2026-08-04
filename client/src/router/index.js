@@ -37,6 +37,12 @@ const routes = [
         meta: { title: 'Tổng quan Portal', requiresAuth: true, adminOnly: false }
       },
       {
+        path: 'employee-contracts',
+        name: 'employee-contracts',
+        component: () => import('../views/EmployeeContracts.vue'),
+        meta: { title: 'Hợp đồng lao động', requiresAuth: true, adminOnly: false }
+      },
+      {
         path: 'employees',
         name: 'employees',
         component: () => import('../views/Employees.vue'),
@@ -307,6 +313,7 @@ const routes = [
       { path: 'attendance', name: 'm-attendance', component: () => import('../views/mobile/MAttendance.vue'), meta: { title: 'Chấm công' } },
       { path: 'requests', name: 'm-requests', component: () => import('../views/mobile/MRequests.vue'), meta: { title: 'Đơn từ' } },
       { path: 'salary', name: 'm-salary', component: () => import('../views/mobile/MSalary.vue'), meta: { title: 'Phiếu lương' } },
+      { path: 'contracts', name: 'm-contracts', component: () => import('../views/EmployeeContracts.vue'), meta: { title: 'Hợp đồng lao động' } },
       { path: 'me', name: 'm-me', component: () => import('../views/mobile/MProfile.vue'), meta: { title: 'Tôi' } }
     ]
   },
@@ -360,9 +367,9 @@ router.beforeEach((to, from, next) => {
 
     // Màn hình nhỏ → nhân viên vào portal được chuyển sang bản mobile /m
     // (trừ khi đã chọn "Dùng bản đầy đủ"). Admin giữ desktop shell.
-    if (to.path === '/employee-portal' && !isAdmin && window.innerWidth < 768
+    if (['/employee-portal', '/employee-contracts'].includes(to.path) && !isAdmin && window.innerWidth < 768
         && !localStorage.getItem('prefer_desktop')) {
-      next('/m');
+      next(to.path === '/employee-contracts' ? '/m/contracts' : '/m');
       return;
     }
 

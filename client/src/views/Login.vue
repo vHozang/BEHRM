@@ -65,10 +65,19 @@
       <!-- Đăng nhập nhanh (demo) — tiết kiệm thời gian lúc bảo vệ đồ án -->
       <div class="pt-2">
         <p class="text-center text-xs text-muted-foreground mb-2">Đăng nhập nhanh (demo)</p>
+        <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Các vai trò demo</p>
         <div class="grid grid-cols-2 gap-2">
-          <button v-for="acc in demoAccounts" :key="acc.email" type="button"
+          <button v-for="acc in roleDemoAccounts" :key="acc.email" type="button"
             :disabled="loading" @click="quickLogin(acc)"
             class="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50">
+            {{ acc.label }}
+          </button>
+        </div>
+        <p class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nhân viên theo ca</p>
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <button v-for="acc in shiftDemoAccounts" :key="acc.email" type="button"
+            :disabled="loading" @click="quickLogin(acc)"
+            class="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50">
             {{ acc.label }}
           </button>
         </div>
@@ -87,6 +96,7 @@ import { authService } from '@/services/authService';
 import BaseInput from '@/components/BaseInput.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import { useNotificationStore } from '@/stores/notificationStore';
+import { roleDemoAccounts, shiftDemoAccounts } from '@/config/demoAccounts';
 
 const router = useRouter();
 const notificationStore = useNotificationStore();
@@ -94,15 +104,6 @@ const email = ref('');
 const password = ref('');
 const loading = ref(false);
 const error = ref('');
-
-// Tài khoản demo cho nút đăng nhập nhanh (5 tầng quyền khác nhau).
-const demoAccounts = [
-  { label: 'Admin', email: 'an.nguyen@company.com', password: 'test1234' },
-  { label: 'Trưởng phòng', email: 'cuong.le@company.com', password: 'demo1234' },
-  { label: 'HR', email: 'mai.tran@company.com', password: 'demo1234' },
-  { label: 'Kế toán', email: 'phuc.trinh@company.com', password: 'ketoan1234' },
-  { label: 'Nhân viên', email: 'huong.pham@company.com', password: 'demo1234' },
-];
 
 const quickLogin = (acc: { email: string; password: string }) => {
   email.value = acc.email;
