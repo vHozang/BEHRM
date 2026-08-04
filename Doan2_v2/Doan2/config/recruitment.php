@@ -4,6 +4,8 @@ return [
     'mail' => [
         'from_address' => env('RECRUITMENT_MAIL_FROM_ADDRESS', 'hr@devtapcode.io.vn'),
         'from_name' => env('RECRUITMENT_MAIL_FROM_NAME', 'DEVTAPCODE HR'),
+        'logo_path' => resource_path('images/email/cdn-logo.png'),
+        'logo_alt' => env('RECRUITMENT_MAIL_LOGO_ALT', 'CDN HR'),
         'company_name' => env('RECRUITMENT_COMPANY_NAME'),
         'company_address' => env('RECRUITMENT_COMPANY_ADDRESS', ''),
         'company_phone' => env('RECRUITMENT_COMPANY_PHONE', ''),

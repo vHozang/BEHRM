@@ -55,7 +55,13 @@ class RecruitmentNotificationMail extends Mailable
     {
         return new Content(
             view: self::definitions()[$this->notificationType]['view'],
-            with: $this->mailData,
+            with: array_merge($this->mailData, [
+                'brand_logo_path' => (string) config(
+                    'recruitment.mail.logo_path',
+                    resource_path('images/email/cdn-logo.png'),
+                ),
+                'brand_logo_alt' => (string) config('recruitment.mail.logo_alt', 'CDN HR'),
+            ]),
         );
     }
 

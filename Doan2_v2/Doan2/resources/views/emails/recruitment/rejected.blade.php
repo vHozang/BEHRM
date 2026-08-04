@@ -9,10 +9,12 @@
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f4f6f8">
     <tr><td align="center" style="padding:30px 15px">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 3px 12px rgba(0,0,0,.08)">
-            <tr><td align="center" style="background:#475569;padding:30px 35px">
-                <h1 style="margin:0;color:#fff;font-size:24px;line-height:1.4">Thông báo kết quả tuyển dụng</h1>
-                <p style="margin:8px 0 0;color:#e2e8f0;font-size:15px">Vị trí {{ $position_name }}</p>
-            </td></tr>
+            @include('emails.recruitment.partials.brand-header', [
+                'title' => 'Thông báo kết quả tuyển dụng',
+                'subtitle' => 'Vị trí '.$position_name,
+                'banner_color' => '#475569',
+                'subtitle_color' => '#e2e8f0',
+            ])
             <tr><td style="padding:35px 40px">
                 <p style="margin:0 0 20px;font-size:16px;line-height:1.7">Xin chào <strong>{{ $candidate_name }}</strong>,</p>
                 <p style="margin:0 0 20px;font-size:16px;line-height:1.7">

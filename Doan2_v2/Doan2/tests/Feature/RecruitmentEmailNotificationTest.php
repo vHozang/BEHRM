@@ -216,6 +216,56 @@ class RecruitmentEmailNotificationTest extends TestCase
         });
     }
 
+    public function test_all_recruitment_emails_embed_the_branded_logo(): void
+    {
+        $mailData = [
+            'candidate_name' => 'Ứng viên Email',
+            'candidate_email' => 'candidate@example.test',
+            'candidate_phone' => '0900000000',
+            'position_name' => 'Laravel Developer',
+            'company_name' => 'DEVTAPCODE',
+            'company_address' => 'Hà Nội',
+            'company_phone' => '0900000000',
+            'company_website' => 'https://devtapcode.io.vn',
+            'recruitment_email' => 'hr@devtapcode.io.vn',
+            'recruiter_name' => 'Bộ phận Tuyển dụng',
+            'recruiter_title' => 'HR / Talent Acquisition',
+            'response_days' => 3,
+            'interview_date' => '10/08/2026',
+            'interview_time' => '09:30',
+            'interview_mode' => 'Phỏng vấn trực tuyến',
+            'interview_location' => '',
+            'meeting_link' => 'https://meet.google.com/abc-defg-hij',
+            'interviewer_name' => 'HR DEVTAPCODE',
+            'duration_minutes' => 60,
+            'confirmation_deadline' => '08/08/2026',
+            'start_date' => '17/08/2026',
+            'arrival_time' => '08:30',
+            'work_location' => 'Văn phòng DEVTAPCODE',
+            'offer_note' => '',
+            'rejection_reason' => 'Chưa phù hợp với yêu cầu hiện tại.',
+        ];
+
+        foreach ([
+            RecruitmentNotificationMail::APPLICATION_RECEIVED => 'Cảm ơn bạn đã ứng tuyển',
+            RecruitmentNotificationMail::INTERVIEW_INVITATION => 'Thư mời phỏng vấn',
+            RecruitmentNotificationMail::HIRED => 'Chúc mừng bạn đã trúng tuyển',
+            RecruitmentNotificationMail::REJECTED => 'Thông báo kết quả tuyển dụng',
+        ] as $notificationType => $title) {
+            $html = (new RecruitmentNotificationMail($notificationType, $mailData))->render();
+
+            $this->assertStringContainsString('alt="CDN HR"', $html);
+            $this->assertStringContainsString('data:image/png;base64,', $html);
+            $this->assertStringContainsString('width="150"', $html);
+            $this->assertStringContainsString('text-align:center', $html);
+            $this->assertStringContainsString('#1c55a5', $html);
+            $this->assertStringContainsString('#f17a28', $html);
+            $this->assertStringContainsString('#52b34b', $html);
+            $this->assertStringContainsString($title, $html);
+            $this->assertTrue(strpos($html, 'alt="CDN HR"') < strpos($html, '<h1'));
+        }
+    }
+
     private function candidate(string $status, string $email): int
     {
         return DB::table('recruitment_candidates')->insertGetId([
