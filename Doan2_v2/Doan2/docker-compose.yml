@@ -113,6 +113,10 @@ services:
       OLLAMA_URL: http://ollama:11434
       EMBED_MODEL: mxbai-embed-large
       DATA_DIR: /data
+      MINERU_URL: ${MINERU_URL:-http://mineru:8000}
+      MINERU_BACKEND: pipeline
+      MINERU_STRATEGY: ${MINERU_STRATEGY:-auto}
+      MINERU_TIMEOUT: ${MINERU_TIMEOUT:-600}
     ports:
       - "${RESUME_BIND_IP:-127.0.0.1}:8000:8000"
     volumes:
@@ -126,6 +130,21 @@ services:
     networks:
       - hrm_network
 
+  mineru:
+    profiles: [mineru]
+    image: hrm-mineru-pipeline:3.4.4
+    build:
+      context: ../../AutoRecruit-main
+      dockerfile: mineru-local/Dockerfile
+    container_name: mineru
+    ports:
+      - "${MINERU_BIND_IP:-127.0.0.1}:8001:8000"
+    volumes:
+      - mineru_output:/data/output
+    restart: unless-stopped
+    networks:
+      - hrm_network
+
 networks:
   hrm_network:
     driver: bridge
@@ -133,3 +152,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  mineru_output:

@@ -74,6 +74,14 @@ class RecruitmentController extends Controller
         }
 
         $page = $query->paginate($perPage);
+        $candidateIds = collect($page->items())->pluck('id');
+        $reviews = DB::table('recruitment_candidate_manager_reviews')
+            ->whereIn('candidate_id', $candidateIds)
+            ->get()
+            ->keyBy('candidate_id');
+        foreach ($page->items() as $candidate) {
+            $candidate->setAttribute('manager_review', $reviews->get($candidate->id));
+        }
 
         return $this->ok([
             'items' => $page->items(),
@@ -262,6 +270,8 @@ class RecruitmentController extends Controller
             $meta = $candidate->meta ?? [];
             $meta['skills'] = $screenedCandidate['skills'] ?? [];
             $meta['experience_years'] = $screenedCandidate['years_experience'] ?? null;
+            $meta['cv_profile'] = $screenedCandidate['cv_profile'] ?? null;
+            $meta['ai_assessment'] = $screenedCandidate['assessment'] ?? null;
             $meta['screening'] = [
                 'job_id' => $screening['job_id'],
                 'recommendation' => $scores['recommendation'] ?? null,
@@ -468,9 +478,16 @@ class RecruitmentController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'decision' => ['required', 'string', 'in:approved,rejected'],
+            'decision' => ['required', 'string', 'in:approved,rejected,needs_review'],
             'note' => ['nullable', 'string', 'max:5000'],
             'manager_score' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'blind_review' => ['nullable', 'boolean'],
+            'eligible_for_training' => ['nullable', 'boolean'],
+            'criteria' => ['nullable', 'array', 'max:100'],
+            'criteria.*.criterion_id' => ['required_with:criteria', 'string', 'max:255'],
+            'criteria.*.score' => ['required_with:criteria', 'numeric', 'min:0', 'max:5'],
+            'criteria.*.reason' => ['required_with:criteria', 'string', 'max:2000'],
+            'criteria.*.evidence' => ['nullable', 'string', 'max:2000'],
         ]);
         if ($validator->fails()) {
             return $this->validationError($validator->errors()->toArray());
@@ -488,6 +505,9 @@ class RecruitmentController extends Controller
         if ($request->exists('note')) {
             $reviewMeta['note'] = $validated['note'] ?? null;
         }
+        $reviewMeta['criteria'] = $validated['criteria'] ?? [];
+        $reviewMeta['blind_review'] = (bool) ($validated['blind_review'] ?? true);
+        $reviewMeta['eligible_for_training'] = (bool) ($validated['eligible_for_training'] ?? false);
         $reviewMeta['reviewed_at'] = now()->toIso8601String();
 
         DB::transaction(function () use ($candidate, $decision, $id, $reviewedBy, $reviewMeta, $validated): void {
@@ -544,7 +564,17 @@ class RecruitmentController extends Controller
                         : '',
                     cvSkills: is_array($candidateMeta['skills'] ?? null) ? $candidateMeta['skills'] : [],
                     matchedSkills: $matchedSkills,
-                    missingSkills: $missingSkills
+                    missingSkills: $missingSkills,
+                    assessmentId: isset($candidateMeta['ai_assessment']['id'])
+                        ? (int) $candidateMeta['ai_assessment']['id']
+                        : null,
+                    reviewerId: $reviewedBy === null ? null : (string) $reviewedBy,
+                    reviewerRole: 'HR_OR_MANAGER',
+                    decision: $decision,
+                    note: (string) ($validated['note'] ?? ''),
+                    criteria: $validated['criteria'] ?? [],
+                    blindReview: (bool) ($validated['blind_review'] ?? true),
+                    eligibleForTraining: (bool) ($validated['eligible_for_training'] ?? false),
                 );
 
                 if ($feedbackResult && isset($feedbackResult['analysis'])) {
@@ -652,6 +682,17 @@ class RecruitmentController extends Controller
             $request->attributes->get('auth_employee_id'),
         );
         $candidate->setAttribute('notification_email_sent', $mailSent);
+        if ($candidate->ai_score !== null) {
+            app(AiFeedbackService::class)->sendOutcome(
+                candidateId: $candidate->id,
+                stage: 'OFFER',
+                outcome: 'REJECTED',
+                note: (string) $request->input('reason', ''),
+                recordedBy: ($request->attributes->get('auth_employee_id') === null)
+                    ? null
+                    : (string) $request->attributes->get('auth_employee_id'),
+            );
+        }
 
         return $this->ok($candidate, 'Ứng viên đã bị từ chối');
     }
@@ -710,6 +751,18 @@ class RecruitmentController extends Controller
             $request->only(['start_date', 'arrival_time', 'work_location', 'offer_note']),
             $request->attributes->get('auth_employee_id'),
         );
+        if ($candidate->ai_score !== null) {
+            app(AiFeedbackService::class)->sendOutcome(
+                candidateId: $candidate->id,
+                stage: 'HIRED',
+                outcome: 'ACCEPTED',
+                note: (string) $request->input('offer_note', ''),
+                recordedBy: ($request->attributes->get('auth_employee_id') === null)
+                    ? null
+                    : (string) $request->attributes->get('auth_employee_id'),
+                meta: ['employee_id' => $employee->id],
+            );
+        }
 
         return $this->ok([
             'candidate' => $candidate->fresh(),
@@ -911,6 +964,18 @@ class RecruitmentController extends Controller
             }
         });
 
+        $outcomeCandidate = RecruitmentCandidate::find($interview->candidate_id);
+        if ($outcomeCandidate?->ai_score !== null) {
+            app(AiFeedbackService::class)->sendOutcome(
+                candidateId: (int) $interview->candidate_id,
+                stage: 'INTERVIEW',
+                outcome: $result,
+                note: (string) ($validated['note'] ?? ''),
+                recordedBy: $reviewedBy === null ? null : (string) $reviewedBy,
+                meta: ['interview_id' => $interview->id],
+            );
+        }
+
         return $this->ok(
             $interview->fresh()->load('candidate:id,full_name,application_status'),
             'Đánh giá phỏng vấn đã được lưu',
@@ -1027,6 +1092,10 @@ class RecruitmentController extends Controller
 
         if ($decision === 'REJECTED') {
             return 'REJECTED';
+        }
+
+        if ($decision === 'NEEDS_REVIEW') {
+            return $currentStatus;
         }
 
         if ($interviewDecision) {

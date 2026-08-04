@@ -8,11 +8,16 @@
 
 AutoRecruit giup sang loc CV theo Job Description (JD), cham diem phu hop va xep hang ung vien.
 
+He thong dung MinerU nhu tang OCR/doc bo cuc tuy chon, sau do chuan hoa CV thanh JSON nghiep vu va cham theo rubric co bang chung. MinerU khong tu quyet dinh diem tuyen dung.
+
 ## Cau truc thu muc
 
 - `app/`: FastAPI backend va giao dien static.
 - `data/`: du lieu runtime (SQLite, CV, JD test, ket qua rank).
 - `training/`: toan bo pipeline train/rank model embedding.
+- `app/modules/`: resume parser, JD rubric, human feedback va calibration pipeline.
+- `skills/`: quy tac on dinh cho AI; khong chua feedback runtime.
+- `mineru-local/`: image MinerU pipeline chay rieng tren may local.
 - `training/data/`: train_data va bo tai lieu nguon de tao du lieu train.
 
 ## Yeu cau
@@ -29,6 +34,30 @@ curl.exe http://localhost:8000/health
 ```
 
 Ky vong: `{"status":"ok"}`
+
+## MinerU local
+
+Source MinerU duoc clone rieng ben canh repository BEHRM. Build va chay OCR service:
+
+```powershell
+docker compose --profile mineru build mineru
+docker compose --profile mineru up -d mineru
+curl.exe http://localhost:8001/health
+docker compose up -d --build --force-recreate backend
+```
+
+Endpoint `POST /parse` tra ve CV JSON va metadata parser. Gui them `force_mineru=true` de ep test MinerU; neu MinerU loi, backend tu dong fallback sang PyMuPDF/python-docx.
+
+Theo MinerU Open Source License, giao dien/tai lieu dich vu online can neu ro he thong co su dung MinerU de doc tai lieu.
+
+Mac Apple Silicon M3 dung skill `docs/resume/mineru-resume-local/SKILL.md` de kiem tra Docker RAM toi thieu 16 GB, build native ARM64 va ket noi resume-backend qua Tailscale.
+
+## Human-in-the-loop
+
+- AI luu assessment theo tung rubric, bang chung, confidence va model version.
+- HR/Truong phong gui diem tung tieu chi qua `POST /feedback` sau khi cham doc lap.
+- Chi review duoc chap thuan va du ly do moi vao training dataset.
+- Model chi duoc train theo dot va kich hoat neu ket qua danh gia khong kem baseline.
 
 ## Train model embedding (Sentence-Transformers)
 

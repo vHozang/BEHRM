@@ -82,7 +82,7 @@
               <h4 class="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">{{ cand.full_name }}</h4>
               
               <!-- AI Compatibility Score Badge -->
-              <div v-if="cand.ai_score !== null" class="flex-shrink-0" :title="'Đánh giá độ phù hợp AI: ' + cand.ai_score + '%'">
+              <div v-if="cand.ai_score !== null && cand.manager_review" class="flex-shrink-0" :title="'Đánh giá độ phù hợp AI: ' + cand.ai_score + '%'">
                 <span 
                   class="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
                   :class="getAiScoreClass(cand.ai_score)"
@@ -90,6 +90,13 @@
                   AI: {{ cand.ai_score }}%
                 </span>
               </div>
+              <span
+                v-else-if="cand.ai_score !== null"
+                class="flex-shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600"
+                title="Điểm AI được ẩn cho tới khi hoàn thành đánh giá độc lập"
+              >
+                AI: Đang ẩn
+              </span>
             </div>
 
             <p class="text-xs text-muted-foreground mt-1">{{ cand.position?.position_name || cand.job_title_name || cand.recruitment_position_title || 'Vị trí chưa rõ' }}</p>
@@ -206,11 +213,15 @@
             </div>
 
             <!-- Vòng tròn hiển thị điểm AI -->
-            <div class="flex flex-col items-center justify-center py-4 space-y-2">
+            <div v-if="humanReviewCompleted" class="flex flex-col items-center justify-center py-4 space-y-2">
               <div class="relative w-24 h-24 flex items-center justify-center rounded-full bg-background border-4" :class="getAiScoreBorderClass(selectedCandidate.ai_score)">
                 <span class="text-2xl font-black text-foreground">{{ selectedCandidate.ai_score !== null ? selectedCandidate.ai_score + '%' : '--' }}</span>
               </div>
               <p class="text-xs text-muted-foreground font-medium text-center">Mức độ tương thích giữa CV ứng viên và mô tả công việc (JD)</p>
+            </div>
+            <div v-else class="rounded-xl border border-dashed border-primary/30 bg-background px-4 py-6 text-center">
+              <p class="text-sm font-bold text-foreground">Điểm AI đang được ẩn</p>
+              <p class="mt-1 text-xs text-muted-foreground">Hãy hoàn thành đánh giá độc lập để tránh bị ảnh hưởng bởi điểm của AI.</p>
             </div>
 
             <!-- Hành động quy trình tuyển dụng -->
@@ -249,17 +260,22 @@
             </div>
 
             <!-- Báo cáo AI chi tiết (mocked or from BE) -->
-            <div v-if="selectedCandidate.ai_score !== null" class="text-xs space-y-2.5 bg-background p-3 rounded-lg border">
-              <div>
-                <span class="font-bold text-green-600 block">✓ Điểm mạnh phù hợp:</span>
-                <p class="text-muted-foreground mt-0.5">Ứng viên có kỹ năng phù hợp tốt với các yêu cầu cốt lõi. Kinh nghiệm thực tế đáp ứng JD.</p>
+            <div v-if="humanReviewCompleted && aiAssessment" class="space-y-2.5 rounded-lg border bg-background p-3 text-xs">
+              <div class="flex flex-wrap gap-2 text-muted-foreground">
+                <span>Model: <strong class="text-foreground">{{ aiAssessment.model_version }}</strong></span>
+                <span>Độ tin cậy: <strong class="text-foreground">{{ Math.round(Number(aiAssessment.confidence || 0) * 100) }}%</strong></span>
+                <span>Parser: <strong class="text-foreground">{{ aiAssessment.parser?.parser_name || 'fallback' }}</strong></span>
               </div>
-              <div>
-                <span class="font-bold text-amber-600 block">⚠ Điểm cần lưu ý:</span>
-                <p class="text-muted-foreground mt-0.5">Thiếu một số chứng chỉ chuyên môn nâng cao liên quan trực tiếp.</p>
+              <div v-for="criterion in aiAssessment.criteria || []" :key="criterion.id" class="rounded-lg border border-border/70 p-2.5">
+                <div class="flex items-start justify-between gap-3">
+                  <span class="font-bold text-foreground">{{ criterion.criterion }}</span>
+                  <span class="whitespace-nowrap font-bold">{{ criterion.score }}/{{ criterion.max_score }}</span>
+                </div>
+                <p class="mt-1 text-muted-foreground">{{ criterion.evidence }}</p>
+                <p v-if="criterion.source_page" class="mt-1 text-[10px] text-primary">Nguồn: trang {{ criterion.source_page }}</p>
               </div>
             </div>
-            <div v-else class="text-xs text-center py-6 text-muted-foreground bg-background rounded-lg border">
+            <div v-else-if="selectedCandidate.ai_score === null" class="text-xs text-center py-6 text-muted-foreground bg-background rounded-lg border">
               Chưa có dữ liệu đánh giá AI. Vui lòng tải lên CV và nhấn "Chạy lại AI" để phân tích.
             </div>
           </div>
@@ -337,8 +353,11 @@
     </BaseModal>
 
     <!-- Manager Review Modal -->
-    <BaseModal v-model="showReviewModal" title="Đánh giá của quản lý">
+    <BaseModal v-model="showReviewModal" title="Đánh giá độc lập của HR / Trưởng phòng" size="lg">
       <div class="space-y-4">
+        <div class="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+          Điểm và nhận xét AI được ẩn trong bước này. Hãy chấm dựa trên CV, JD và bằng chứng chuyên môn của bạn.
+        </div>
         <div>
           <label class="block text-sm font-medium text-foreground mb-1">Quyết định <span class="text-destructive">*</span></label>
           <select
@@ -346,8 +365,33 @@
             class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="approved">Đồng ý</option>
+            <option value="needs_review">Cần xem xét thêm</option>
             <option value="rejected">Từ chối</option>
           </select>
+        </div>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-bold text-foreground">Chấm theo tiêu chí JD</label>
+            <span class="rounded-full bg-primary/10 px-3 py-1 text-sm font-black text-primary">{{ calculatedHumanScore }}%</span>
+          </div>
+          <div v-for="criterion in reviewForm.criteria" :key="criterion.criterion_id" class="rounded-xl border border-border p-3">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-sm font-bold text-foreground">{{ criterion.criterion }}</p>
+                <p class="text-xs text-muted-foreground">Trọng số {{ Number(criterion.weight || 0).toFixed(1) }}%</p>
+              </div>
+              <select v-model.number="criterion.score" class="rounded-lg border border-input bg-background px-3 py-2 text-sm" required>
+                <option :value="null" disabled>Chọn điểm</option>
+                <option v-for="score in [0, 1, 2, 3, 4, 5]" :key="score" :value="score">{{ score }}/5</option>
+              </select>
+            </div>
+            <textarea
+              v-model="criterion.reason"
+              class="mt-3 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              rows="2"
+              placeholder="Bằng chứng hoặc lý do cho điểm này..."
+            ></textarea>
+          </div>
         </div>
         <div>
           <label class="block text-sm font-medium text-foreground mb-1">Nhận xét của quản lý</label>
@@ -358,6 +402,13 @@
             placeholder="Nhập nhận xét đánh giá..."
           ></textarea>
         </div>
+        <label class="flex items-start gap-2 rounded-lg border border-border p-3 text-sm">
+          <input v-model="reviewForm.eligible_for_training" type="checkbox" class="mt-1 h-4 w-4" />
+          <span>
+            <strong class="block text-foreground">Cho phép dùng đánh giá này trong đợt huấn luyện sau</strong>
+            <span class="text-xs text-muted-foreground">Hệ thống không học ngay; dữ liệu chỉ được đưa vào dataset sau khi đủ điều kiện chất lượng.</span>
+          </span>
+        </label>
       </div>
       <template #footer>
         <BaseButton variant="outline" @click="showReviewModal = false">Hủy</BaseButton>
@@ -424,6 +475,7 @@ import BaseBadge from '../components/BaseBadge.vue';
 import { recruitmentService } from '../services/recruitmentService';
 import { useToast } from '../composables/useToast';
 import { cvFilename, cvPreviewKind } from '../utils/cvPreview';
+import { buildIndependentReviewRubric, calculateWeightedReviewScore } from '../utils/recruitmentReview';
 
 const toast = useToast();
 
@@ -467,7 +519,15 @@ const actionLoading = ref(false);
 
 const reviewForm = ref({
   decision: 'approved',
-  note: ''
+  note: '',
+  criteria: [],
+  eligible_for_training: false
+});
+
+const aiAssessment = computed(() => selectedCandidate.value?.meta?.ai_assessment || null);
+const humanReviewCompleted = computed(() => Boolean(selectedCandidate.value?.manager_review));
+const calculatedHumanScore = computed(() => {
+  return calculateWeightedReviewScore(reviewForm.value.criteria || []);
 });
 
 const hireForm = ref({
@@ -524,9 +584,15 @@ const resetFilters = () => {
 };
 
 // --- Actions ---
-const viewDetail = (cand) => {
+const viewDetail = async (cand) => {
   selectedCandidate.value = { ...cand };
   showDetailModal.value = true;
+  try {
+    selectedCandidate.value = await recruitmentService.getCandidateById(cand.id);
+  } catch (err) {
+    console.error('Error loading candidate detail:', err);
+    toast.error('Không thể tải đầy đủ chi tiết ứng viên');
+  }
 };
 
 const updateCandidateStatus = async () => {
@@ -620,21 +686,44 @@ const submitRejectCandidate = async () => {
 };
 
 const openManagerReview = () => {
-  reviewForm.value = { decision: 'approved', note: '' };
+  reviewForm.value = {
+    decision: 'approved',
+    note: '',
+    eligible_for_training: false,
+    criteria: buildIndependentReviewRubric(selectedCandidate.value)
+  };
   showReviewModal.value = true;
 };
 
 const submitManagerReview = async () => {
   if (!selectedCandidate.value?.id) return;
+  if (!reviewForm.value.criteria.length) {
+    toast.error('Chưa có rubric JD để chấm ứng viên');
+    return;
+  }
+  if (reviewForm.value.criteria.some(item => item.score === null || !item.reason.trim())) {
+    toast.error('Vui lòng chấm điểm và nhập lý do cho tất cả tiêu chí');
+    return;
+  }
   actionLoading.value = true;
   try {
     await recruitmentService.managerReview(selectedCandidate.value.id, {
       decision: reviewForm.value.decision,
-      note: reviewForm.value.note
+      note: reviewForm.value.note,
+      manager_score: calculatedHumanScore.value,
+      blind_review: true,
+      eligible_for_training: reviewForm.value.eligible_for_training,
+      criteria: reviewForm.value.criteria.map(item => ({
+        criterion_id: item.criterion_id,
+        score: item.score,
+        reason: item.reason,
+        evidence: item.evidence
+      }))
     });
     toast.success('Đã gửi đánh giá của quản lý');
     showReviewModal.value = false;
     await loadCandidates();
+    selectedCandidate.value = await recruitmentService.getCandidateById(selectedCandidate.value.id);
   } catch (err) {
     console.error('Error submitting manager review:', err);
     toast.error('Lỗi khi gửi đánh giá của quản lý');

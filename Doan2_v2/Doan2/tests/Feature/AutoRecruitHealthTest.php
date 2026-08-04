@@ -15,6 +15,7 @@ class AutoRecruitHealthTest extends TestCase
     public function test_admin_can_check_primary_and_fallback_resume_backends(): void
     {
         config([
+            'services.autorecruit.mac_url' => 'http://resume-primary.test',
             'services.autorecruit.url' => 'http://resume-primary.test',
             'services.autorecruit.fallback_urls' => ['http://resume-fallback.test'],
         ]);
@@ -35,6 +36,7 @@ class AutoRecruitHealthTest extends TestCase
     public function test_health_selects_mac_when_both_resume_backends_are_online(): void
     {
         config([
+            'services.autorecruit.mac_url' => 'http://mac-resume.test',
             'services.autorecruit.url' => 'http://mac-resume.test',
             'services.autorecruit.fallback_urls' => ['http://windows-resume.test'],
         ]);

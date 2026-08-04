@@ -15,13 +15,7 @@ class AutoRecruitScreeningService
      */
     public function screen(UploadedFile $file, string $jdText): array
     {
-        $urls = array_values(array_unique(array_filter(array_map(
-            fn ($url) => rtrim((string) $url, '/'),
-            array_merge(
-                [(string) config('services.autorecruit.url', 'http://resume-backend:8000')],
-                (array) config('services.autorecruit.fallback_urls', [])
-            )
-        ))));
+        $urls = app(AutoRecruitEndpointResolver::class)->urls();
         $lastException = null;
 
         foreach ($urls as $url) {

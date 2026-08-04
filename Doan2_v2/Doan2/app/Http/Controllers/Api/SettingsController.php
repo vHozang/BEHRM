@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\AutoRecruitEndpointResolver;
 use App\Support\AccessControl;
 use App\Support\HrmConfig;
 use Illuminate\Http\JsonResponse;
@@ -204,13 +205,7 @@ class SettingsController extends Controller
     /** GET /settings/integrations/autorecruit/health — admin-only connectivity check. */
     public function autoRecruitHealth(): JsonResponse
     {
-        $urls = array_values(array_unique(array_filter(array_map(
-            fn ($url) => rtrim((string) $url, '/'),
-            array_merge(
-                [(string) config('services.autorecruit.url')],
-                (array) config('services.autorecruit.fallback_urls', [])
-            )
-        ))));
+        $urls = app(AutoRecruitEndpointResolver::class)->urls();
         $checks = [];
         $available = false;
         $selectedUrl = null;

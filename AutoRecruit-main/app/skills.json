@@ -6,17 +6,9 @@
     "lap trinh python",
     "lập trình python"
   ],
-  "sql": [
-    "sql",
-    "mysql",
-    "postgresql",
-    "postgres",
-    "database",
-    "co so du lieu",
-    "cơ sở dữ liệu",
-    "truy van sql",
-    "truy vấn sql"
-  ],
+  "sql": ["sql", "structured query language", "truy van sql", "truy vấn sql"],
+  "mysql": ["mysql", "maria db", "mariadb"],
+  "postgresql": ["postgresql", "postgres", "postgis"],
   "fastapi": ["fastapi", "fast api", "api fastapi"],
   "docker": ["docker", "docker compose", "container"],
   "aws": ["aws", "amazon web services", "amazon aws", "ec2", "s3"],
@@ -32,6 +24,9 @@
   "javascript": ["javascript", "js", "ecmascript"],
   "react": ["react", "reactjs", "react.js", "react native"],
   "nodejs": ["nodejs", "node.js", "node js", "express", "nestjs"],
-  "php": ["php", "laravel"],
+  "php": ["php"],
+  "laravel": ["laravel", "laravel framework", "eloquent orm"],
+  "rest_api": ["rest api", "restful api", "restful service", "web api"],
+  "git": ["git", "github", "gitlab", "version control"],
   "html_css": ["html", "html5", "css", "css3", "bootstrap", "tailwind"]
 }

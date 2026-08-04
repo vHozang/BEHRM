@@ -19,10 +19,28 @@ services:
       OLLAMA_URL: http://ollama:11434
       EMBED_MODEL: mxbai-embed-large
       DATA_DIR: /data
+      MINERU_URL: ${MINERU_URL:-http://mineru:8000}
+      MINERU_BACKEND: pipeline
+      MINERU_STRATEGY: ${MINERU_STRATEGY:-auto}
+      MINERU_TIMEOUT: ${MINERU_TIMEOUT:-600}
     volumes:
       - ./data:/data
     depends_on:
       - ollama
+    restart: unless-stopped
+
+  mineru:
+    profiles:
+      - mineru
+    build:
+      context: .
+      dockerfile: mineru-local/Dockerfile
+    image: hrm-mineru-pipeline:3.4.4
+    container_name: mineru
+    ports:
+      - "${MINERU_BIND_IP:-127.0.0.1}:8001:8000"
+    volumes:
+      - mineru_output:/data/output
     restart: unless-stopped
 
   trainer:
@@ -75,6 +93,7 @@ services:
 
 volumes:
   ollama_data:
+  mineru_output:
 
 networks:
   default:

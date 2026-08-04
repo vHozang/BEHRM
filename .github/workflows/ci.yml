@@ -74,3 +74,34 @@ jobs:
 
       - name: Validate Docker Compose
         run: docker compose config --quiet
+
+  resume-ai:
+    name: Resume AI checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: AutoRecruit-main
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: AutoRecruit-main/app/requirements.txt
+
+      - name: Install dependencies
+        run: pip install --disable-pip-version-check -r app/requirements.txt
+
+      - name: Run objective scoring tests
+        env:
+          MINERU_URL: ''
+        run: python -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Validate MinerU skill scripts
+        run: bash -n ../docs/resume/mineru-resume-local/scripts/*.sh
+
+      - name: Validate resume compose
+        run: docker compose config --quiet

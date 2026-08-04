@@ -5,6 +5,7 @@ import os
 import re
 import sqlite3
 import unicodedata
+import uuid
 from datetime import datetime
 from html import unescape
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -15,9 +16,14 @@ import numpy as np
 import requests
 from docx import Document
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+from modules.candidate_scoring import build_assessment
+from modules.human_feedback import compare_reviews, reference_score, training_eligibility
+from modules.resume_parser import ResumeDocumentParser, build_cv_profile, redact_scoring_text
+from modules.training_pipeline import dataset_payload, dumps as compact_json, train_calibrator
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(APP_DIR, "static")
@@ -27,9 +33,12 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "mxbai-embed-large")
 BATCH_EMBED_CHUNK_SIZE = int(os.getenv("BATCH_EMBED_CHUNK_SIZE", "16"))
 BATCH_EMBED_BUDGET_DEFAULT = int(os.getenv("BATCH_EMBED_BUDGET_DEFAULT", "32"))
+MIN_TRAINING_EXAMPLES = max(5, int(os.getenv("MIN_TRAINING_EXAMPLES", "20")))
+DOCUMENT_PARSER = ResumeDocumentParser()
 
 MUST_SECTION_MARKERS = [
     "must have",
+    "must-have",
     "required",
     "requirement",
     "mandatory",
@@ -40,6 +49,7 @@ MUST_SECTION_MARKERS = [
 
 NICE_SECTION_MARKERS = [
     "nice to have",
+    "nice-to-have",
     "preferred",
     "plus point",
     "good to have",
@@ -218,6 +228,122 @@ def init_db() -> None:
         """
     )
 
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_assessments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            assessment_uid TEXT NOT NULL UNIQUE,
+            result_id INTEGER,
+            job_id INTEGER,
+            model_version TEXT NOT NULL,
+            prompt_version TEXT NOT NULL,
+            ai_score REAL NOT NULL,
+            calibrated_score REAL NOT NULL,
+            confidence REAL NOT NULL,
+            component_scores TEXT NOT NULL,
+            rubric_json TEXT NOT NULL,
+            cv_profile_json TEXT NOT NULL,
+            parser_meta_json TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS human_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            candidate_id INTEGER NOT NULL,
+            assessment_id INTEGER,
+            reviewer_id TEXT,
+            reviewer_role TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            ai_score REAL NOT NULL,
+            human_score REAL NOT NULL,
+            final_score REAL NOT NULL,
+            criteria_json TEXT NOT NULL,
+            note TEXT,
+            blind_review INTEGER NOT NULL DEFAULT 1,
+            eligible_for_training INTEGER NOT NULL DEFAULT 0,
+            quality_status TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS assessment_disagreements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            review_id INTEGER NOT NULL,
+            assessment_id INTEGER,
+            criterion_id TEXT NOT NULL,
+            ai_score REAL NOT NULL,
+            human_score REAL NOT NULL,
+            score_delta REAL NOT NULL,
+            severity TEXT NOT NULL,
+            reason TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS recruitment_outcomes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            candidate_id INTEGER NOT NULL,
+            stage TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            score REAL,
+            note TEXT,
+            recorded_by TEXT,
+            meta_json TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS training_datasets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            version TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            example_count INTEGER NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS model_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            version TEXT NOT NULL UNIQUE,
+            dataset_id INTEGER,
+            status TEXT NOT NULL,
+            parameters_json TEXT NOT NULL,
+            metrics_json TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            activated_at DATETIME
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        INSERT OR IGNORE INTO model_versions
+            (version, status, parameters_json, metrics_json, activated_at)
+        VALUES (?, 'ACTIVE', '{}', ?, CURRENT_TIMESTAMP)
+        """,
+        (
+            "objective-rubric-v1",
+            json.dumps({"type": "baseline", "note": "Rule and rubric baseline"}),
+        ),
+    )
+
     conn.commit()
     conn.close()
 
@@ -227,31 +353,21 @@ def startup_event() -> None:
     init_db()
 
 
-def extract_pdf_text(file_bytes: bytes) -> str:
-    text_parts: List[str] = []
-    with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-        for page in doc:
-            text_parts.append(page.get_text())
-    return "\n".join(text_parts)
-
-
-def extract_docx_text(file_bytes: bytes) -> str:
-    doc = Document(io.BytesIO(file_bytes))
-    return "\n".join([p.text for p in doc.paragraphs])
-
-
-def extract_text(filename: str, file_bytes: bytes) -> str:
-    lower = filename.lower()
-    if lower.endswith(".pdf"):
-        return extract_pdf_text(file_bytes)
-    if lower.endswith(".docx"):
-        return extract_docx_text(file_bytes)
-    raise HTTPException(status_code=400, detail=f"Unsupported file type: {filename}")
+def parse_document(filename: str, file_bytes: bytes, force_mineru: bool = False):
+    try:
+        return DOCUMENT_PARSER.parse(filename, file_bytes, force_mineru=force_mineru)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def extract_email(text: str) -> str:
     m = re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text)
     return m.group(0) if m else ""
+
+
+def extract_phone(text: str) -> str:
+    match = re.search(r"(?<!\d)(?:\+?84|0)(?:[ .-]?\d){8,10}(?!\d)", text)
+    return re.sub(r"[ .-]", "", match.group(0)) if match else ""
 
 
 def looks_like_name(line: str) -> bool:
@@ -755,19 +871,38 @@ def parse_jd(jd_text: str) -> Dict[str, Any]:
 
     lines = [normalize_for_match(line) for line in segments if line.strip()]
 
-    for line in lines:
-        marker = detect_section_marker(line)
-        if marker:
-            section = marker
+    def add_skills(target_section: str, text: str) -> None:
+        skills_in_text = extract_skills(text)
+        if target_section == "nice":
+            nice_to_have.update(skills_in_text)
+        else:
+            must_have.update(skills_in_text)
 
-        skills_in_line = extract_skills(line)
-        if not skills_in_line:
+    for line in lines:
+        marker_hits: List[Tuple[int, str, str]] = []
+        for marker in MUST_SECTION_MARKERS:
+            position = line.find(marker)
+            if position >= 0:
+                marker_hits.append((position, "must", marker))
+        for marker in NICE_SECTION_MARKERS:
+            position = line.find(marker)
+            if position >= 0:
+                marker_hits.append((position, "nice", marker))
+
+        if not marker_hits:
+            add_skills(section, line)
             continue
 
-        if section == "nice":
-            nice_to_have.update(skills_in_line)
-        else:
-            must_have.update(skills_in_line)
+        marker_hits.sort(key=lambda item: item[0])
+        prefix = line[: marker_hits[0][0]]
+        if prefix.strip():
+            add_skills(section, prefix)
+
+        for index, (position, marker_section, marker) in enumerate(marker_hits):
+            content_start = position + len(marker)
+            content_end = marker_hits[index + 1][0] if index + 1 < len(marker_hits) else len(line)
+            add_skills(marker_section, line[content_start:content_end])
+            section = marker_section
 
     if not must_have and not nice_to_have:
         must_have.update(extract_skills(jd_text))
@@ -786,11 +921,9 @@ def parse_jd(jd_text: str) -> Dict[str, Any]:
     }
 
 
-def build_resume_summary(name: str, skills: List[str], years: int, email: str, clean_text: str) -> str:
+def build_resume_summary(skills: List[str], years: int, clean_text: str) -> str:
     short_text = clean_text[:2500]
     return (
-        f"Candidate / Ung vien: {name}\n"
-        f"Email: {email}\n"
         f"Skills / Ky nang: {', '.join(skills)}\n"
         f"Years of experience / So nam kinh nghiem: {years}\n"
         f"Profile: {short_text}"
@@ -981,16 +1114,70 @@ def recommendation_label(score: float) -> str:
     return "weak_fit"
 
 
+def get_active_model() -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT id, version, parameters_json, metrics_json
+        FROM model_versions
+        WHERE status = 'ACTIVE'
+        ORDER BY activated_at DESC, id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "version": row["version"],
+        "parameters": json.loads(row["parameters_json"] or "{}"),
+        "metrics": json.loads(row["metrics_json"] or "{}"),
+    }
+
+
+def attach_objective_assessment(candidate: Dict[str, Any], jd: Dict[str, Any]) -> None:
+    scores = candidate["scores"]
+    assessment = build_assessment(
+        jd=jd,
+        cv_profile=candidate["cv_profile"],
+        scores=scores,
+        parser_metadata=candidate["cv_profile"].get("parser") or {},
+        active_model=get_active_model(),
+    )
+    assessment["assessment_uid"] = str(uuid.uuid4())
+    scores["uncalibrated_final_score"] = scores["final_score"]
+    scores["final_score"] = round(float(assessment["calibrated_score"]) / 100.0, 4)
+    scores["recommendation"] = recommendation_label(scores["final_score"])
+    candidate["assessment"] = assessment
+
+
 def process_resume(
-    filename: str, content: bytes, jd_text: str, jd: Dict[str, Any], jd_emb: List[float]
+    filename: str,
+    content: bytes,
+    jd_text: str,
+    jd: Dict[str, Any],
+    jd_emb: List[float],
+    force_mineru: bool = False,
 ) -> Dict[str, Any]:
-    raw_text = extract_text(filename, content)
-    clean_text = normalize_text(raw_text)
+    parsed_document = parse_document(filename, content, force_mineru=force_mineru)
+    raw_text = parsed_document.text
 
     candidate_name = infer_name(raw_text, filename)
     email = extract_email(raw_text)
     skills = extract_skills(raw_text)
     years = detect_years_experience(raw_text)
+    cv_profile = build_cv_profile(
+        parsed=parsed_document,
+        filename=filename,
+        candidate_name=candidate_name,
+        email=email,
+        skills=skills,
+        years_experience=years,
+        phone_extractor=extract_phone,
+    )
+    scoring_text = redact_scoring_text(raw_text, candidate_name)
+    clean_text = normalize_text(scoring_text)
     link_collection = collect_link_candidates(filename, content, raw_text)
     link_report = inspect_product_links(
         link_collection["links"],
@@ -1002,9 +1189,9 @@ def process_resume(
     project_report = evaluate_projects_against_jd(project_snippets, link_report, jd_emb, jd)
     rule_fit_score = compute_rule_fit_score(skills, years, jd)
     jd_keywords = build_jd_keyword_set(jd)
-    lexical_score = keyword_overlap_score(raw_text, jd_keywords) if jd_keywords else 0.0
+    lexical_score = keyword_overlap_score(scoring_text, jd_keywords) if jd_keywords else 0.0
 
-    resume_summary = build_resume_summary(candidate_name, skills, years, email, clean_text)
+    resume_summary = build_resume_summary(skills, years, clean_text)
     try:
         cv_emb = get_embedding(resume_summary)
     except Exception:
@@ -1023,35 +1210,52 @@ def process_resume(
         project_fit_score=project_report["project_fit_score"],
         semantic_override=semantic_override,
     )
-    scores["recommendation"] = recommendation_label(scores["final_score"])
-
-    return {
+    candidate = {
         "candidate_name": candidate_name,
         "email": email,
         "filename": filename,
         "skills": skills,
         "years_experience": years,
+        "cv_profile": cv_profile,
         "analysis": {
             "language_hint": detect_language_hint(raw_text),
             "resume_summary_preview": resume_summary[:350],
+            "parser": parsed_document.metadata(),
             "product_link_report": link_report,
             "project_fit_report": project_report,
         },
         "scores": scores,
         "raw_text": raw_text[:20000],
     }
+    attach_objective_assessment(candidate, jd)
+    return candidate
 
 
 def process_resume_light(
-    filename: str, content: bytes, jd: Dict[str, Any], jd_keywords: Set[str]
+    filename: str,
+    content: bytes,
+    jd: Dict[str, Any],
+    jd_keywords: Set[str],
+    force_mineru: bool = False,
 ) -> Dict[str, Any]:
-    raw_text = extract_text(filename, content)
-    clean_text = normalize_text(raw_text)
+    parsed_document = parse_document(filename, content, force_mineru=force_mineru)
+    raw_text = parsed_document.text
 
     candidate_name = infer_name(raw_text, filename)
     email = extract_email(raw_text)
     skills = extract_skills(raw_text)
     years = detect_years_experience(raw_text)
+    cv_profile = build_cv_profile(
+        parsed=parsed_document,
+        filename=filename,
+        candidate_name=candidate_name,
+        email=email,
+        skills=skills,
+        years_experience=years,
+        phone_extractor=extract_phone,
+    )
+    scoring_text = redact_scoring_text(raw_text, candidate_name)
+    clean_text = normalize_text(scoring_text)
     link_collection = collect_link_candidates(filename, content, raw_text)
 
     lite_links: List[Dict[str, Any]] = []
@@ -1080,8 +1284,8 @@ def process_resume_light(
             }
         )
 
-    resume_summary = build_resume_summary(candidate_name, skills, years, email, clean_text)
-    lexical_score = keyword_overlap_score(raw_text, jd_keywords) if jd_keywords else 0.0
+    resume_summary = build_resume_summary(skills, years, clean_text)
+    lexical_score = keyword_overlap_score(scoring_text, jd_keywords) if jd_keywords else 0.0
     rule_fit_score = compute_rule_fit_score(skills, years, jd)
     prefilter_score = 0.6 * lexical_score + 0.4 * rule_fit_score
 
@@ -1091,11 +1295,13 @@ def process_resume_light(
         "filename": filename,
         "skills": skills,
         "years_experience": years,
+        "cv_profile": cv_profile,
         "resume_summary": resume_summary,
         "raw_text": raw_text[:20000],
         "analysis": {
             "language_hint": detect_language_hint(raw_text),
             "resume_summary_preview": resume_summary[:350],
+            "parser": parsed_document.metadata(),
             "batch_prefilter": {
                 "lexical_score": round(lexical_score, 4),
                 "rule_fit_score": round(rule_fit_score, 4),
@@ -1165,6 +1371,33 @@ def save_job_and_results(
                 c["raw_text"],
             ),
         )
+        result_id = cur.lastrowid
+        assessment = c.get("assessment") or {}
+        if assessment:
+            cur.execute(
+                """
+                INSERT INTO ai_assessments (
+                    assessment_uid, result_id, job_id, model_version, prompt_version,
+                    ai_score, calibrated_score, confidence, component_scores,
+                    rubric_json, cv_profile_json, parser_meta_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    assessment["assessment_uid"],
+                    result_id,
+                    job_id,
+                    assessment["model_version"],
+                    assessment["prompt_version"],
+                    assessment["ai_score"] / 100.0,
+                    assessment["calibrated_score"] / 100.0,
+                    assessment["confidence"],
+                    json.dumps(assessment.get("component_scores") or {}, ensure_ascii=False),
+                    json.dumps(assessment.get("criteria") or [], ensure_ascii=False),
+                    json.dumps(c.get("cv_profile") or {}, ensure_ascii=False),
+                    json.dumps(assessment.get("parser") or {}, ensure_ascii=False),
+                ),
+            )
+            assessment["id"] = cur.lastrowid
 
     conn.commit()
     conn.close()
@@ -1172,8 +1405,12 @@ def save_job_and_results(
 
 
 @app.get("/health")
-def health() -> Dict[str, str]:
-    return {"status": "ok"}
+def health() -> Dict[str, Any]:
+    return {
+        "status": "ok",
+        "mineru": DOCUMENT_PARSER.mineru.health(),
+        "active_model": (get_active_model() or {}).get("version"),
+    }
 
 
 @app.get("/", include_in_schema=False)
@@ -1184,8 +1421,33 @@ def serve_frontend() -> FileResponse:
     return FileResponse(index_path)
 
 
+@app.post("/parse")
+async def parse_resume_only(
+    file: UploadFile = File(...),
+    force_mineru: bool = Form(False),
+) -> Dict[str, Any]:
+    content = await file.read()
+    parsed = parse_document(file.filename, content, force_mineru=force_mineru)
+    raw_text = parsed.text
+    candidate_name = infer_name(raw_text, file.filename)
+    profile = build_cv_profile(
+        parsed=parsed,
+        filename=file.filename,
+        candidate_name=candidate_name,
+        email=extract_email(raw_text),
+        skills=extract_skills(raw_text),
+        years_experience=detect_years_experience(raw_text),
+        phone_extractor=extract_phone,
+    )
+    return {"profile": profile, "content_blocks": parsed.content_blocks, "markdown": parsed.markdown}
+
+
 @app.post("/screen")
-async def screen_single_resume(file: UploadFile = File(...), jd_text: str = Form(...)) -> Dict[str, Any]:
+async def screen_single_resume(
+    file: UploadFile = File(...),
+    jd_text: str = Form(...),
+    force_mineru: bool = Form(False),
+) -> Dict[str, Any]:
     content = await file.read()
     jd = parse_jd(jd_text)
     try:
@@ -1193,7 +1455,7 @@ async def screen_single_resume(file: UploadFile = File(...), jd_text: str = Form
     except Exception:
         jd_emb = []
 
-    result = process_resume(file.filename, content, jd_text, jd, jd_emb)
+    result = process_resume(file.filename, content, jd_text, jd, jd_emb, force_mineru=force_mineru)
     job_id = save_job_and_results(jd_text, jd, jd_emb, [result])
 
     return {"job_id": job_id, "jd": jd, "candidate": result}
@@ -1206,6 +1468,7 @@ async def screen_batch_resumes(
     top_k: int = Form(10),
     analysis_mode: str = Form("lite"),
     embedding_budget: int = Form(BATCH_EMBED_BUDGET_DEFAULT),
+    force_mineru: bool = Form(False),
 ) -> Dict[str, Any]:
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
@@ -1224,7 +1487,14 @@ async def screen_batch_resumes(
         for file in files:
             try:
                 content = await file.read()
-                result = process_resume(file.filename, content, jd_text, jd, jd_emb)
+                result = process_resume(
+                    file.filename,
+                    content,
+                    jd_text,
+                    jd,
+                    jd_emb,
+                    force_mineru=force_mineru,
+                )
                 candidates.append(result)
             except Exception as e:
                 errors.append({"filename": file.filename, "error": str(e)})
@@ -1240,7 +1510,15 @@ async def screen_batch_resumes(
         for file in files:
             try:
                 content = await file.read()
-                pre_candidates.append(process_resume_light(file.filename, content, jd, jd_keywords))
+                pre_candidates.append(
+                    process_resume_light(
+                        file.filename,
+                        content,
+                        jd,
+                        jd_keywords,
+                        force_mineru=force_mineru,
+                    )
+                )
             except Exception as e:
                 errors.append({"filename": file.filename, "error": str(e)})
 
@@ -1273,9 +1551,9 @@ async def screen_batch_resumes(
                     project_fit_score=None,
                     semantic_override=semantic_override,
                 )
-                scores["recommendation"] = recommendation_label(scores["final_score"])
                 candidate["scores"] = scores
                 candidate.pop("resume_summary", None)
+                attach_objective_assessment(candidate, jd)
                 candidates.append(candidate)
 
             strategy_info = {
@@ -1412,15 +1690,30 @@ def get_job_ranking(job_id: int, top_k: int = 10) -> Dict[str, Any]:
 # ═══════════════════════════════════════════════════════════════════
 
 
+class CriterionReview(BaseModel):
+    criterion_id: str
+    score: float = Field(ge=0, le=5)
+    reason: str = Field(min_length=1, max_length=2000)
+    evidence: str = Field(default="", max_length=2000)
+
+
 class FeedbackPayload(BaseModel):
-    """Payload nhận từ Laravel khi HR/Trưởng phòng chấm lại điểm."""
+    """Structured review submitted after an independent human assessment."""
     candidate_id: int
-    ai_score: float           # Điểm AI ban đầu (0..1)
-    human_score: float        # Điểm người chấm (0..1)
+    assessment_id: Optional[int] = None
+    ai_score: float = Field(ge=0, le=1)
+    human_score: float = Field(ge=0, le=1)
+    reviewer_id: Optional[str] = None
+    reviewer_role: str = Field(default="HR", max_length=100)
+    decision: str = Field(default="NEEDS_REVIEW", pattern="^(APPROVED|REJECTED|NEEDS_REVIEW)$")
+    note: str = Field(default="", max_length=5000)
+    blind_review: bool = True
+    eligible_for_training: bool = False
+    criteria: List[CriterionReview] = Field(default_factory=list)
     jd_text: str = ""
-    cv_skills: List[str] = []
-    ai_matched_skills: List[str] = []
-    ai_missing_skills: List[str] = []
+    cv_skills: List[str] = Field(default_factory=list)
+    ai_matched_skills: List[str] = Field(default_factory=list)
+    ai_missing_skills: List[str] = Field(default_factory=list)
 
 
 def analyze_score_discrepancy(
@@ -1541,8 +1834,19 @@ def receive_feedback(payload: FeedbackPayload) -> Dict[str, Any]:
 
     delta = payload.human_score - payload.ai_score
 
+    human_criteria = [item.model_dump() for item in payload.criteria]
     conn = get_conn()
     cur = conn.cursor()
+    assessment_row = None
+    ai_criteria: List[Dict[str, Any]] = []
+    if payload.assessment_id is not None:
+        assessment_row = cur.execute(
+            "SELECT id, rubric_json FROM ai_assessments WHERE id = ?",
+            (payload.assessment_id,),
+        ).fetchone()
+        if assessment_row:
+            ai_criteria = json.loads(assessment_row["rubric_json"] or "[]")
+
     cur.execute(
         """
         INSERT INTO feedback_log
@@ -1563,12 +1867,70 @@ def receive_feedback(payload: FeedbackPayload) -> Dict[str, Any]:
         ),
     )
     feedback_id = cur.lastrowid
+
+    eligibility = training_eligibility(
+        human_score=payload.human_score,
+        human_criteria=human_criteria,
+        note=payload.note,
+        requested=payload.eligible_for_training,
+    )
+    final_score = reference_score(payload.ai_score, payload.human_score)
+    cur.execute(
+        """
+        INSERT INTO human_reviews (
+            candidate_id, assessment_id, reviewer_id, reviewer_role, decision,
+            ai_score, human_score, final_score, criteria_json, note, blind_review,
+            eligible_for_training, quality_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            payload.candidate_id,
+            assessment_row["id"] if assessment_row else None,
+            payload.reviewer_id,
+            payload.reviewer_role,
+            payload.decision,
+            payload.ai_score,
+            payload.human_score,
+            final_score,
+            json.dumps(human_criteria, ensure_ascii=False),
+            payload.note,
+            int(payload.blind_review),
+            int(eligibility["eligible"]),
+            "ELIGIBLE" if eligibility["eligible"] else "EXCLUDED",
+        ),
+    )
+    review_id = cur.lastrowid
+
+    disagreements = compare_reviews(ai_criteria, human_criteria)
+    for disagreement in disagreements:
+        cur.execute(
+            """
+            INSERT INTO assessment_disagreements (
+                review_id, assessment_id, criterion_id, ai_score, human_score,
+                score_delta, severity, reason
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                review_id,
+                assessment_row["id"] if assessment_row else None,
+                disagreement["criterion_id"],
+                disagreement["ai_score"],
+                disagreement["human_score"],
+                disagreement["delta"],
+                disagreement["severity"],
+                disagreement["reason"],
+            ),
+        )
     conn.commit()
     conn.close()
 
     return {
         "feedback_id": feedback_id,
+        "review_id": review_id,
         "candidate_id": payload.candidate_id,
+        "final_reference_score": final_score,
+        "training_eligibility": eligibility,
+        "disagreements": disagreements,
         "analysis": analysis,
     }
 
@@ -1746,3 +2108,190 @@ def feedback_weight_adjustments() -> Dict[str, Any]:
             "overscored_ratio": round(overscored_ratio, 3),
         },
     }
+
+
+class RecruitmentOutcomePayload(BaseModel):
+    candidate_id: int
+    stage: str = Field(pattern="^(INTERVIEW|OFFER|HIRED|PROBATION|PERFORMANCE)$")
+    outcome: str = Field(min_length=1, max_length=100)
+    score: Optional[float] = Field(default=None, ge=0, le=100)
+    note: str = Field(default="", max_length=5000)
+    recorded_by: Optional[str] = None
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/outcomes")
+def record_recruitment_outcome(payload: RecruitmentOutcomePayload) -> Dict[str, Any]:
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO recruitment_outcomes
+            (candidate_id, stage, outcome, score, note, recorded_by, meta_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            payload.candidate_id,
+            payload.stage,
+            payload.outcome,
+            payload.score,
+            payload.note,
+            payload.recorded_by,
+            json.dumps(payload.meta, ensure_ascii=False),
+        ),
+    )
+    outcome_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return {"outcome_id": outcome_id, "candidate_id": payload.candidate_id, "status": "recorded"}
+
+
+@app.post("/training-datasets/build")
+def build_training_dataset() -> Dict[str, Any]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT
+            review.id AS review_id,
+            review.candidate_id,
+            review.assessment_id,
+            review.ai_score,
+            review.human_score,
+            review.decision,
+            review.criteria_json,
+            assessment.component_scores,
+            assessment.model_version,
+            assessment.prompt_version
+        FROM human_reviews AS review
+        JOIN ai_assessments AS assessment ON assessment.id = review.assessment_id
+        WHERE review.eligible_for_training = 1
+          AND review.quality_status = 'ELIGIBLE'
+        ORDER BY review.id
+        """
+    ).fetchall()
+    examples = [{
+        "review_id": row["review_id"],
+        "candidate_id": row["candidate_id"],
+        "assessment_id": row["assessment_id"],
+        "ai_score": row["ai_score"],
+        "human_score": row["human_score"],
+        "decision": row["decision"],
+        "human_criteria": json.loads(row["criteria_json"] or "[]"),
+        "features": json.loads(row["component_scores"] or "{}"),
+        "source_model_version": row["model_version"],
+        "source_prompt_version": row["prompt_version"],
+    } for row in rows]
+    payload = dataset_payload(examples)
+    version = datetime.utcnow().strftime("dataset-%Y%m%d-%H%M%S")
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO training_datasets (version, status, example_count, payload_json)
+        VALUES (?, 'READY', ?, ?)
+        """,
+        (version, len(examples), compact_json(payload)),
+    )
+    dataset_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return {
+        "dataset_id": dataset_id,
+        "version": version,
+        "example_count": len(examples),
+        "minimum_training_examples": MIN_TRAINING_EXAMPLES,
+        "ready_for_training": len(examples) >= MIN_TRAINING_EXAMPLES,
+    }
+
+
+@app.get("/training-datasets")
+def list_training_datasets() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, version, status, example_count, created_at FROM training_datasets ORDER BY id DESC"
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+@app.post("/model-versions/train/{dataset_id}")
+def train_model_version(dataset_id: int) -> Dict[str, Any]:
+    conn = get_conn()
+    dataset = conn.execute(
+        "SELECT id, version, example_count, payload_json FROM training_datasets WHERE id = ?",
+        (dataset_id,),
+    ).fetchone()
+    if not dataset:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Training dataset not found")
+    if int(dataset["example_count"]) < MIN_TRAINING_EXAMPLES:
+        conn.close()
+        raise HTTPException(
+            status_code=422,
+            detail=f"At least {MIN_TRAINING_EXAMPLES} eligible reviews are required before training",
+        )
+
+    payload = json.loads(dataset["payload_json"] or "{}")
+    result = train_calibrator(payload.get("examples") or [])
+    version = datetime.utcnow().strftime("calibrator-%Y%m%d-%H%M%S")
+    status = "CANDIDATE" if result["metrics"]["passed"] else "REJECTED"
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO model_versions
+            (version, dataset_id, status, parameters_json, metrics_json)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            version,
+            dataset_id,
+            status,
+            compact_json(result["parameters"]),
+            compact_json(result["metrics"]),
+        ),
+    )
+    model_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return {"model_id": model_id, "version": version, "status": status, **result}
+
+
+@app.get("/model-versions")
+def list_model_versions() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT id, version, dataset_id, status, metrics_json, created_at, activated_at
+        FROM model_versions ORDER BY id DESC
+        """
+    ).fetchall()
+    conn.close()
+    return [{
+        **dict(row),
+        "metrics": json.loads(row["metrics_json"] or "{}"),
+    } for row in rows]
+
+
+@app.post("/model-versions/{model_id}/activate")
+def activate_model_version(model_id: int) -> Dict[str, Any]:
+    conn = get_conn()
+    model = conn.execute(
+        "SELECT id, version, status, metrics_json FROM model_versions WHERE id = ?",
+        (model_id,),
+    ).fetchone()
+    if not model:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Model version not found")
+    metrics = json.loads(model["metrics_json"] or "{}")
+    if model["status"] != "CANDIDATE" or not metrics.get("passed"):
+        conn.close()
+        raise HTTPException(status_code=422, detail="Only an evaluated candidate model can be activated")
+
+    cur = conn.cursor()
+    cur.execute("UPDATE model_versions SET status = 'ARCHIVED' WHERE status = 'ACTIVE'")
+    cur.execute(
+        "UPDATE model_versions SET status = 'ACTIVE', activated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (model_id,),
+    )
+    conn.commit()
+    conn.close()
+    return {"model_id": model_id, "version": model["version"], "status": "ACTIVE"}

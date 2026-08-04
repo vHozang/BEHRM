@@ -31,7 +31,11 @@ class PublicRecruitmentApplicationTest extends TestCase
     {
         [$tenantId, $post] = $this->createPublishedPost();
         Storage::fake('local');
-        config(['services.autorecruit.url' => 'http://resume-backend.test']);
+        config([
+            'services.autorecruit.mac_url' => 'http://resume-backend.test',
+            'services.autorecruit.url' => 'http://resume-backend.test',
+            'services.autorecruit.fallback_urls' => [],
+        ]);
         Http::fake([
             'http://resume-backend.test/screen' => Http::response([
                 'job_id' => 42,
@@ -43,6 +47,15 @@ class PublicRecruitmentApplicationTest extends TestCase
                         'matched_skills' => ['SQL'],
                         'missing_skills' => ['Power BI'],
                         'recommendation' => 'high_fit',
+                    ],
+                    'cv_profile' => [
+                        'schema_version' => 'cv-profile.v1',
+                        'extraction_confidence' => 0.9,
+                    ],
+                    'assessment' => [
+                        'id' => 17,
+                        'model_version' => 'objective-rubric-v1',
+                        'criteria' => [],
                     ],
                 ],
             ]),
@@ -77,6 +90,10 @@ class PublicRecruitmentApplicationTest extends TestCase
             'candidate_id' => $candidateId,
             'original_filename' => 'candidate.pdf',
         ]);
+        $candidateMeta = DB::table('recruitment_candidates')->where('id', $candidateId)->value('meta');
+        $candidateMeta = is_array($candidateMeta) ? $candidateMeta : json_decode($candidateMeta, true);
+        $this->assertSame('cv-profile.v1', $candidateMeta['cv_profile']['schema_version']);
+        $this->assertSame(17, $candidateMeta['ai_assessment']['id']);
         $this->withToken($this->adminToken())->getJson("/api/v1/recruitment-candidates/{$candidateId}")
             ->assertOk()
             ->assertJsonPath('data.phone_number', '0900000000')
@@ -135,6 +152,7 @@ class PublicRecruitmentApplicationTest extends TestCase
         $this->createPublishedPost();
         Storage::fake('local');
         config([
+            'services.autorecruit.mac_url' => 'http://mac-resume.test',
             'services.autorecruit.url' => 'http://mac-resume.test',
             'services.autorecruit.fallback_urls' => ['http://windows-resume.test'],
         ]);
@@ -168,6 +186,7 @@ class PublicRecruitmentApplicationTest extends TestCase
         $this->createPublishedPost();
         Storage::fake('local');
         config([
+            'services.autorecruit.mac_url' => 'http://mac-resume.test',
             'services.autorecruit.url' => 'http://mac-resume.test',
             'services.autorecruit.fallback_urls' => ['http://windows-resume.test'],
         ]);

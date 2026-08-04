@@ -31,6 +31,18 @@ docker compose --profile resume up -d --build --force-recreate resume-backend
 curl.exe http://100.95.129.101:8000/health
 ```
 
+Để bật thêm MinerU pipeline local (lần build đầu tải model OCR và cần nhiều thời gian/dung lượng):
+
+```powershell
+docker compose --profile mineru build mineru
+docker compose --profile mineru up -d mineru
+docker compose --profile resume up -d --build --force-recreate resume-backend
+curl.exe http://127.0.0.1:8001/health
+curl.exe http://100.95.129.101:8000/health
+```
+
+MinerU chỉ bind `127.0.0.1:8001`; VPS không truy cập trực tiếp MinerU. VPS chỉ gọi `resume-backend` qua Tailscale như trước.
+
 Mac:
 
 ```bash
@@ -38,6 +50,8 @@ cd /path/to/BEHRM/Doan2_v2/Doan2
 RESUME_BIND_IP=100.105.84.89 docker compose --profile resume up -d --build --force-recreate resume-backend
 curl -fsS http://100.105.84.89:8000/health
 ```
+
+Mac Apple Silicon M3 cần cấp tối thiểu 16 GB RAM cho Docker Desktop; với máy 36 GB nên cấp 20-24 GB. Quy trình build MinerU ARM64, kiểm tra tài nguyên và test CV nằm trong `docs/resume/mineru-resume-local/SKILL.md`.
 
 Kiểm tra từ VPS:
 
@@ -49,6 +63,7 @@ VPS ưu tiên Mac và tự chuyển sang Windows nếu Mac tắt. Nếu cả hai
 request được xử lý trên Mac; nếu chỉ một máy online, request tự chuyển tới máy đó:
 
 ```dotenv
+AUTORECRUIT_MAC_URL=http://100.105.84.89:8000
 AUTORECRUIT_URL=http://100.105.84.89:8000
 AUTORECRUIT_FALLBACK_URLS=http://100.95.129.101:8000
 AUTORECRUIT_CONNECT_TIMEOUT=5

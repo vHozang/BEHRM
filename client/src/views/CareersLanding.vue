@@ -94,7 +94,7 @@
       </div>
     </section>
 
-    <footer class="careers-footer"><span>DEV TAP <em>/</em> CAREERS</span><span>Made for people who care.</span><a href="mailto:hello@devtapcode.io.vn">hello@devtapcode.io.vn ↗</a></footer>
+    <footer class="careers-footer"><span>DEV TAP <em>/</em> CAREERS</span><span>CV được đọc cục bộ bằng MinerU trước khi AI đánh giá.</span><a href="mailto:hello@devtapcode.io.vn">hello@devtapcode.io.vn ↗</a></footer>
 
     <div v-if="showDetails" class="modal-backdrop" @click.self="closeDetails">
       <section class="job-detail-modal" role="dialog" aria-modal="true" aria-labelledby="job-detail-title">
@@ -160,7 +160,7 @@
             </label>
             <p v-if="errorMessage" class="form-error">{{ errorMessage }}</p>
             <button class="button button-primary submit-button" type="submit" :disabled="submitting"><span v-if="submitting" class="loader loader-light"></span>{{ submitting ? 'Đang gửi và chấm CV...' : 'Gửi hồ sơ & nhận điểm AI' }} <span v-if="!submitting">→</span></button>
-            <p class="privacy-note">Bằng việc gửi hồ sơ, bạn đồng ý để DevTap lưu trữ và xử lý thông tin phục vụ tuyển dụng.</p>
+            <p class="privacy-note">Bằng việc gửi hồ sơ, bạn đồng ý để DevTap lưu trữ và xử lý thông tin phục vụ tuyển dụng. Tài liệu có thể được bóc tách cục bộ bằng MinerU.</p>
           </form>
         </div>
         <div v-else class="application-result">

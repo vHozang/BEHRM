@@ -42,6 +42,7 @@ set_env_value() {
 }
 
 # Prefer the Mac resume backend and fail over to Windows when Mac is offline.
+set_env_value AUTORECRUIT_MAC_URL "${AUTORECRUIT_MAC_URL:-http://100.105.84.89:8000}"
 set_env_value AUTORECRUIT_URL "${AUTORECRUIT_URL:-http://100.105.84.89:8000}"
 set_env_value AUTORECRUIT_FALLBACK_URLS "${AUTORECRUIT_FALLBACK_URLS:-http://100.95.129.101:8000}"
 set_env_value AUTORECRUIT_CONNECT_TIMEOUT "${AUTORECRUIT_CONNECT_TIMEOUT:-5}"

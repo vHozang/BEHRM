@@ -29,10 +29,11 @@ return [
     ],
 
     'autorecruit' => [
-        'url' => env('AUTORECRUIT_URL', 'http://resume-backend:8000'),
+        'mac_url' => env('AUTORECRUIT_MAC_URL', 'http://100.105.84.89:8000'),
+        'url' => env('AUTORECRUIT_URL', 'http://100.105.84.89:8000'),
         'fallback_urls' => array_values(array_filter(array_map(
             'trim',
-            explode(',', (string) env('AUTORECRUIT_FALLBACK_URLS', ''))
+            explode(',', (string) env('AUTORECRUIT_FALLBACK_URLS', 'http://100.95.129.101:8000'))
         ))),
         'connect_timeout' => (int) env('AUTORECRUIT_CONNECT_TIMEOUT', 5),
         'timeout' => (int) env('AUTORECRUIT_TIMEOUT', 120),

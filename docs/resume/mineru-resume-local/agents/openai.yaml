@@ -1,0 +1,4 @@
+interface:
+  display_name: "MinerU Resume Local"
+  short_description: "Build and verify MinerU resume parsing locally"
+  default_prompt: "Use $mineru-resume-local to set up and verify MinerU with the HRM resume backend on this machine."
