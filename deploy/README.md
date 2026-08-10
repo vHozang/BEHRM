@@ -130,6 +130,10 @@ install -m 600 /dev/null /opt/hrm/Doan2_v2/Doan2/.env
 # điền APP_KEY, DB_PASSWORD, APP_URL, các thông tin Redis/attendance...
 ```
 
+Docker Compose production kết nối trực tiếp tới PostgreSQL trên port
+`5432`. Chỉ khai báo `PGBOUNCER_HOST` và `PGBOUNCER_PORT` khi stack
+thực sự có thêm PgBouncer.
+
 ### Cấu hình gửi email tuyển dụng
 
 Cloudflare Email Routing chỉ nhận thư gửi đến `hr@devtapcode.io.vn` rồi chuyển tiếp; dịch vụ này không cung cấp SMTP gửi thư. Cần đăng ký một nhà cung cấp gửi mail như Resend, Brevo, Postmark hoặc Mailgun, xác minh domain `devtapcode.io.vn`, rồi thêm thông tin SMTP vào file `.env` trên VPS:

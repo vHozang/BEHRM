@@ -99,8 +99,8 @@ return [
             ]) : [],
         ],
 
-        // ── Primary PostgreSQL (qua PgBouncer - transaction mode) ──────────────
-        // Kết nối qua PgBouncer port 6432, không phải PostgreSQL port 5432 trực tiếp.
+        // ── Primary PostgreSQL (hỗ trợ PgBouncer transaction mode) ───────────────
+        // Nếu không khai báo PGBOUNCER_*, kết nối trực tiếp qua DB_HOST/DB_PORT.
         //
         // QUAN TRỌNG khi dùng PgBouncer transaction mode + Laravel:
         //  1. persistent = false: Không dùng persistent connections (PgBouncer đã quản lý pool)
@@ -111,7 +111,7 @@ return [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
             'host' => env('PGBOUNCER_HOST', env('DB_HOST', '127.0.0.1')),
-            'port' => env('PGBOUNCER_PORT', 6432), // PgBouncer port!
+            'port' => env('PGBOUNCER_PORT', env('DB_PORT', 5432)),
             'database' => env('DB_DATABASE', 'hrm'),
             'username' => env('DB_USERNAME', 'hrm'),
             'password' => env('DB_PASSWORD', ''),
@@ -151,7 +151,7 @@ return [
         'pgsql_read' => [
             'driver' => 'pgsql',
             'host' => env('DB_READ_HOST', env('DB_HOST', '127.0.0.1')),
-            'port' => env('DB_READ_PORT', env('PGBOUNCER_PORT', 6432)),
+            'port' => env('DB_READ_PORT', env('PGBOUNCER_PORT', env('DB_PORT', 5432))),
             'database' => env('DB_DATABASE', 'hrm'),
             'username' => env('DB_READ_USERNAME', env('DB_USERNAME', 'hrm')),
             'password' => env('DB_READ_PASSWORD', env('DB_PASSWORD', '')),
