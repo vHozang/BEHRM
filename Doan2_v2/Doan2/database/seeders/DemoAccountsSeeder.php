@@ -23,7 +23,7 @@ class DemoAccountsSeeder extends Seeder
                 [
                     'role_name' => $role['name'],
                     'description' => "Demo {$role['name']} role",
-                    'is_system_role' => true,
+                    'is_system_role' => DB::raw('true'),
                     'meta' => json_encode($role['meta']),
                     'tenant_id' => 1,
                     'created_at' => now(),
@@ -54,14 +54,14 @@ class DemoAccountsSeeder extends Seeder
                 $employeeId = DB::table('employees')->insertGetId($employeeData + [
                     'employee_code' => $account['code'],
                     'full_name' => $account['name'],
-                    'is_super_admin' => $account['super_admin'] ?? false,
+                    'is_super_admin' => DB::raw(($account['super_admin'] ?? false) ? 'true' : 'false'),
                     'tenant_id' => 1,
                     'legal_entity_id' => 1,
                     'created_at' => now(),
                 ]);
             } else {
                 if ($account['super_admin'] ?? false) {
-                    $employeeData['is_super_admin'] = true;
+                    $employeeData['is_super_admin'] = DB::raw('true');
                 }
 
                 DB::table('employees')->where('id', $employeeId)->update($employeeData);
@@ -72,7 +72,7 @@ class DemoAccountsSeeder extends Seeder
             DB::table('employee_roles')->updateOrInsert(
                 ['employee_id' => $employeeId, 'role_id' => $roleId],
                 [
-                    'is_active' => true,
+                    'is_active' => DB::raw('true'),
                     'tenant_id' => 1,
                     'created_at' => now(),
                     'updated_at' => now(),
