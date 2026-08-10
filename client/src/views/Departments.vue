@@ -162,7 +162,7 @@
                 <p class="text-sm text-muted-foreground">Ngân sách (tháng)</p>
                 <p v-if="!editingFinance" class="font-medium">{{ selectedDept.budget ? formatCurrency(selectedDept.budget) : '—' }}</p>
                 <div v-else class="flex items-center gap-1">
-                  <input v-model.number="financeForm.budget" type="number" class="w-full px-2 py-1 rounded border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+                  <BaseMoneyInput v-model="financeForm.budget" compact class="flex-1" />
                   <button @click="saveFinance" :disabled="financeBusy" class="text-emerald-600 hover:underline text-xs whitespace-nowrap">Lưu</button>
                   <button @click="editingFinance = false" class="text-muted-foreground hover:underline text-xs">Hủy</button>
                 </div>
@@ -325,7 +325,7 @@
         />
         <div class="grid grid-cols-2 gap-4">
           <BaseInput v-model="form.cost_center" label="Cost center (mã chi phí)" placeholder="VD: CC-IT" />
-          <BaseInput v-model.number="form.budget" type="number" label="Ngân sách (VNĐ)" />
+          <BaseMoneyInput v-model="form.budget" label="Ngân sách (VNĐ)" />
         </div>
         <BaseSelect
           v-model="form.is_active"
@@ -353,6 +353,7 @@ import { ref, computed, onMounted } from 'vue';
 import BaseCard from '../components/BaseCard.vue';
 import BaseButton from '../components/BaseButton.vue';
 import BaseInput from '../components/BaseInput.vue';
+import BaseMoneyInput from '../components/BaseMoneyInput.vue';
 import BaseSelect from '../components/BaseSelect.vue';
 import BaseBadge from '../components/BaseBadge.vue';
 import BaseModal from '../components/BaseModal.vue';

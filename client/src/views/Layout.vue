@@ -847,12 +847,21 @@ const filteredGroups = computed(() => {
     .filter(group => {
       if (group.id === 'dashboard') return canUseDashboard.value;
       const m = GROUP_MODULE[group.id];
-      return group.id === 'communications' || !m || authService.canAccessModule(m);
+      const hasPayslipIssueAccess = group.id === 'payroll'
+        && authService.hasCapability('payslip_issues.view');
+      return group.id === 'communications' || !m || authService.canAccessModule(m) || hasPayslipIssueAccess;
     })
-    .map(group => ({
-      ...group,
-      items: group.items.filter(item => isAdmin.value || !item.adminOnly)
-    })).filter(group => group.items.length > 0);
+    .map(group => {
+      const issuesOnly = group.id === 'payroll'
+        && !authService.canAccessModule('payroll')
+        && authService.hasCapability('payslip_issues.view');
+      const items = group.items
+        .filter(item => isAdmin.value || !item.adminOnly)
+        .filter(item => !issuesOnly || item.path === '/salaries')
+        .map(item => issuesOnly ? { ...item, label: 'Phiếu chưa phát hành' } : item);
+
+      return { ...group, items };
+    }).filter(group => group.items.length > 0);
 });
 
 const mobileNavItems = computed(() => {
@@ -860,6 +869,7 @@ const mobileNavItems = computed(() => {
     const items = [];
     if (canUseDashboard.value) items.push({ path: '/', label: 'Tổng quan', icon: IconDashboard });
     else if (authService.canAccessModule('payroll')) items.push({ path: '/salaries', label: 'Tính lương', icon: IconCash });
+    else if (authService.hasCapability('payslip_issues.view')) items.push({ path: '/salaries', label: 'Phiếu lỗi', icon: IconCash });
     if (authService.canAccessModule('time')) items.push({ path: '/attendance', label: 'Chấm công', icon: IconClock });
     if (authService.canAccessModule('recruitment')) items.push({ path: '/recruitment', label: 'Tuyển dụng', icon: IconBriefcase });
     items.push(

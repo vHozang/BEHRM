@@ -108,11 +108,17 @@ export const authService = {
       return {
         full: a.full === true,
         modules: Array.isArray(a.modules) ? a.modules : [],
-        enabled: Array.isArray(a.enabled) ? a.enabled : null
+        enabled: Array.isArray(a.enabled) ? a.enabled : null,
+        capabilities: Array.isArray(a.capabilities) ? a.capabilities : []
       };
     } catch {
-      return { full: false, modules: [], enabled: null };
+      return { full: false, modules: [], enabled: null, capabilities: [] };
     }
+  },
+
+  hasCapability: (capability) => {
+    const access = authService.getAccess();
+    return access.full || access.capabilities.includes(capability);
   },
 
   // Whether the current user may access a given module (sidebar area).

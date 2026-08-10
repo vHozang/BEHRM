@@ -100,7 +100,7 @@
         </div>
 
         <div class="grid grid-cols-2 gap-4">
-          <BaseInput v-model.number="form.price" type="number" label="Trị giá mua (VNĐ)" required />
+          <BaseMoneyInput v-model="form.price" label="Trị giá mua (VNĐ)" required />
           <div>
             <label class="block text-sm font-medium text-foreground mb-1">Trạng thái thiết bị</label>
             <select 
@@ -140,6 +140,7 @@ import BaseCard from '../components/BaseCard.vue';
 import BaseTable from '../components/BaseTable.vue';
 import BaseModal from '../components/BaseModal.vue';
 import BaseInput from '../components/BaseInput.vue';
+import BaseMoneyInput from '../components/BaseMoneyInput.vue';
 import BaseBadge from '../components/BaseBadge.vue';
 import { assetService } from '../services/assetService';
 import { useToast } from '../composables/useToast';

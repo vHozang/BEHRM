@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\LegalEntityController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OnboardingController;
 use App\Http\Controllers\Api\PayrollController;
+use App\Http\Controllers\Api\PayslipController;
 use App\Http\Controllers\Api\PieceRateController;
 use App\Http\Controllers\Api\PlatformController;
 use App\Http\Controllers\Api\ProfileChangeRequestController;
@@ -146,6 +147,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/auth/refresh', [AuthController::class, 'refresh']);
         Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
         Route::get('/auth/hierarchy', [AuthController::class, 'hierarchy']);
+        Route::get('/auth/ui-preferences', [AuthController::class, 'uiPreferences']);
         Route::get('/activity-logs', [AuthController::class, 'activityLogs']);
         Route::get('/audit-logs', [AuditLogController::class, 'index']);
 
@@ -290,6 +292,10 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/salary-periods/{id}/submit', [PayrollController::class, 'submitPeriod'])->whereNumber('id');
         Route::post('/salary-periods/{id}/reopen', [PayrollController::class, 'reopenPeriod'])->whereNumber('id');
         Route::post('/salary-periods/{id}/close', [PayrollController::class, 'closePeriod'])->whereNumber('id');
+        Route::get('/salary-periods/{id}/payslips/readiness', [PayslipController::class, 'readiness'])->whereNumber('id');
+        Route::post('/salary-periods/{id}/payslips/publish', [PayslipController::class, 'publish'])->whereNumber('id');
+        Route::get('/salary-periods/{id}/payslips/status', [PayslipController::class, 'status'])->whereNumber('id');
+        Route::get('/salary-periods/{id}/payslips/archive', [PayslipController::class, 'archive'])->whereNumber('id');
         Route::post('/payroll/run', [PayrollController::class, 'run']);
         Route::post('/payroll/bonus-run', [PayrollController::class, 'bonusRun']);
         Route::get('/payroll/run-status', [PayrollController::class, 'runStatus']);
@@ -303,6 +309,11 @@ Route::prefix('v1')->group(function (): void {
         Route::patch('/salary-details/{id}', [PayrollController::class, 'updateSalaryDetail'])->whereNumber('id');
         Route::delete('/salary-details/{id}', [PayrollController::class, 'destroySalaryDetail'])->whereNumber('id');
         Route::get('/salary-details/{id}/payslip', [PayrollController::class, 'payslip'])->whereNumber('id');
+        Route::get('/salary-details/{id}/payslip/pdf', [PayslipController::class, 'pdf'])->whereNumber('id');
+        Route::post('/salary-details/{id}/payslip/email', [PayslipController::class, 'email'])
+            ->whereNumber('id')->middleware('throttle:3,10');
+        Route::get('/payroll/payslip-issues', [PayslipController::class, 'issues']);
+        Route::post('/payroll/payslip-issues/{id}/retry', [PayslipController::class, 'retryIssue'])->whereNumber('id');
 
         // ─── Recruitment ─────────────────────────────────
         Route::get('/recruitment-candidates', [RecruitmentController::class, 'index']);

@@ -188,8 +188,8 @@
         <p v-if="formProbationWarning" class="text-xs text-amber-600 -mt-2">{{ formProbationWarning }}</p>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <BaseInput v-model.number="form.basic_salary" type="number" label="Mức lương cơ bản (VNĐ)" required />
-          <BaseInput v-model.number="form.allowances" type="number" label="Khoản phụ cấp cố định (VNĐ)" />
+          <BaseMoneyInput v-model="form.basic_salary" label="Mức lương cơ bản (VNĐ)" required />
+          <BaseMoneyInput v-model="form.allowances" label="Khoản phụ cấp cố định (VNĐ)" />
         </div>
 
         <div>
@@ -348,6 +348,7 @@ import BaseCard from '../components/BaseCard.vue';
 import BaseTable from '../components/BaseTable.vue';
 import BaseModal from '../components/BaseModal.vue';
 import BaseInput from '../components/BaseInput.vue';
+import BaseMoneyInput from '../components/BaseMoneyInput.vue';
 import BaseBadge from '../components/BaseBadge.vue';
 import SignaturePad from '../components/SignaturePad.vue';
 import { contractService, printContractHtml } from '../services/contractService';

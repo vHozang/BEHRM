@@ -26,6 +26,20 @@ class SettingsController extends Controller
 {
     /** Editable catalog: group → items (key, label, type). */
     private const CATALOG = [
+        'display' => [
+            'label' => 'Hiển thị & nhập liệu',
+            'items' => [
+                [
+                    'key' => 'display.money_group_separator',
+                    'label' => 'Dấu phân cách hàng nghìn khi nhập tiền',
+                    'type' => 'select',
+                    'options' => [
+                        ['value' => '.', 'label' => 'Dấu chấm (1.000.000)'],
+                        ['value' => ',', 'label' => 'Dấu phẩy (1,000,000)'],
+                    ],
+                ],
+            ],
+        ],
         'contract' => [
             'label' => 'Hợp đồng & Thử việc',
             'items' => [
@@ -196,6 +210,11 @@ class SettingsController extends Controller
             if ($key === 'attendance.device_upload_delay_minutes' && ($value < 1 || $value > 1440)) {
                 return $this->validationError([
                     $key => ['Thời gian tải dữ liệu phải từ 1 đến 1440 phút'],
+                ]);
+            }
+            if ($key === 'display.money_group_separator' && ! in_array($value, ['.', ','], true)) {
+                return $this->validationError([
+                    $key => ['Dấu phân cách tiền chỉ có thể là dấu chấm hoặc dấu phẩy'],
                 ]);
             }
             HrmConfig::set($key, $value);

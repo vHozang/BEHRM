@@ -1,5 +1,7 @@
 import axiosClient from './axiosClient';
 
+const acceptedPayload = (response) => response.data?.data ?? response.data;
+
 export const salaryService = {
   getAllSummaries: async (params = {}) => {
     const rows = [];
@@ -65,13 +67,13 @@ export const salaryService = {
     const response = await axiosClient.put(`/salary-periods/${id}`, data);
     return response.data;
   },
-  closePeriod: async (id) => {
-    const response = await axiosClient.post(`/salary-periods/${id}/close`);
+  closePeriod: async (id, allowPartial = false) => {
+    const response = await axiosClient.post(`/salary-periods/${id}/close`, { allow_partial: allowPartial });
     return response.data;
   },
   // Maker–checker: kế toán trình chốt / thu hồi–trả về.
-  submitPeriod: async (id) => {
-    const response = await axiosClient.post(`/salary-periods/${id}/submit`);
+  submitPeriod: async (id, allowPartial = false) => {
+    const response = await axiosClient.post(`/salary-periods/${id}/submit`, { allow_partial: allowPartial });
     return response.data;
   },
   reopenPeriod: async (id, comment) => {
@@ -96,6 +98,43 @@ export const salaryService = {
   getPayslip: async (detailId) => {
     const response = await axiosClient.get(`/salary-details/${detailId}/payslip`);
     return response.data;
+  },
+  getPayslipReadiness: async (periodId) => {
+    const response = await axiosClient.get(`/salary-periods/${periodId}/payslips/readiness`);
+    return response.data;
+  },
+  publishPayslips: async (periodId) => {
+    const response = await axiosClient.post(`/salary-periods/${periodId}/payslips/publish`);
+    return acceptedPayload(response);
+  },
+  getPayslipPublicationStatus: async (periodId) => {
+    const response = await axiosClient.get(`/salary-periods/${periodId}/payslips/status`);
+    return response.data;
+  },
+  getPayslipPdf: async (detailId, download = false) => {
+    const response = await axiosClient.get(`/salary-details/${detailId}/payslip/pdf`, {
+      params: download ? { download: 1 } : {},
+      responseType: 'blob'
+    });
+    return response.data;
+  },
+  emailPayslip: async (detailId) => {
+    const response = await axiosClient.post(`/salary-details/${detailId}/payslip/email`);
+    return acceptedPayload(response);
+  },
+  getPayslipArchive: async (periodId) => {
+    const response = await axiosClient.get(`/salary-periods/${periodId}/payslips/archive`, {
+      responseType: 'blob'
+    });
+    return response.data;
+  },
+  getPayslipIssues: async (params = {}) => {
+    const response = await axiosClient.get('/payroll/payslip-issues', { params });
+    return { items: Array.isArray(response.data) ? response.data : [], pagination: response.pagination || null };
+  },
+  retryPayslipIssue: async (id) => {
+    const response = await axiosClient.post(`/payroll/payslip-issues/${id}/retry`);
+    return acceptedPayload(response);
   },
 
   // --- Details ---

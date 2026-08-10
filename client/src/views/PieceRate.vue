@@ -64,7 +64,7 @@
         <BaseInput v-model="form.product_name" label="Sản phẩm / công đoạn" required placeholder="VD: May áo sơ mi" />
         <div class="grid grid-cols-2 gap-4">
           <BaseInput v-model="form.quantity" type="number" label="Số lượng" required />
-          <BaseInput v-model="form.unit_rate" type="number" label="Đơn giá (VND)" required />
+          <BaseMoneyInput v-model="form.unit_rate" label="Đơn giá (VND)" required />
         </div>
         <div class="rounded-lg border border-border bg-muted/40 p-3 text-sm">
           Thành tiền: <span class="font-bold text-foreground">{{ fmt(previewAmount) }} đ</span>
@@ -84,6 +84,7 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import BaseCard from '../components/BaseCard.vue';
 import BaseButton from '../components/BaseButton.vue';
 import BaseInput from '../components/BaseInput.vue';
+import BaseMoneyInput from '../components/BaseMoneyInput.vue';
 import BaseSelect from '../components/BaseSelect.vue';
 import BaseModal from '../components/BaseModal.vue';
 import { pieceRateService } from '../services/pieceRateService';

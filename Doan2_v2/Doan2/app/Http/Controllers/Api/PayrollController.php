@@ -3,13 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\RunPayrollJob;
 use App\Models\LegalEntity;
 use App\Models\SalaryDetail;
 use App\Models\SalaryPeriod;
 use App\Services\PayrollRunService;
+use App\Services\PayslipIssueService;
+use App\Services\PayslipReadinessService;
 use App\Support\AccessControl;
+use App\Support\HrmConfig;
+use App\Support\Notifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
@@ -33,7 +39,7 @@ class PayrollController extends Controller
         // Đa pháp nhân: cùng period_code lặp lại theo từng pháp nhân → đính tên để
         // dropdown FE phân biệt (P-2026-07 · Chi nhánh Hà Nội). Bulk pluck, không cần relation.
         $items = $page->items();
-        $entityNames = \Illuminate\Support\Facades\DB::table('legal_entities')->pluck('name', 'id');
+        $entityNames = DB::table('legal_entities')->pluck('name', 'id');
         foreach ($items as $item) {
             $item->legal_entity_name = $entityNames[$item->legal_entity_id] ?? null;
         }
@@ -263,8 +269,12 @@ class PayrollController extends Controller
         ], 'Đã sinh thưởng đợt cho '.count($rows).' nhân viên');
     }
 
-    public function submitPeriod(Request $request, int $id): JsonResponse
-    {
+    public function submitPeriod(
+        Request $request,
+        int $id,
+        PayslipReadinessService $readinessService,
+        PayslipIssueService $issueService
+    ): JsonResponse {
         // Kế toán TRÌNH chốt kỳ (maker của maker–checker): OPEN → CHỜ_DUYỆT,
         // ghi người trình vào meta, báo ADMIN vào duyệt.
         $period = SalaryPeriod::find($id);
@@ -279,20 +289,43 @@ class PayrollController extends Controller
             return $this->validationError(['status' => ['Kỳ lương chưa có dữ liệu — hãy tính lương trước khi trình chốt']]);
         }
 
-        $submitterId = $request->attributes->get('auth_employee_id');
+        $submitterId = (int) $request->attributes->get('auth_employee_id');
+        if (! AccessControl::hasAnyRole($submitterId, ['ADMIN', 'TENANT_ADMIN', 'ACCOUNTANT'])) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Chỉ Kế toán hoặc Admin được trình chốt kỳ lương',
+                'data' => null,
+            ], 403);
+        }
+        $readiness = $readinessService->analyze($period);
+        $allowPartial = $request->boolean('allow_partial');
+        $issueService->syncPayrollIssues($period, $readiness, $submitterId, $allowPartial);
+        if ($readiness['fail_count'] > 0 && ! $allowPartial) {
+            return $this->partialConfirmationRequired($readiness);
+        }
+
         $meta = is_string($period->meta) ? (json_decode($period->meta, true) ?: []) : (array) ($period->meta ?? []);
         $meta['submitted_by'] = $submitterId;
         $meta['submitted_at'] = now()->toIso8601String();
+        $snapshot = $this->readinessSnapshot($readiness, $submitterId, $allowPartial, 'SUBMIT');
+        $meta['payslip_readiness'] = $snapshot;
+        if (! isset($meta['payslip_readiness_audit']) || ! is_array($meta['payslip_readiness_audit'])) {
+            $meta['payslip_readiness_audit'] = [];
+        }
+        $meta['payslip_readiness_audit'][] = $snapshot;
         $period->update(['status' => 'CHỜ_DUYỆT', 'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE)]);
 
-        \App\Support\Notifier::notifyMany(
+        Notifier::notifyMany(
             $this->adminIds((int) $period->tenant_id),
             'Chờ duyệt chốt kỳ lương',
             "Kỳ {$period->period_code} đã được trình chốt. Vào trang Lương để duyệt.",
             'salary_period', $period->id, ['priority' => 'high'], $submitterId
         );
 
-        return $this->ok($period->fresh(), 'Đã trình chốt kỳ — chờ duyệt');
+        $fresh = $period->fresh();
+        $fresh->setAttribute('payslip_readiness', $readiness);
+
+        return $this->ok($fresh, 'Đã trình chốt kỳ — chờ duyệt');
     }
 
     public function reopenPeriod(Request $request, int $id): JsonResponse
@@ -317,16 +350,20 @@ class PayrollController extends Controller
         unset($meta['submitted_by'], $meta['submitted_at']);
         $period->update(['status' => 'OPEN', 'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE)]);
         if ($submitterId && $callerId !== $submitterId) {
-            \App\Support\Notifier::notify($submitterId, 'Kỳ lương bị trả về',
-                "Kỳ {$period->period_code} được trả về Đang mở" . ($request->input('comment') ? ': '.$request->input('comment') : '.'),
+            Notifier::notify($submitterId, 'Kỳ lương bị trả về',
+                "Kỳ {$period->period_code} được trả về Đang mở".($request->input('comment') ? ': '.$request->input('comment') : '.'),
                 'salary_period', $period->id, ['priority' => 'high'], $callerId);
         }
 
         return $this->ok($period->fresh(), 'Kỳ lương đã trả về Đang mở');
     }
 
-    public function closePeriod(Request $request, int $id): JsonResponse
-    {
+    public function closePeriod(
+        Request $request,
+        int $id,
+        PayslipReadinessService $readinessService,
+        PayslipIssueService $issueService
+    ): JsonResponse {
         // DUYỆT & chốt (checker): chỉ từ CHỜ_DUYỆT, người duyệt là ADMIN và KHÁC người trình.
         $period = SalaryPeriod::find($id);
 
@@ -334,7 +371,11 @@ class PayrollController extends Controller
             return $this->notFound();
         }
 
-        if ((string) $period->status !== 'CHỜ_DUYỆT' && ! $period->isClosed()) {
+        if ($period->isClosed()) {
+            return $this->validationError(['status' => ['Kỳ lương đã được chốt']]);
+        }
+
+        if ((string) $period->status !== 'CHỜ_DUYỆT') {
             return $this->validationError(['status' => ['Kỳ lương chưa được trình duyệt — kế toán cần Trình chốt kỳ trước']]);
         }
 
@@ -347,31 +388,63 @@ class PayrollController extends Controller
         if (! $this->isAdminEmployee($approverId)) {
             return response()->json(['status' => 403, 'message' => 'Bạn không có quyền duyệt chốt kỳ lương', 'data' => null], 403);
         }
-        if ($submitterId) {
-            \App\Support\Notifier::notify($submitterId, 'Kỳ lương đã được chốt',
-                "Kỳ {$period->period_code} đã được duyệt và chốt.", 'salary_period', $period->id, ['priority' => 'normal'], $approverId);
+        $readiness = $readinessService->analyze($period);
+        $allowPartial = $request->boolean('allow_partial');
+        $issueService->syncPayrollIssues($period, $readiness, $approverId, $allowPartial);
+        if ($readiness['fail_count'] > 0 && ! $allowPartial) {
+            return $this->partialConfirmationRequired($readiness);
         }
 
-        if ($period->isClosed()) {
-            return $this->validationError(['status' => ['Ká»³ lÆ°Æ¡ng Ä‘Ã£ Ä‘Æ°á»£c chá»‘t']]);
+        $snapshot = $this->readinessSnapshot($readiness, $approverId, $allowPartial, 'CLOSE');
+        $pmeta['payslip_readiness'] = $snapshot;
+        if (! isset($pmeta['payslip_readiness_audit']) || ! is_array($pmeta['payslip_readiness_audit'])) {
+            $pmeta['payslip_readiness_audit'] = [];
         }
+        $pmeta['payslip_readiness_audit'][] = $snapshot;
 
-        DB::transaction(function () use ($period) {
-            $period->update(['status' => 'CLOSED']);
+        DB::transaction(function () use ($period, $pmeta): void {
+            $period->update([
+                'status' => 'CLOSED',
+                'meta' => json_encode($pmeta, JSON_UNESCAPED_UNICODE),
+            ]);
 
-            // Lock all salary details. There is no is_locked column; the lock
-            // lives in meta->locked (jsonb) and the period's CLOSED status is the
-            // authoritative gate that PayrollRunService checks before recomputing.
-            DB::statement(
-                "UPDATE salary_details
-                    SET meta = jsonb_set(COALESCE(meta, '{}'::jsonb), '{locked}', 'true'::jsonb, true),
-                        updated_at = now()
-                  WHERE period_id = ?",
-                [$period->id]
-            );
+            foreach (DB::table('salary_details')->where('period_id', $period->id)->get(['id', 'meta']) as $detail) {
+                $meta = is_string($detail->meta) ? (json_decode($detail->meta, true) ?: []) : (array) ($detail->meta ?? []);
+                $meta['locked'] = true;
+                DB::table('salary_details')->where('id', $detail->id)->update([
+                    'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE),
+                    'updated_at' => now(),
+                ]);
+            }
         });
 
-        return $this->ok($period->fresh(), 'Ká»³ lÆ°Æ¡ng Ä‘Ã£ Ä‘Æ°á»£c chá»‘t');
+        if ($submitterId) {
+            Notifier::notify(
+                $submitterId,
+                'Kỳ lương đã được chốt',
+                "Kỳ {$period->period_code} đã được duyệt và chốt.",
+                'salary_period',
+                $period->id,
+                ['priority' => 'normal'],
+                $approverId
+            );
+        }
+        if ($readiness['fail_count'] > 0) {
+            Notifier::notifyMany(
+                $this->hrIds((int) $period->tenant_id),
+                'Có phiếu lương chưa đủ điều kiện phát hành',
+                "Kỳ {$period->period_code} có {$readiness['fail_count']} nhân viên cần HR/Kế toán xử lý.",
+                'payslip_issue',
+                $period->id,
+                ['priority' => 'high'],
+                $approverId
+            );
+        }
+
+        $fresh = $period->fresh();
+        $fresh->setAttribute('payslip_readiness', $readiness);
+
+        return $this->ok($fresh, 'Kỳ lương đã được chốt');
     }
 
     /**
@@ -386,7 +459,17 @@ class PayrollController extends Controller
             'employee:id,full_name,employee_code,department_id,profile',
             'employee.department:id,department_name',
             'period:id,period_code,status,end_date',
+            'payslipDocument:id,salary_detail_id,generation_status,email_status,published_at,sent_at,last_error',
         ])->orderByDesc('id');
+
+        $access = $request->attributes->get('access') ?: [];
+        $canManagePayroll = ! empty($access['full']) || in_array('payroll', $access['modules'] ?? [], true);
+        if (! $canManagePayroll) {
+            $query->whereHas('period', fn ($period) => $period->whereIn('status', ['CLOSED', 'ĐÃ_ĐÓNG', 'DA_DONG']))
+                ->whereHas('payslipDocument', fn ($document) => $document
+                    ->where('generation_status', 'READY')
+                    ->whereNotNull('published_at'));
+        }
 
         foreach (['employee_id', 'period_id', 'transfer_status'] as $field) {
             if ($request->filled($field)) {
@@ -424,6 +507,23 @@ class PayrollController extends Controller
             return $this->notFound();
         }
 
+        $authEmployeeId = (int) request()->attributes->get('auth_employee_id');
+        $access = request()->attributes->get('access') ?: [];
+        $canManagePayroll = ! empty($access['full']) || in_array('payroll', $access['modules'] ?? [], true);
+        $document = $detail->payslipDocument;
+        if ($authEmployeeId && ! $canManagePayroll
+            && ((int) $detail->employee_id !== $authEmployeeId
+                || ! $detail->period?->isClosed()
+                || ! $document
+                || $document->generation_status !== 'READY'
+                || ! $document->published_at)) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Phiếu lương chưa được phát hành hoặc không thuộc tài khoản của bạn.',
+                'data' => null,
+            ], 403);
+        }
+
         $data = [
             'salary_detail' => $detail,
             'legal_entity' => LegalEntity::query()
@@ -441,15 +541,24 @@ class PayrollController extends Controller
                 ->first(),
             // Phiếu lương custom theo công ty — chỉnh trong Settings (payslip.*).
             'config' => [
-                'title' => (string) \App\Support\HrmConfig::get('payslip.title', 'PHIẾU LƯƠNG THÁNG'),
-                'footer' => (string) \App\Support\HrmConfig::get('payslip.footer', 'Công ty xin chân thành cảm ơn toàn thể nhân viên! Đừng quên đối chiếu số tiền trong tài khoản của bạn.'),
-                'show_allowance_detail' => (bool) \App\Support\HrmConfig::get('payslip.show_allowance_detail', true),
-                'show_ot_detail' => (bool) \App\Support\HrmConfig::get('payslip.show_ot_detail', true),
-                'show_insurance_base' => (bool) \App\Support\HrmConfig::get('payslip.show_insurance_base', true),
-                'show_relief' => (bool) \App\Support\HrmConfig::get('payslip.show_relief', true),
-                'show_work_days' => (bool) \App\Support\HrmConfig::get('payslip.show_work_days', true),
-                'show_employer_cost' => (bool) \App\Support\HrmConfig::get('payslip.show_employer_cost', false),
+                'title' => (string) HrmConfig::get('payslip.title', 'PHIẾU LƯƠNG THÁNG'),
+                'footer' => (string) HrmConfig::get('payslip.footer', 'Công ty xin chân thành cảm ơn toàn thể nhân viên! Đừng quên đối chiếu số tiền trong tài khoản của bạn.'),
+                'show_allowance_detail' => (bool) HrmConfig::get('payslip.show_allowance_detail', true),
+                'show_ot_detail' => (bool) HrmConfig::get('payslip.show_ot_detail', true),
+                'show_insurance_base' => (bool) HrmConfig::get('payslip.show_insurance_base', true),
+                'show_relief' => (bool) HrmConfig::get('payslip.show_relief', true),
+                'show_work_days' => (bool) HrmConfig::get('payslip.show_work_days', true),
+                'show_employer_cost' => (bool) HrmConfig::get('payslip.show_employer_cost', false),
             ],
+            'document' => $document ? [
+                'id' => $document->id,
+                'generation_status' => $document->generation_status,
+                'email_status' => $document->email_status,
+                'filename' => $document->filename,
+                'published_at' => $document->published_at,
+                'sent_at' => $document->sent_at,
+                'last_error' => $document->last_error,
+            ] : null,
         ];
 
         return $this->ok($data, 'Payslip detail');
@@ -591,13 +700,13 @@ class PayrollController extends Controller
         if (in_array((string) $period->status, PayrollRunService::LOCKED_PERIOD_STATUSES, true)) {
             return response()->json([
                 'status' => 409,
-                'message' => 'Kỳ lương đã khóa (' . $period->status . ') — không thể tính lại',
+                'message' => 'Kỳ lương đã khóa ('.$period->status.') — không thể tính lại',
                 'data' => null,
             ], 409);
         }
 
         // Đang chạy dở → không dispatch chồng.
-        $existing = \Illuminate\Support\Facades\Cache::get(\App\Jobs\RunPayrollJob::statusKey($periodId));
+        $existing = Cache::get(RunPayrollJob::statusKey($periodId));
         if (($existing['status'] ?? null) === 'PROCESSING') {
             return response()->json([
                 'status' => 202,
@@ -612,14 +721,14 @@ class PayrollController extends Controller
             ->whereIn('status', ['ACTIVE', 'PROBATION'])
             ->count();
 
-        \Illuminate\Support\Facades\Cache::put(\App\Jobs\RunPayrollJob::statusKey($periodId), [
+        Cache::put(RunPayrollJob::statusKey($periodId), [
             'status' => 'PROCESSING',
             'total' => $total,
             'started_at' => now()->toIso8601String(),
         ], now()->addHours(6));
 
         // Chạy NỀN: trả về ngay, worker xử lý tính lương phía sau (không timeout).
-        \App\Jobs\RunPayrollJob::dispatch(
+        RunPayrollJob::dispatch(
             $periodId,
             (int) $period->tenant_id,
             $period->legal_entity_id !== null ? (int) $period->legal_entity_id : null,
@@ -642,7 +751,7 @@ class PayrollController extends Controller
             return $this->validationError(['salary_period_id' => ['Thiếu mã kỳ lương']]);
         }
 
-        $status = \Illuminate\Support\Facades\Cache::get(\App\Jobs\RunPayrollJob::statusKey($periodId));
+        $status = Cache::get(RunPayrollJob::statusKey($periodId));
         if (! $status) {
             return $this->ok(['period_id' => $periodId, 'run_status' => 'IDLE'], 'Chưa có lần chạy nào');
         }
@@ -678,6 +787,48 @@ class PayrollController extends Controller
         ], 422);
     }
 
+    private function partialConfirmationRequired(array $readiness): JsonResponse
+    {
+        return response()->json([
+            'status' => 422,
+            'message' => 'Có nhân viên chưa đủ điều kiện phát hành phiếu lương.',
+            'data' => [
+                'errors' => [
+                    'allow_partial' => ['Kiểm tra danh sách lỗi và xác nhận phát hành một phần.'],
+                ],
+                'readiness' => $readiness,
+            ],
+        ], 422);
+    }
+
+    private function readinessSnapshot(
+        array $readiness,
+        int $actorId,
+        bool $allowPartial,
+        string $phase
+    ): array {
+        return [
+            'phase' => $phase,
+            'checked_at' => now()->toIso8601String(),
+            'checked_by' => $actorId,
+            'allow_partial' => $allowPartial,
+            'total_employees' => $readiness['total_employees'],
+            'pass_count' => $readiness['pass_count'],
+            'fail_count' => $readiness['fail_count'],
+            'excluded_employee_ids' => collect($readiness['issues'])->pluck('employee_id')->unique()->values()->all(),
+            'exclusions' => collect($readiness['issues'])->map(fn (array $issue) => [
+                'employee_id' => $issue['employee_id'],
+                'salary_detail_id' => $issue['salary_detail_id'],
+                'employee_code' => $issue['employee_code'],
+                'full_name' => $issue['full_name'],
+                'department_name' => $issue['department_name'],
+                'issue_code' => $issue['issue_code'],
+                'message' => $issue['message'],
+                'resolution_hint' => $issue['resolution_hint'],
+            ])->values()->all(),
+        ];
+    }
+
     /** Nhân viên giữ role ADMIN (hoặc super-admin) — người được duyệt chốt kỳ. */
     private function isAdminEmployee(?int $employeeId): bool
     {
@@ -704,6 +855,16 @@ class PayrollController extends Controller
             ->where('er.tenant_id', $tenantId)
             ->whereRaw('er.is_active = true')
             ->where('r.role_code', 'ADMIN')
+            ->pluck('er.employee_id')->unique()->values()->all();
+    }
+
+    private function hrIds(int $tenantId): array
+    {
+        return DB::table('employee_roles as er')
+            ->join('roles as r', 'r.id', '=', 'er.role_id')
+            ->where('er.tenant_id', $tenantId)
+            ->whereRaw('er.is_active = true')
+            ->whereIn('r.role_code', ['HR', 'ADMIN'])
             ->pluck('er.employee_id')->unique()->values()->all();
     }
 }

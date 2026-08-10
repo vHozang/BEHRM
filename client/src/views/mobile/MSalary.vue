@@ -14,7 +14,7 @@
       </div>
       <div class="text-right">
         <p class="font-extrabold text-primary">{{ vnd(d.net_salary) }}</p>
-        <p class="text-[11px] text-muted-foreground">Thực lĩnh</p>
+        <p class="text-[11px] text-muted-foreground">{{ documentStatus(d.payslip_document) }}</p>
       </div>
     </div>
 
@@ -28,6 +28,7 @@
         <template v-else-if="slip">
           <h2 class="font-bold">Phiếu lương kỳ {{ slip.salary_detail?.period?.period_code }}</h2>
           <p class="text-xs text-muted-foreground mb-4">{{ slip.salary_detail?.employee?.full_name }} · {{ slip.salary_detail?.employee?.employee_code }}</p>
+          <p class="text-xs text-muted-foreground mb-4">{{ documentStatus(slip.document) }}</p>
 
           <!-- Công tháng -->
           <div v-if="slip.attendance_summary" class="grid grid-cols-4 gap-1 rounded-xl bg-muted/50 p-3 text-center mb-4">
@@ -56,6 +57,12 @@
             <span class="font-bold text-sm">THỰC LĨNH</span>
             <span class="text-xl font-extrabold text-primary">{{ vnd(slip.salary_detail?.net_salary) }}</span>
           </div>
+
+          <div v-if="slip.document?.generation_status === 'READY'" class="grid grid-cols-3 gap-2 mt-4">
+            <button type="button" :disabled="actionBusy" @click="viewPdf" class="rounded-xl border border-border px-2 py-2.5 text-xs font-semibold active:bg-muted disabled:opacity-50">Xem PDF</button>
+            <button type="button" :disabled="actionBusy" @click="downloadPdf" class="rounded-xl border border-border px-2 py-2.5 text-xs font-semibold active:bg-muted disabled:opacity-50">Tải PDF</button>
+            <button type="button" :disabled="actionBusy" @click="emailPdf" class="rounded-xl border border-primary/30 px-2 py-2.5 text-xs font-semibold text-primary active:bg-primary/5 disabled:opacity-50">Gửi email</button>
+          </div>
         </template>
       </div>
     </div>
@@ -64,17 +71,30 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import { authService } from '../../services/authService';
 import { salaryService } from '../../services/salaryService';
+import { useNotificationStore } from '../../stores/notificationStore';
 import { vnd } from './mformat';
 
+const route = useRoute();
+const notificationStore = useNotificationStore();
 const empId = authService.getUser()?.employee_id;
 const details = ref([]);
 const slipOpen = ref(false);
 const loading = ref(false);
 const slip = ref(null);
+const actionBusy = ref(false);
 
 const rows = (type) => (slip.value?.breakdowns || []).filter(b => b.item_type === type && Number(b.amount) > 0);
+const documentStatus = (document) => {
+  if (!document) return 'Chưa phát hành';
+  if (document.email_status === 'SENT') return 'Đã gửi email';
+  if (document.email_status === 'MISSING_RECIPIENT') return 'PDF đã có · thiếu email';
+  if (document.email_status === 'FAILED') return 'PDF đã có · gửi email lỗi';
+  if (['QUEUED', 'SENDING'].includes(document.email_status)) return 'Đang gửi email';
+  return document.generation_status === 'READY' ? 'PDF đã phát hành' : 'Đang tạo PDF';
+};
 
 const open = async (d) => {
   slipOpen.value = true;
@@ -89,6 +109,64 @@ const open = async (d) => {
   }
 };
 
+const pdfFilename = () => `Phieu_luong_${slip.value?.salary_detail?.employee?.employee_code || 'NhanVien'}_${slip.value?.salary_detail?.period?.period_code || 'ky'}.pdf`;
+
+const handlePdfBlob = (blob, download) => {
+  const url = URL.createObjectURL(blob);
+  if (download) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = pdfFilename();
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return;
+  }
+  const viewer = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!viewer) notificationStore.addError('Trình duyệt đang chặn cửa sổ xem PDF');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+};
+
+const viewPdf = async () => {
+  const id = slip.value?.salary_detail?.id;
+  if (!id || actionBusy.value) return;
+  actionBusy.value = true;
+  try {
+    handlePdfBlob(await salaryService.getPayslipPdf(id), false);
+  } catch (error) {
+    notificationStore.addError(error.response?.data?.message || 'Không mở được PDF phiếu lương');
+  } finally {
+    actionBusy.value = false;
+  }
+};
+
+const downloadPdf = async () => {
+  const id = slip.value?.salary_detail?.id;
+  if (!id || actionBusy.value) return;
+  actionBusy.value = true;
+  try {
+    handlePdfBlob(await salaryService.getPayslipPdf(id, true), true);
+  } catch (error) {
+    notificationStore.addError(error.response?.data?.message || 'Không tải được PDF phiếu lương');
+  } finally {
+    actionBusy.value = false;
+  }
+};
+
+const emailPdf = async () => {
+  const id = slip.value?.salary_detail?.id;
+  if (!id || actionBusy.value) return;
+  actionBusy.value = true;
+  try {
+    await salaryService.emailPayslip(id);
+    slip.value.document = { ...slip.value.document, email_status: 'QUEUED' };
+    notificationStore.addSuccess('Đã đưa phiếu lương vào hàng đợi gửi email');
+  } catch (error) {
+    notificationStore.addError(error.response?.data?.message || 'Không gửi được phiếu lương');
+  } finally {
+    actionBusy.value = false;
+  }
+};
+
 onMounted(async () => {
   if (!empId) return;
   try {
@@ -96,6 +174,9 @@ onMounted(async () => {
     details.value = (Array.isArray(res) ? res : (res?.items || []))
       // period_id không theo thứ tự thời gian trong data — sort theo mã kỳ P-YYYY-MM.
       .sort((a, b) => String(b.period?.period_code || '').localeCompare(String(a.period?.period_code || '')));
+    const requested = Number(route.query.payslip || 0);
+    const selected = details.value.find(item => Number(item.id) === requested);
+    if (selected) await open(selected);
   } catch { /* empty state hiển thị */ }
 });
 </script>

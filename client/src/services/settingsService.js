@@ -15,6 +15,11 @@ export const settingsService = {
     return response.data;
   },
 
+  getUiPreferences: async () => {
+    const response = await axiosClient.get('/auth/ui-preferences');
+    return response.data || {};
+  },
+
   getAutoRecruitHealth: async () => {
     const response = await axiosClient.get('/settings/integrations/autorecruit/health');
     return response.data;

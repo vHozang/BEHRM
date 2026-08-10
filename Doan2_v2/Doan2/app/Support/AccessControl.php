@@ -29,6 +29,17 @@ class AccessControl
         'settings' => 'Cấu hình',
     ];
 
+    public const CAPABILITIES = [
+        'payslip_issues.view' => 'Xem danh sách phiếu lương chưa phát hành',
+    ];
+
+    private const ROLE_CAPABILITIES = [
+        'ADMIN' => ['payslip_issues.view'],
+        'TENANT_ADMIN' => ['payslip_issues.view'],
+        'ACCOUNTANT' => ['payslip_issues.view'],
+        'HR' => ['payslip_issues.view'],
+    ];
+
     /**
      * API path-prefix (first segment) → required module. Anything not listed is
      * denied. GET on SHARED_READ prefixes is always allowed (dropdowns/lookups
@@ -143,7 +154,12 @@ class AccessControl
     public static function forEmployee(int $employeeId, bool $isSuperAdmin = false): array
     {
         if ($isSuperAdmin) {
-            return ['full' => true, 'modules' => array_keys(self::MODULES), 'enabled' => self::enabledModules()];
+            return [
+                'full' => true,
+                'modules' => array_keys(self::MODULES),
+                'enabled' => self::enabledModules(),
+                'capabilities' => array_keys(self::CAPABILITIES),
+            ];
         }
 
         $roles = DB::table('employee_roles')
@@ -162,16 +178,24 @@ class AccessControl
 
         if ($roles->isEmpty()) {
             // No role at all → regular employee (portal only, no admin modules).
-            return ['full' => false, 'modules' => [], 'enabled' => $enabled];
+            return ['full' => false, 'modules' => [], 'enabled' => $enabled, 'capabilities' => []];
         }
 
         $modules = [];
+        $capabilities = [];
         foreach ($roles as $role) {
             $meta = is_string($role->meta ?? null) ? json_decode($role->meta, true) : (array) ($role->meta ?? []);
             $meta = is_array($meta) ? $meta : [];
+            $roleCode = strtoupper((string) $role->role_code);
+            $capabilities = array_merge($capabilities, self::ROLE_CAPABILITIES[$roleCode] ?? []);
 
-            if (! empty($meta['is_admin']) || strtoupper((string) $role->role_code) === 'ADMIN') {
-                return ['full' => true, 'modules' => array_keys(self::MODULES), 'enabled' => $enabled];
+            if (! empty($meta['is_admin']) || $roleCode === 'ADMIN') {
+                return [
+                    'full' => true,
+                    'modules' => array_keys(self::MODULES),
+                    'enabled' => $enabled,
+                    'capabilities' => array_keys(self::CAPABILITIES),
+                ];
             }
 
             if (! array_key_exists('modules', $meta)) {
@@ -184,8 +208,29 @@ class AccessControl
         }
 
         $modules = array_values(array_unique(array_filter($modules, fn ($m) => isset(self::MODULES[$m]))));
+        $capabilities = array_values(array_unique(array_filter(
+            $capabilities,
+            fn ($capability) => isset(self::CAPABILITIES[$capability])
+        )));
 
-        return ['full' => false, 'modules' => $modules, 'enabled' => $enabled];
+        return [
+            'full' => false,
+            'modules' => $modules,
+            'enabled' => $enabled,
+            'capabilities' => $capabilities,
+        ];
+    }
+
+    public static function hasCapability(?int $employeeId, string $capability): bool
+    {
+        if (! $employeeId || ! isset(self::CAPABILITIES[$capability])) {
+            return false;
+        }
+
+        $isSuperAdmin = (bool) DB::table('employees')->where('id', $employeeId)->value('is_super_admin');
+        $access = self::forEmployee($employeeId, $isSuperAdmin);
+
+        return ! empty($access['full']) || in_array($capability, $access['capabilities'] ?? [], true);
     }
 
     /** Check an employee's active roles for sensitive actions within a module. */
@@ -253,6 +298,10 @@ class AccessControl
 
         if (in_array($segment, self::ALWAYS_ALLOWED, true)) {
             return true;
+        }
+
+        if ($segment === 'payroll' && str_starts_with(strtolower($path), 'payroll/payslip-issues')) {
+            return in_array('payslip_issues.view', $access['capabilities'] ?? [], true);
         }
 
         // The management dashboard contains tenant-wide aggregates. It is for

@@ -1,5 +1,49 @@
 <template>
   <div class="space-y-6">
+    <template v-if="issuesOnly">
+      <div>
+        <h1 class="text-2xl sm:text-3xl font-bold text-foreground">Phiếu lương chưa phát hành</h1>
+        <p class="text-sm sm:text-base text-muted-foreground mt-1">Danh sách nhân viên cần bổ sung dữ liệu; chế độ HR không hiển thị số tiền lương.</p>
+      </div>
+      <BaseCard>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <p class="font-semibold">Vấn đề cần xử lý</p>
+            <p class="text-xs text-muted-foreground">Sau khi cập nhật email, HR có thể bấm gửi lại. Lỗi payroll đã chốt sẽ điều chỉnh ở kỳ sau.</p>
+          </div>
+          <BaseButton variant="outline" :disabled="issuesLoading" @click="loadIssues">
+            {{ issuesLoading ? 'Đang tải...' : 'Tải lại' }}
+          </BaseButton>
+        </div>
+        <BaseSkeleton v-if="issuesLoading" type="table" />
+        <div v-else-if="!payslipIssues.length" class="py-10 text-center text-sm text-muted-foreground">Không có phiếu lương cần HR xử lý.</div>
+        <div v-else class="overflow-x-auto">
+          <table class="w-full text-sm" data-testid="table-payslip-issues-hr">
+            <thead><tr class="border-b border-border text-left text-xs uppercase text-muted-foreground">
+              <th class="py-2.5 pr-3">Nhân viên</th><th class="px-3 py-2.5">Kỳ</th><th class="px-3 py-2.5">Vấn đề</th><th class="px-3 py-2.5">Hướng xử lý</th><th class="px-3 py-2.5">Trạng thái</th><th class="py-2.5 pl-3"></th>
+            </tr></thead>
+            <tbody>
+              <tr v-for="issue in payslipIssues" :key="issue.id" class="border-b border-border/60 last:border-0 align-top">
+                <td class="py-3 pr-3">
+                  <p class="font-medium">{{ issue.full_name }}</p>
+                  <p class="text-xs text-muted-foreground">{{ issue.employee_code }} · {{ issue.department_name || 'Chưa có phòng ban' }}</p>
+                </td>
+                <td class="px-3 py-3 font-medium">{{ issue.period_code }}</td>
+                <td class="px-3 py-3"><p>{{ issue.message }}</p><p class="mt-1 text-[11px] text-muted-foreground">{{ issue.issue_code }}</p></td>
+                <td class="px-3 py-3 text-muted-foreground">{{ issue.resolution_hint || 'Liên hệ Kế toán.' }}</td>
+                <td class="px-3 py-3"><span :class="issueBadgeClass(issue.status)">{{ issueStatusLabel(issue.status) }}</span></td>
+                <td class="py-3 pl-3 text-right whitespace-nowrap">
+                  <router-link :to="`/employees/${issue.employee_id}`" class="text-xs font-semibold text-primary hover:underline">Hồ sơ</router-link>
+                  <button v-if="issue.can_retry" class="ml-3 text-xs font-semibold text-primary hover:underline" @click="retryIssue(issue)">Gửi lại</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </BaseCard>
+    </template>
+
+    <template v-else>
     <!-- ═══ Header ═══ -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
@@ -17,9 +61,11 @@
         </button>
         <button
           @click="bulkExportPDF"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition-colors"
+          :disabled="!periodClosed || !(publicationStatus?.documents?.ready > 0)"
+          :title="periodClosed ? 'Tải ZIP các PDF chính thức đã phát hành' : 'Chỉ tải được sau khi kỳ đã chốt và phát hành'"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
         >
-          PDF (Cả kỳ)
+          PDF ZIP (Cả kỳ)
         </button>
         <button
           @click="exportBankFile"
@@ -82,6 +128,14 @@
               ↩ Trả về / Thu hồi
             </BaseButton>
           </template>
+          <BaseButton
+            v-if="periodClosed"
+            :disabled="publicationBusy || !details.length"
+            @click="publishPayslips"
+            data-testid="button-publish-payslips"
+          >
+            {{ publicationBusy ? 'Đang phát hành...' : '✉ Phát hành & gửi phiếu' }}
+          </BaseButton>
         </div>
       </div>
       <p v-if="isAdmin && periodPendingClose" class="mt-3 text-xs text-amber-600">
@@ -93,6 +147,17 @@
       <p v-else-if="isAdmin" class="mt-3 text-xs text-muted-foreground">
         „Tính lương" sẽ tự tổng hợp lại bảng công tháng rồi tính: lương theo công → bảo hiểm → giảm trừ → thuế TNCN (5 bậc, luật 2026) → thực nhận.
       </p>
+    </BaseCard>
+
+    <BaseCard v-if="isAdmin && periodClosed && publicationStatus" title="Tiến độ phát hành phiếu lương">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
+        <div class="rounded-lg bg-muted/40 p-3"><p class="text-xs text-muted-foreground">Đủ điều kiện</p><p class="text-xl font-bold">{{ publicationStatus.pass_count || 0 }}</p></div>
+        <div class="rounded-lg bg-muted/40 p-3"><p class="text-xs text-muted-foreground">PDF sẵn sàng</p><p class="text-xl font-bold text-blue-600">{{ publicationStatus.documents?.ready || 0 }}</p></div>
+        <div class="rounded-lg bg-muted/40 p-3"><p class="text-xs text-muted-foreground">Đã gửi</p><p class="text-xl font-bold text-emerald-600">{{ publicationStatus.documents?.sent || 0 }}</p></div>
+        <div class="rounded-lg bg-muted/40 p-3"><p class="text-xs text-muted-foreground">Thiếu email</p><p class="text-xl font-bold text-amber-600">{{ publicationStatus.documents?.missing_email || 0 }}</p></div>
+        <div class="rounded-lg bg-muted/40 p-3"><p class="text-xs text-muted-foreground">Lỗi PDF/mail</p><p class="text-xl font-bold text-red-600">{{ (publicationStatus.documents?.pdf_failed || 0) + (publicationStatus.documents?.email_failed || 0) }}</p></div>
+        <div class="rounded-lg bg-muted/40 p-3"><p class="text-xs text-muted-foreground">Không pass</p><p class="text-xl font-bold text-red-600">{{ publicationStatus.fail_count || 0 }}</p></div>
+      </div>
     </BaseCard>
 
     <!-- ═══ Thẻ tổng hợp ═══ -->
@@ -144,6 +209,7 @@
                 <th class="py-2.5 px-3 text-center">Công</th>
                 <th class="py-2.5 px-3 text-center">Tăng ca</th>
                 <th class="py-2.5 px-3 text-center">Chuyển khoản</th>
+                <th class="py-2.5 px-3 text-center">Phát hành</th>
                 <th class="py-2.5 pl-3"></th>
               </tr>
             </thead>
@@ -173,6 +239,9 @@
                 <td class="py-2.5 px-3 text-center">
                   <span :class="transferBadgeClass(d.transfer_status)">{{ transferStatusVN(d.transfer_status) }}</span>
                 </td>
+                <td class="py-2.5 px-3 text-center">
+                  <span :class="documentBadgeClass(d.payslip_document)">{{ documentStatusLabel(d.payslip_document) }}</span>
+                </td>
                 <td class="py-2.5 pl-3 text-right">
                   <button
                     @click="openPayslip(d)"
@@ -181,6 +250,9 @@
                   >
                     Phiếu lương →
                   </button>
+                  <button v-if="d.payslip_document?.generation_status === 'READY'" @click="viewOfficialPdf(d.id)" class="ml-2 text-primary text-xs font-semibold hover:underline">PDF</button>
+                  <button v-if="d.payslip_document?.generation_status === 'READY'" @click="downloadOfficialPdf(d)" class="ml-2 text-primary text-xs font-semibold hover:underline">Tải</button>
+                  <button v-if="d.payslip_document?.generation_status === 'READY' && d.payslip_document?.email_status !== 'SENT'" @click="emailOfficialPayslip(d.id)" class="ml-2 text-primary text-xs font-semibold hover:underline">Gửi</button>
                 </td>
               </tr>
             </tbody>
@@ -343,10 +415,39 @@
       </div>
       <template #footer>
         <BaseButton variant="outline" @click="exportPayslipCsv" :disabled="!payslip">Xuất CSV</BaseButton>
-        <BaseButton variant="outline" @click="exportPayslipPDF" :disabled="!payslip">In / PDF</BaseButton>
+        <BaseButton v-if="payslip?.document?.generation_status === 'READY'" variant="outline" @click="viewOfficialPdf(payslip.salary_detail.id)">Xem PDF chính thức</BaseButton>
+        <BaseButton v-else variant="outline" @click="exportPayslipPDF" :disabled="!payslip">In bản xem trước</BaseButton>
+        <BaseButton v-if="payslip?.document?.generation_status === 'READY'" variant="outline" @click="emailOfficialPayslip(payslip.salary_detail.id)">Gửi về email</BaseButton>
         <BaseButton variant="ghost" @click="payslipOpen = false">Đóng</BaseButton>
       </template>
     </BaseModal>
+
+    <BaseModal v-model="readinessOpen" title="Kiểm tra trước khi chốt kỳ" size="lg">
+      <div v-if="readinessResult" class="space-y-4">
+        <div class="grid grid-cols-3 gap-3 text-center">
+          <div class="rounded-lg bg-muted/40 p-3"><p class="text-xs text-muted-foreground">Tổng nhân viên</p><p class="text-xl font-bold">{{ readinessResult.total_employees }}</p></div>
+          <div class="rounded-lg bg-emerald-50 p-3 text-emerald-800"><p class="text-xs">Pass</p><p class="text-xl font-bold">{{ readinessResult.pass_count }}</p></div>
+          <div class="rounded-lg bg-red-50 p-3 text-red-800"><p class="text-xs">Không pass</p><p class="text-xl font-bold">{{ readinessResult.fail_count }}</p></div>
+        </div>
+        <div v-if="readinessResult.issues?.length" class="max-h-80 overflow-y-auto rounded-lg border border-border">
+          <table class="w-full text-sm"><thead class="sticky top-0 bg-card"><tr class="border-b border-border text-left"><th class="p-3">Nhân viên</th><th class="p-3">Lỗi</th><th class="p-3">Hướng xử lý</th></tr></thead>
+            <tbody><tr v-for="issue in readinessResult.issues" :key="`${issue.employee_id}-${issue.issue_code}`" class="border-b border-border/60 last:border-0 align-top">
+              <td class="p-3"><p class="font-medium">{{ issue.full_name }}</p><p class="text-xs text-muted-foreground">{{ issue.employee_code }} · {{ issue.department_name || '-' }}</p></td>
+              <td class="p-3"><p>{{ issue.message }}</p><p class="text-[11px] text-muted-foreground mt-1">{{ issue.issue_code }}</p></td>
+              <td class="p-3 text-muted-foreground">{{ issue.resolution_hint }}</td>
+            </tr></tbody>
+          </table>
+        </div>
+        <p v-if="readinessResult.fail_count" class="text-sm text-amber-700">Nhân viên pass vẫn có thể nhận phiếu. Danh sách không pass sẽ được lưu để HR/Kế toán xử lý ở kỳ sau.</p>
+      </div>
+      <template #footer>
+        <BaseButton variant="outline" @click="readinessOpen = false">Hủy</BaseButton>
+        <BaseButton @click="confirmReadinessAction">
+          {{ readinessResult?.fail_count ? 'Xác nhận với danh sách loại trừ' : 'Xác nhận' }}
+        </BaseButton>
+      </template>
+    </BaseModal>
+    </template>
   </div>
 </template>
 
@@ -365,6 +466,8 @@ import { downloadCsv } from '../utils/csv';
 
 const notificationStore = useNotificationStore();
 const isAdmin = computed(() => authService.isAdmin());
+const canManagePayroll = computed(() => authService.canAccessModule('payroll'));
+const issuesOnly = computed(() => isAdmin.value && !canManagePayroll.value && authService.hasCapability('payslip_issues.view'));
 const currentUser = computed(() => authService.getUser());
 // user lưu trong localStorage chính là bản ghi employee → id = employee_id
 const selfEmployeeId = computed(() => currentUser.value?.employee_id || currentUser.value?.id || null);
@@ -385,6 +488,13 @@ const bonusForm = ref({ window_start: '', window_end: '', rate_percent: 50 });
 const payslipOpen = ref(false);
 const payslipLoading = ref(false);
 const payslip = ref(null);      // { salary_detail, breakdowns, attendance_summary }
+const readinessOpen = ref(false);
+const readinessResult = ref(null);
+const readinessAction = ref('');
+const publicationBusy = ref(false);
+const publicationStatus = ref(null);
+const payslipIssues = ref([]);
+const issuesLoading = ref(false);
 
 // Trạng thái kỳ khóa tính lại (đồng bộ với PayrollRunService::LOCKED_PERIOD_STATUSES)
 const LOCKED_STATUSES = ['CLOSED', 'LOCKED', 'PAID', 'ĐÃ_ĐÓNG', 'DA_DONG', 'ĐÃ_TRẢ', 'DA_TRA', 'CHỜ_DUYỆT'];
@@ -393,6 +503,7 @@ const selectedPeriod = computed(() => periods.value.find(p => String(p.id) === S
 const periodLocked = computed(() => selectedPeriod.value && LOCKED_STATUSES.includes(String(selectedPeriod.value.status)));
 // Maker–checker: kỳ đã trình chốt, chờ admin duyệt.
 const periodPendingClose = computed(() => String(selectedPeriod.value?.status) === 'CHỜ_DUYỆT');
+const periodClosed = computed(() => ['CLOSED', 'LOCKED', 'PAID', 'ĐÃ_ĐÓNG', 'DA_DONG', 'ĐÃ_TRẢ', 'DA_TRA'].includes(String(selectedPeriod.value?.status)));
 const isFullAdmin = computed(() => authService.getAccess().full === true);
 
 const periodOptions = computed(() => {
@@ -480,6 +591,32 @@ const transferBadgeClass = (s) => {
   if (String(s) === 'FAILED') return base + 'bg-red-50 text-red-700';
   return base + 'bg-amber-50 text-amber-700';
 };
+const documentStatusLabel = (document) => {
+  if (!document) return 'Chưa phát hành';
+  if (document.generation_status === 'FAILED') return 'Lỗi PDF';
+  if (['PENDING', 'PROCESSING'].includes(document.generation_status)) return 'Đang tạo';
+  if (document.email_status === 'SENT') return 'Đã gửi';
+  if (document.email_status === 'MISSING_RECIPIENT') return 'Thiếu email';
+  if (document.email_status === 'FAILED') return 'Lỗi email';
+  if (document.generation_status === 'READY') return 'PDF sẵn sàng';
+  return 'Chưa phát hành';
+};
+const documentBadgeClass = (document) => {
+  const base = 'inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ';
+  const label = documentStatusLabel(document);
+  if (label === 'Đã gửi') return base + 'bg-emerald-50 text-emerald-700';
+  if (['Lỗi PDF', 'Lỗi email'].includes(label)) return base + 'bg-red-50 text-red-700';
+  if (['Thiếu email', 'Đang tạo'].includes(label)) return base + 'bg-amber-50 text-amber-700';
+  if (label === 'PDF sẵn sàng') return base + 'bg-blue-50 text-blue-700';
+  return base + 'bg-muted text-muted-foreground';
+};
+const issueStatusLabel = (status) => ({ OPEN: 'Cần xử lý', DEFERRED: 'Điều chỉnh kỳ sau', RESOLVED: 'Đã xử lý' }[status] || status);
+const issueBadgeClass = (status) => {
+  const base = 'inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ';
+  if (status === 'RESOLVED') return base + 'bg-emerald-50 text-emerald-700';
+  if (status === 'DEFERRED') return base + 'bg-amber-50 text-amber-700';
+  return base + 'bg-red-50 text-red-700';
+};
 // "PRORATED 22/26 (…)" → "22/26" ; đủ công → null
 const prorationDays = (d) => {
   const label = d.proration || '';
@@ -507,6 +644,7 @@ const loadDetails = async () => {
     if (!isAdmin.value) params.employee_id = selfEmployeeId.value;
     const res = await salaryService.getDetails(params);
     details.value = Array.isArray(res) ? res : (res?.items || []);
+    if (isAdmin.value && canManagePayroll.value && periodClosed.value) await loadPublicationStatus();
   } catch (err) {
     console.error('Error loading salary details:', err);
     details.value = [];
@@ -514,6 +652,39 @@ const loadDetails = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const loadIssues = async () => {
+  issuesLoading.value = true;
+  try {
+    const res = await salaryService.getPayslipIssues({ per_page: 100 });
+    payslipIssues.value = res.items || [];
+  } catch (err) {
+    payslipIssues.value = [];
+    notificationStore.addError(err.response?.data?.message || 'Không tải được danh sách phiếu cần xử lý');
+  } finally {
+    issuesLoading.value = false;
+  }
+};
+
+const retryIssue = async (issue) => {
+  try {
+    await salaryService.retryPayslipIssue(issue.id);
+    notificationStore.addSuccess('Đã đưa yêu cầu xử lý lại vào hàng đợi');
+    await loadIssues();
+  } catch (err) {
+    notificationStore.addError(err.response?.data?.message || 'Không thể xử lý lại phiếu lương');
+  }
+};
+
+const loadPublicationStatus = async () => {
+  if (!selectedPeriodId.value || !periodClosed.value || !canManagePayroll.value) {
+    publicationStatus.value = null;
+    return;
+  }
+  try {
+    publicationStatus.value = await salaryService.getPayslipPublicationStatus(Number(selectedPeriodId.value));
+  } catch { publicationStatus.value = null; }
 };
 
 const loadHistory = async () => {
@@ -602,28 +773,77 @@ const pollPayrollStatus = async (periodId, total) => {
 };
 
 // Maker–checker chốt kỳ: trình (kế toán) → duyệt & chốt (admin) / trả về.
-const submitClose = async () => {
+const requestReadinessAction = async (action) => {
   if (!selectedPeriodId.value || periodLocked.value) return;
-  if (!window.confirm(`Trình chốt kỳ ${selectedPeriod.value?.period_code}? Kỳ sẽ tạm khóa tính lại cho tới khi được duyệt.`)) return;
   try {
-    await salaryService.submitPeriod(Number(selectedPeriodId.value));
-    notificationStore.addSuccess('Đã trình chốt kỳ — chờ admin duyệt');
-    await loadPeriods();
+    readinessResult.value = await salaryService.getPayslipReadiness(Number(selectedPeriodId.value));
+    readinessAction.value = action;
+    readinessOpen.value = true;
   } catch (err) {
-    notificationStore.addError(err.response?.data?.data?.errors?.status?.[0] || err.response?.data?.message || 'Không thể trình chốt kỳ');
+    notificationStore.addError(err.response?.data?.message || 'Không thể kiểm tra dữ liệu phiếu lương');
   }
 };
 
+const submitClose = () => requestReadinessAction('submit');
+
 const approveClose = async () => {
   if (!selectedPeriodId.value) return;
-  if (!window.confirm(`Duyệt và CHỐT kỳ ${selectedPeriod.value?.period_code}? Sau khi chốt sẽ KHÔNG thể tính lại lương kỳ này.`)) return;
   try {
-    await salaryService.closePeriod(Number(selectedPeriodId.value));
-    notificationStore.addSuccess('Đã duyệt và chốt kỳ lương');
+    readinessResult.value = await salaryService.getPayslipReadiness(Number(selectedPeriodId.value));
+    readinessAction.value = 'close';
+    readinessOpen.value = true;
+  } catch (err) {
+    notificationStore.addError(err.response?.data?.message || 'Không thể kiểm tra dữ liệu phiếu lương');
+  }
+};
+
+const confirmReadinessAction = async () => {
+  const action = readinessAction.value;
+  const allowPartial = Number(readinessResult.value?.fail_count || 0) > 0;
+  readinessOpen.value = false;
+  try {
+    if (action === 'submit') {
+      await salaryService.submitPeriod(Number(selectedPeriodId.value), allowPartial);
+      notificationStore.addSuccess('Đã trình chốt kỳ — chờ admin duyệt');
+    } else {
+      await salaryService.closePeriod(Number(selectedPeriodId.value), allowPartial);
+      notificationStore.addSuccess('Đã duyệt và chốt kỳ lương');
+    }
     await loadPeriods();
     await loadDetails();
   } catch (err) {
-    notificationStore.addError(err.response?.data?.data?.errors?.approver_id?.[0] || err.response?.data?.message || 'Không thể chốt kỳ');
+    const data = err.response?.data?.data;
+    if (data?.readiness) {
+      readinessResult.value = data.readiness;
+      readinessOpen.value = true;
+    }
+    notificationStore.addError(data?.errors?.approver_id?.[0] || err.response?.data?.message || 'Không thể chốt kỳ');
+  }
+};
+
+const publishPayslips = async () => {
+  if (!selectedPeriodId.value || publicationBusy.value) return;
+  if (!window.confirm(`Phát hành và gửi các phiếu hợp lệ của kỳ ${selectedPeriod.value?.period_code}?`)) return;
+  publicationBusy.value = true;
+  try {
+    const result = await salaryService.publishPayslips(Number(selectedPeriodId.value));
+    notificationStore.addSuccess(`Đã xếp hàng ${result?.queued || 0} phiếu; ${result?.fail_count || 0} nhân viên không pass.`);
+    await pollPublicationStatus();
+    await loadDetails();
+  } catch (err) {
+    notificationStore.addError(err.response?.data?.message || 'Không thể phát hành phiếu lương');
+  } finally {
+    publicationBusy.value = false;
+  }
+};
+
+const pollPublicationStatus = async () => {
+  const started = Date.now();
+  while (Date.now() - started < 3 * 60 * 1000) {
+    await loadPublicationStatus();
+    const pending = Number(publicationStatus.value?.documents?.pending || 0);
+    if (!pending) return;
+    await new Promise(resolve => setTimeout(resolve, 2000));
   }
 };
 
@@ -652,6 +872,53 @@ const openPayslip = async (detail) => {
     payslipOpen.value = false;
   } finally {
     payslipLoading.value = false;
+  }
+};
+
+const openPdfBlob = (blob, filename = 'phieu-luong.pdf', download = false) => {
+  const url = URL.createObjectURL(blob);
+  if (download) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return;
+  }
+  const win = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!win) notificationStore.addError('Trình duyệt đang chặn cửa sổ xem PDF');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+};
+
+const viewOfficialPdf = async (detailId) => {
+  try {
+    openPdfBlob(await salaryService.getPayslipPdf(detailId), `Phieu_luong_${detailId}.pdf`);
+  } catch (err) {
+    notificationStore.addError(err.response?.data?.message || 'Không mở được PDF phiếu lương');
+  }
+};
+
+const downloadOfficialPdf = async (detail) => {
+  try {
+    const periodCode = detail.period?.period_code || selectedPeriod.value?.period_code || 'ky';
+    const employeeCode = detail.employee?.employee_code || detail.employee_id || detail.id;
+    openPdfBlob(
+      await salaryService.getPayslipPdf(detail.id, true),
+      `Phieu_luong_${employeeCode}_${periodCode}.pdf`,
+      true
+    );
+  } catch (err) {
+    notificationStore.addError(err.response?.data?.message || 'Không tải được PDF phiếu lương');
+  }
+};
+
+const emailOfficialPayslip = async (detailId) => {
+  try {
+    await salaryService.emailPayslip(detailId);
+    notificationStore.addSuccess('Đã đưa email phiếu lương vào hàng đợi');
+    await loadPublicationStatus();
+  } catch (err) {
+    notificationStore.addError(err.response?.data?.message || 'Không gửi được phiếu lương');
   }
 };
 
@@ -820,35 +1087,26 @@ const exportBankFile = async () => {
 };
 
 const bulkExportPDF = async () => {
-  if (!details.value.length) return;
-  notificationStore.addInfo('Đang tạo phiếu lương cả kỳ…');
+  if (!selectedPeriodId.value || !periodClosed.value) return;
   try {
-    // Lấy payslip chi tiết từng NV từ engine (tuần tự để nhẹ server)
-    let pages = '';
-    for (const d of details.value) {
-      try {
-        const res = await salaryService.getPayslip(d.id);
-        let meta = res?.salary_detail?.meta;
-        if (typeof meta === 'string') { try { meta = JSON.parse(meta); } catch { meta = {}; } }
-        const bds = res?.breakdowns || [];
-        pages += payslipHTML(
-          res.salary_detail,
-          bds.filter(b => b.item_type === 'EARNING' && Number(b.amount) > 0),
-          bds.filter(b => b.item_type === 'DEDUCTION' && Number(b.amount) > 0),
-          meta || {},
-          res.attendance_summary
-        );
-      } catch { /* bỏ qua NV lỗi, in phần còn lại */ }
-    }
-    if (!pages) { notificationStore.addError('Không có phiếu lương nào để in'); return; }
-    openPrintWindow(`Phiếu lương kỳ ${selectedPeriod.value?.period_code || ''}`, pages);
-  } finally { /* noop */ }
+    const blob = await salaryService.getPayslipArchive(Number(selectedPeriodId.value));
+    openPdfBlob(blob, `Phieu_luong_${selectedPeriod.value?.period_code || 'ky'}.zip`, true);
+    notificationStore.addSuccess('Đã tải ZIP các phiếu lương chính thức');
+  } catch (err) {
+    notificationStore.addError(err.response?.data?.message || 'Chưa có PDF chính thức để tải');
+  }
 };
 
 // ── Wiring ──
-watch(selectedPeriodId, loadDetails);
+watch(selectedPeriodId, () => {
+  if (!issuesOnly.value) loadDetails();
+});
 
 onMounted(async () => {
+  if (issuesOnly.value) {
+    await loadIssues();
+    return;
+  }
   loading.value = true;
   try {
     await loadPeriods();

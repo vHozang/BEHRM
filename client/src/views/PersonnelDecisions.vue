@@ -100,11 +100,45 @@
     <BaseModal v-model="showCreate" title="Tạo đề xuất quyết định nhân sự">
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-medium mb-1">Nhân viên <span class="text-destructive">*</span></label>
-          <select v-model="form.employee_id" class="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm">
-            <option value="">— Chọn nhân viên —</option>
-            <option v-for="e in employees" :key="e.id" :value="e.id">{{ e.employee_code }} — {{ e.full_name }}</option>
+          <label class="block text-sm font-medium mb-1">Phòng ban</label>
+          <select
+            v-model="selectedDepartmentId"
+            class="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            @change="handleDepartmentChange"
+          >
+            <option value="">— Tất cả phòng ban —</option>
+            <option v-for="department in departments" :key="department.id" :value="String(department.id)">
+              {{ department.department_name || department.name }}
+            </option>
           </select>
+        </div>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label class="block text-sm font-medium mb-1">Mã nhân viên <span class="text-destructive">*</span></label>
+            <input
+              :value="employeeCode"
+              list="personnel-decision-employee-codes"
+              autocomplete="off"
+              class="w-full px-3 py-2.5 rounded-lg border border-input bg-background text-sm uppercase focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Nhập mã, ví dụ CN00672"
+              data-testid="input-employee-code"
+              @input="handleEmployeeCodeInput"
+              @blur="validateEmployeeCode"
+            />
+            <datalist id="personnel-decision-employee-codes">
+              <option v-for="employee in filteredEmployees" :key="employee.id" :value="employee.employee_code">
+                {{ employee.full_name }}
+              </option>
+            </datalist>
+            <p v-if="employeeLookupError" class="mt-1 text-xs text-destructive">{{ employeeLookupError }}</p>
+            <p v-else class="mt-1 text-xs text-muted-foreground">Có thể chọn phòng ban trước để thu hẹp danh sách mã.</p>
+          </div>
+          <BaseInput
+            :model-value="selectedEmployee?.full_name || ''"
+            label="Tên nhân viên"
+            placeholder="Tự động hiển thị theo mã nhân viên"
+            disabled
+          />
         </div>
         <div>
           <label class="block text-sm font-medium mb-1">Loại quyết định <span class="text-destructive">*</span></label>
@@ -114,7 +148,7 @@
         </div>
 
         <div v-if="form.change_type === 'SALARY'">
-          <BaseInput v-model="form.new_value" type="number" label="Mức lương mới (VNĐ)" required />
+          <BaseMoneyInput v-model="form.new_value" label="Mức lương mới (VNĐ)" required data-testid="input-new-salary" />
           <p v-if="currentSalary !== null" class="text-xs text-muted-foreground mt-1">
             Mức hiện tại: {{ formatMoney(currentSalary) }}
           </p>
@@ -158,10 +192,11 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue';
+import { computed, ref, watch, onMounted } from 'vue';
 import BaseCard from '../components/BaseCard.vue';
 import BaseButton from '../components/BaseButton.vue';
 import BaseInput from '../components/BaseInput.vue';
+import BaseMoneyInput from '../components/BaseMoneyInput.vue';
 import BaseBadge from '../components/BaseBadge.vue';
 import BaseModal from '../components/BaseModal.vue';
 import BaseSkeleton from '../components/BaseSkeleton.vue';
@@ -170,6 +205,7 @@ import { employeeService } from '../services/employeeService';
 import { departmentService } from '../services/departmentService';
 import { jobTitleService } from '../services/jobTitleService';
 import { useNotificationStore } from '../stores/notificationStore';
+import { filterEmployeesByDepartment, findEmployeeByCode, normalizeEmployeeCode } from '../utils/employeeLookup';
 
 const notificationStore = useNotificationStore();
 
@@ -192,6 +228,48 @@ const filterStatus = ref('');
 const showCreate = ref(false);
 const formError = ref('');
 const form = ref({ employee_id: '', change_type: 'SALARY', new_value: '', effective_date: '', reason: '' });
+const selectedDepartmentId = ref('');
+const employeeCode = ref('');
+const employeeLookupError = ref('');
+const selectedEmployee = computed(() => employees.value.find((employee) => String(employee.id) === String(form.value.employee_id)) || null);
+const filteredEmployees = computed(() => filterEmployeesByDepartment(employees.value, selectedDepartmentId.value));
+
+const selectEmployeeByCode = () => {
+  const employee = findEmployeeByCode(employees.value, employeeCode.value);
+  if (!employee) {
+    form.value.employee_id = '';
+    return false;
+  }
+
+  form.value.employee_id = employee.id;
+  selectedDepartmentId.value = employee.department_id ? String(employee.department_id) : '';
+  employeeLookupError.value = '';
+  return true;
+};
+
+const handleEmployeeCodeInput = (event) => {
+  employeeCode.value = normalizeEmployeeCode(event.target.value);
+  event.target.value = employeeCode.value;
+  employeeLookupError.value = '';
+  selectEmployeeByCode();
+};
+
+const validateEmployeeCode = () => {
+  if (!employeeCode.value.trim()) {
+    employeeLookupError.value = '';
+    return;
+  }
+  if (!selectEmployeeByCode()) employeeLookupError.value = 'Không tìm thấy mã nhân viên này.';
+};
+
+const handleDepartmentChange = () => {
+  employeeLookupError.value = '';
+  const employee = selectedEmployee.value;
+  if (employee && selectedDepartmentId.value && String(employee.department_id || '') !== selectedDepartmentId.value) {
+    employeeCode.value = '';
+    form.value.employee_id = '';
+  }
+};
 
 // /employees/lookup KHÔNG trả base_salary (chỉ id/mã/tên/phòng ban) → phải lấy hồ sơ
 // đầy đủ khi chọn người, nếu không gợi ý "mức hiện tại" luôn hiện 0đ.
@@ -243,13 +321,16 @@ const load = async () => {
 
 const openCreate = () => {
   form.value = { employee_id: '', change_type: 'SALARY', new_value: '', effective_date: new Date().toISOString().slice(0, 10), reason: '' };
+  selectedDepartmentId.value = '';
+  employeeCode.value = '';
+  employeeLookupError.value = '';
   formError.value = '';
   showCreate.value = true;
 };
 
 const submit = async () => {
   formError.value = '';
-  if (!form.value.employee_id) { formError.value = 'Vui lòng chọn nhân viên'; return; }
+  if (!form.value.employee_id) { formError.value = employeeCode.value ? 'Mã nhân viên không hợp lệ' : 'Vui lòng nhập mã nhân viên'; return; }
   if (!form.value.reason || form.value.reason.trim().length < 3) { formError.value = 'Vui lòng ghi lý do / căn cứ của quyết định'; return; }
   if (form.value.change_type !== 'TERMINATION' && !form.value.new_value) { formError.value = 'Vui lòng nhập giá trị mới'; return; }
   try {

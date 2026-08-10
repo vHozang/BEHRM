@@ -17,6 +17,11 @@ return [
 
     'default_legal_entity_id' => env('HRM_DEFAULT_LEGAL_ENTITY_ID', 1),
 
+    // Tenant-wide display preferences consumed by authenticated web clients.
+    'display' => [
+        'money_group_separator' => env('HRM_MONEY_GROUP_SEPARATOR', '.'),
+    ],
+
     // Chuỗi cấp duyệt đơn từ (duyệt nhiều cấp). Mặc định 1 cấp (HR) = như cũ.
     // Tenant đặt nhiều cấp qua Settings, vd ['MANAGER','DEPT_HEAD','HR'].
     'approval' => [

@@ -485,27 +485,65 @@
         <BaseCard>
           <div class="space-y-4">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <h3 class="font-semibold">Thông tin lương<span v-if="salaryPeriodLabel" class="text-sm font-normal text-muted-foreground"> — Kỳ {{ salaryPeriodLabel }}</span></h3>
-              <div class="flex flex-wrap gap-2 w-full sm:w-auto justify-start sm:justify-end" v-if="salaryDetails.length > 0">
+              <div>
+                <h3 class="font-semibold">Phiếu lương<span v-if="salaryPeriodLabel" class="text-sm font-normal text-muted-foreground"> — Kỳ {{ salaryPeriodLabel }}</span></h3>
+                <p v-if="salaryDocument" class="mt-1 text-xs text-muted-foreground">
+                  {{ salaryDocumentStatusLabel(salaryDocument) }}
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2 w-full sm:w-auto justify-start sm:justify-end" v-if="salaryDocumentReady">
                 <button
-                  @click="exportSalaryCsv"
+                  @click="viewSalaryPdf"
+                  :disabled="salaryActionBusy"
                   class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
-                  title="Xuất file CSV mở được bằng Excel"
+                  title="Mở PDF chính thức đã phát hành"
                 >
-                  <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  CSV
+                  Xem PDF
                 </button>
                 <button
-                  @click="exportSalaryPDF"
+                  @click="downloadSalaryPdf"
+                  :disabled="salaryActionBusy"
                   class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium hover:bg-muted transition-colors"
-                  title="Xuất file PDF"
+                  title="Tải PDF chính thức"
                 >
                   <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                   </svg>
-                  PDF
+                  Tải PDF
+                </button>
+                <button
+                  @click="emailSalaryPdf"
+                  :disabled="salaryActionBusy"
+                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 text-primary text-sm font-medium hover:bg-primary/5 transition-colors"
+                >
+                  Gửi về email
+                </button>
+              </div>
+            </div>
+
+            <div v-if="salaryHistory.length" class="rounded-xl border border-border overflow-hidden">
+              <div class="px-4 py-3 bg-muted/40 border-b border-border">
+                <h4 class="text-sm font-semibold">Lịch sử phiếu đã phát hành</h4>
+              </div>
+              <div class="divide-y divide-border">
+                <button
+                  v-for="item in salaryHistory"
+                  :key="item.id"
+                  type="button"
+                  @click="selectSalaryPeriod(item)"
+                  :class="[
+                    'w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-muted/40 transition-colors',
+                    Number(item.id) === Number(selectedSalaryDetailId) ? 'bg-primary/5' : ''
+                  ]"
+                >
+                  <span>
+                    <span class="block text-sm font-medium">Kỳ {{ item.period?.period_code || item.period_id }}</span>
+                    <span class="block text-xs text-muted-foreground mt-0.5">Phát hành {{ formatDate(item.payslip_document?.published_at) }}</span>
+                  </span>
+                  <span class="text-right">
+                    <span class="block text-sm font-bold text-primary">{{ formatCurrency(item.net_salary) }}</span>
+                    <span class="block text-[11px] text-muted-foreground">{{ salaryDocumentStatusLabel(item.payslip_document) }}</span>
+                  </span>
                 </button>
               </div>
             </div>
@@ -832,6 +870,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import BaseButton from '../components/BaseButton.vue';
 import BaseCard from '../components/BaseCard.vue';
 import BaseTable from '../components/BaseTable.vue';
@@ -847,11 +886,14 @@ import { shiftCoverageService } from '../services/shiftCoverageService';
 import { onboardingService } from '../services/onboardingService';
 import { profileChangeService } from '../services/profileChangeService';
 import { contractService } from '../services/contractService';
+import { salaryService } from '../services/salaryService';
 import { useNotificationStore } from '../stores/notificationStore';
 import { downloadCsv } from '../utils/csv';
 
 const notificationStore = useNotificationStore();
-const activeTab = ref('attendance');
+const route = useRoute();
+const portalTabs = ['attendance', 'roster', 'leaves', 'onboarding', 'salary', 'profile'];
+const activeTab = ref(portalTabs.includes(String(route.query.tab)) ? String(route.query.tab) : 'attendance');
 const showLeaveModal = ref(false);
 const pageLoading = ref(true);
 
@@ -1038,6 +1080,11 @@ const leaveFormLoading = ref(false);
 const salaryDetails = ref([]);
 const salaryNet = ref(0);            // net thật từ salary_detail (chuẩn), không tự cộng lại
 const salaryPeriodLabel = ref('');   // mã kỳ của phiếu lương đang xem
+const salaryHistory = ref([]);
+const selectedSalaryDetailId = ref(null);
+const salaryDocument = ref(null);
+const salaryActionBusy = ref(false);
+const salaryDocumentReady = computed(() => salaryDocument.value?.generation_status === 'READY');
 const salaryTotals = computed(() => {
   let basic = 0, allowances = 0, deductions = 0;
   salaryDetails.value.forEach(item => {
@@ -1275,15 +1322,30 @@ const loadSalaryData = async (empId) => {
     // /salary-details trả DANH SÁCH kỳ (mới nhất trước) — KHÔNG phải thành phần lương.
     // Lấy kỳ mới nhất rồi gọi payslip để có breakdown thật (BHXH, phụ cấp…).
     const list = await employeeService.getSalaries(empId);
-    const rows = Array.isArray(list) ? list : (list?.items || list?.data || []);
+    const rows = (Array.isArray(list) ? list : (list?.items || list?.data || []))
+      .sort((a, b) => String(b.period?.period_code || '').localeCompare(String(a.period?.period_code || '')));
+    salaryHistory.value = rows;
     if (!rows.length) {
       salaryDetails.value = []; salaryNet.value = 0; salaryPeriodLabel.value = '';
+      salaryDocument.value = null; selectedSalaryDetailId.value = null;
       return;
     }
-    const latest = rows[0];
-    salaryPeriodLabel.value = latest.period?.period_code || '';
-    salaryNet.value = Number(latest.net_salary) || 0;
-    const payslip = await employeeService.getPayslip(latest.id);
+    const requestedId = Number(route.query.payslip || 0);
+    const selected = rows.find(item => Number(item.id) === requestedId) || rows[0];
+    await selectSalaryPeriod(selected);
+  } catch (error) {
+    console.error('Error loading salary data:', error);
+  }
+};
+
+const selectSalaryPeriod = async (summary) => {
+  if (!summary?.id) return;
+  try {
+    selectedSalaryDetailId.value = summary.id;
+    salaryPeriodLabel.value = summary.period?.period_code || '';
+    salaryNet.value = Number(summary.net_salary) || 0;
+    const payslip = await employeeService.getPayslip(summary.id);
+    salaryDocument.value = payslip?.document || summary.payslip_document || null;
     const breakdowns = payslip?.breakdowns || payslip?.data?.breakdowns || [];
     // Chỉ hiển thị khoản NV thực nhận/đóng (EARNING + DEDUCTION), bỏ chi phí DN/INFO/NET và dòng 0đ.
     salaryDetails.value = breakdowns
@@ -1295,7 +1357,72 @@ const loadSalaryData = async (empId) => {
         amount: Number(b.amount) || 0,
       }));
   } catch (error) {
-    console.error('Error loading salary data:', error);
+    console.error('Error loading payslip:', error);
+    notificationStore.addError('Không tải được phiếu lương đã chọn');
+  }
+};
+
+const salaryDocumentStatusLabel = (document) => {
+  if (!document) return 'Chưa phát hành';
+  if (document.email_status === 'SENT') return 'Đã gửi email';
+  if (document.email_status === 'MISSING_RECIPIENT') return 'Chưa gửi: thiếu email';
+  if (document.email_status === 'FAILED') return 'PDF sẵn sàng, gửi email lỗi';
+  if (document.email_status === 'QUEUED' || document.email_status === 'SENDING') return 'Đang gửi email';
+  return document.generation_status === 'READY' ? 'PDF đã phát hành' : 'Đang tạo PDF';
+};
+
+const openSalaryBlob = (blob, filename, download) => {
+  const url = URL.createObjectURL(blob);
+  if (download) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return;
+  }
+  const viewer = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!viewer) notificationStore.addError('Trình duyệt đang chặn cửa sổ xem PDF');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+};
+
+const salaryPdfFilename = () => `Phieu_luong_${currentEmployee.value.employee_code || 'NhanVien'}_${salaryPeriodLabel.value || 'ky'}.pdf`;
+
+const viewSalaryPdf = async () => {
+  if (!selectedSalaryDetailId.value || salaryActionBusy.value) return;
+  salaryActionBusy.value = true;
+  try {
+    openSalaryBlob(await salaryService.getPayslipPdf(selectedSalaryDetailId.value), salaryPdfFilename(), false);
+  } catch (error) {
+    notificationStore.addError(error.response?.data?.message || 'Không mở được PDF phiếu lương');
+  } finally {
+    salaryActionBusy.value = false;
+  }
+};
+
+const downloadSalaryPdf = async () => {
+  if (!selectedSalaryDetailId.value || salaryActionBusy.value) return;
+  salaryActionBusy.value = true;
+  try {
+    openSalaryBlob(await salaryService.getPayslipPdf(selectedSalaryDetailId.value, true), salaryPdfFilename(), true);
+  } catch (error) {
+    notificationStore.addError(error.response?.data?.message || 'Không tải được PDF phiếu lương');
+  } finally {
+    salaryActionBusy.value = false;
+  }
+};
+
+const emailSalaryPdf = async () => {
+  if (!selectedSalaryDetailId.value || salaryActionBusy.value) return;
+  salaryActionBusy.value = true;
+  try {
+    await salaryService.emailPayslip(selectedSalaryDetailId.value);
+    salaryDocument.value = { ...salaryDocument.value, email_status: 'QUEUED' };
+    notificationStore.addSuccess('Đã đưa phiếu lương vào hàng đợi gửi về email hồ sơ của bạn');
+  } catch (error) {
+    notificationStore.addError(error.response?.data?.message || 'Không gửi được phiếu lương');
+  } finally {
+    salaryActionBusy.value = false;
   }
 };
 

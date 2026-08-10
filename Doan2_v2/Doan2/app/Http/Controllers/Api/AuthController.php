@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Repositories\OrganizationChartRepository;
 use App\Support\AccessControl;
+use App\Support\HrmConfig;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -80,6 +81,19 @@ class AuthController extends Controller
                 'access_token' => $token,
                 'token_type' => 'Bearer',
                 'expires_in' => (int) env('JWT_TTL', 3600),
+            ],
+        ]);
+    }
+
+    public function uiPreferences(): JsonResponse
+    {
+        $separator = (string) HrmConfig::get('display.money_group_separator', '.');
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'UI preferences',
+            'data' => [
+                'money_group_separator' => in_array($separator, ['.', ','], true) ? $separator : '.',
             ],
         ]);
     }

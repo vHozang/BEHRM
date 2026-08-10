@@ -369,7 +369,13 @@ router.beforeEach((to, from, next) => {
     // (trừ khi đã chọn "Dùng bản đầy đủ"). Admin giữ desktop shell.
     if (['/employee-portal', '/employee-contracts'].includes(to.path) && !isAdmin && window.innerWidth < 768
         && !localStorage.getItem('prefer_desktop')) {
-      next(to.path === '/employee-contracts' ? '/m/contracts' : '/m');
+      if (to.path === '/employee-contracts') {
+        next({ path: '/m/contracts', query: to.query });
+      } else if (to.query.tab === 'salary' || to.query.payslip) {
+        next({ path: '/m/salary', query: { payslip: to.query.payslip } });
+      } else {
+        next({ path: '/m', query: to.query });
+      }
       return;
     }
 
@@ -390,10 +396,15 @@ router.beforeEach((to, from, next) => {
       ['/attendance-devices', 'settings']
     ];
     if (isAdmin) {
-      let access = { full: true, modules: [], enabled: null };
+      let access = { full: true, modules: [], enabled: null, capabilities: [] };
       try {
         const a = JSON.parse(localStorage.getItem('access') || '{}');
-        access = { full: a.full === true, modules: Array.isArray(a.modules) ? a.modules : [], enabled: Array.isArray(a.enabled) ? a.enabled : null };
+        access = {
+          full: a.full === true,
+          modules: Array.isArray(a.modules) ? a.modules : [],
+          enabled: Array.isArray(a.enabled) ? a.enabled : null,
+          capabilities: Array.isArray(a.capabilities) ? a.capabilities : []
+        };
       } catch {}
       const canUseDashboard = access.full || access.modules.some(m => ['hr', 'time', 'recruitment'].includes(m));
       if (to.path === '/' && !canUseDashboard) {
@@ -403,8 +414,10 @@ router.beforeEach((to, from, next) => {
       const match = ROUTE_MODULE.find(([p]) => to.path === p || to.path.startsWith(p + '/'));
       if (match) {
         const mod = match[1];
-        const roleAllows = access.full || access.modules.includes(mod);
-        const enabledOk = mod === 'settings' || access.enabled === null || access.enabled.includes(mod);
+        const issuesOnlySalary = to.path === '/salaries'
+          && access.capabilities.includes('payslip_issues.view');
+        const roleAllows = access.full || access.modules.includes(mod) || issuesOnlySalary;
+        const enabledOk = issuesOnlySalary || mod === 'settings' || access.enabled === null || access.enabled.includes(mod);
         if (!roleAllows || !enabledOk) {
           next('/');
           return;

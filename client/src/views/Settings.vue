@@ -27,8 +27,22 @@
             <div v-for="item in group.items" :key="item.key" class="grid grid-cols-1 items-start gap-3 sm:grid-cols-3">
               <label class="text-sm font-medium text-foreground sm:pt-2">{{ item.label }}</label>
               <div class="sm:col-span-2">
+                <select
+                  v-if="item.type === 'select'"
+                  v-model="values[item.key]"
+                  class="form-control"
+                >
+                  <option v-for="option in (item.options || [])" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </option>
+                </select>
+                <BaseMoneyInput
+                  v-else-if="isMoneySetting(item)"
+                  v-model="values[item.key]"
+                  :separator="values['display.money_group_separator']"
+                />
                 <input
-                  v-if="item.type === 'int' || item.type === 'float'"
+                  v-else-if="item.type === 'int' || item.type === 'float'"
                   v-model="values[item.key]"
                   type="number"
                   :step="item.type === 'float' ? '0.01' : '1'"
@@ -162,7 +176,9 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import BaseButton from '../components/BaseButton.vue';
 import BaseCard from '../components/BaseCard.vue';
+import BaseMoneyInput from '../components/BaseMoneyInput.vue';
 import { useToast } from '../composables/useToast';
+import { setMoneyGroupSeparator } from '../composables/useMoneyPreferences';
 import { settingsService } from '../services/settingsService';
 import { integrationEndpointLabel, notificationStatusEnabled } from '../utils/managementUi';
 
@@ -180,6 +196,14 @@ const error = ref('');
 const groups = ref([]);
 const values = reactive({});
 const typeByKey = {};
+const moneySettingKeys = new Set([
+  'payroll.personal_deduction',
+  'payroll.dependent_deduction',
+  'payroll.base_salary',
+  'payroll.region_min_wage',
+  'payroll.monthly_budget'
+]);
+const isMoneySetting = (item) => item.type === 'int' && moneySettingKeys.has(item.key);
 
 const integrationLoading = ref(false);
 const integrationHealth = ref(null);
@@ -249,6 +273,7 @@ const saveAll = async () => {
     });
     if (jsonError) return toast.error(`JSON không hợp lệ ở mục: ${jsonError}`);
     await settingsService.save(items);
+    setMoneyGroupSeparator(values['display.money_group_separator']);
     toast.success('Đã lưu cấu hình');
     await load();
   } catch (err) {
