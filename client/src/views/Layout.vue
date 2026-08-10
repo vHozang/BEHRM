@@ -314,7 +314,7 @@
             >
               <div class="px-4 py-3 border-b border-border">
                 <p class="text-sm font-medium text-foreground truncate">{{ currentUserEmail }}</p>
-                <p class="text-xs text-muted-foreground mt-0.5">{{ isAdmin ? t('common.admin', 'Quản trị viên') : t('common.employee', 'Nhân viên') }}</p>
+                <p class="text-xs text-muted-foreground mt-0.5" :title="currentUserRoleDetails">{{ currentUserRoleLabel }}</p>
               </div>
               <div class="py-1">
                 <button
@@ -495,6 +495,7 @@ import BaseInput from '../components/BaseInput.vue';
 import BaseButton from '../components/BaseButton.vue';
 import BaseDrawer from '../components/BaseDrawer.vue';
 import { authService } from '../services/authService';
+import { primaryUserRoleLabel, userRoleLabels } from '../utils/userRole';
 import { aiService } from '../services/aiService';
 import { useI18n } from '../i18n';
 import ThemeToggle from '../components/ThemeToggle.vue';
@@ -640,13 +641,16 @@ const pwError = ref('');
 const pwSuccess = ref('');
 const pwLoading = ref(false);
 
-const currentUserEmail = computed(() => authService.getUserEmail() || 'Người dùng');
+const currentUser = ref(authService.getUser());
+const currentUserEmail = computed(() => currentUser.value?.company_email || authService.getUserEmail() || 'Người dùng');
 const currentUserInitials = computed(() => {
   const email = currentUserEmail.value;
-  const user = authService.getUser();
+  const user = currentUser.value;
   const name = user?.name || user?.full_name || email;
   return name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) || 'U';
 });
+const currentUserRoleLabel = computed(() => primaryUserRoleLabel(currentUser.value));
+const currentUserRoleDetails = computed(() => userRoleLabels(currentUser.value).join(' · ') || currentUserRoleLabel.value);
 
 const notificationStore = useNotificationStore();
 const storeNotifications = notificationStore.notifications;
@@ -1046,10 +1050,15 @@ const submitChangePassword = async () => {
 };
 
 let notifPoll = null;
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener('click', handleClickOutside);
   loadPersisted();
   notifPoll = setInterval(loadPersisted, 60000);
+  try {
+    currentUser.value = await authService.me();
+  } catch {
+    // Thông tin role không được làm gián đoạn shell nếu API đồng bộ tạm lỗi.
+  }
 });
 
 onUnmounted(() => {

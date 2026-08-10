@@ -126,11 +126,6 @@ class AccessControl
     ];
 
     /**
-     * Effective access for an employee.
-     *
-     * @return array{full: bool, modules: array<int, string>}
-     */
-    /**
      * Modules a company has turned ON (feature toggle, separate from role grants).
      * Default: all modules. 'settings' is always enabled so admins can re-enable
      * others. Stored as tenant override modules.enabled (json array of keys).
@@ -151,34 +146,57 @@ class AccessControl
         return $set;
     }
 
+    /**
+     * @return array{
+     *   full: bool,
+     *   modules: array<int, string>,
+     *   enabled: array<int, string>,
+     *   capabilities: array<int, string>,
+     *   roles: array<int, array{id: int, role_code: string, role_name: string}>
+     * }
+     */
     public static function forEmployee(int $employeeId, bool $isSuperAdmin = false): array
     {
-        if ($isSuperAdmin) {
-            return [
-                'full' => true,
-                'modules' => array_keys(self::MODULES),
-                'enabled' => self::enabledModules(),
-                'capabilities' => array_keys(self::CAPABILITIES),
-            ];
-        }
-
         $roles = DB::table('employee_roles')
             ->join('roles', 'roles.id', '=', 'employee_roles.role_id')
             ->where('employee_roles.employee_id', $employeeId)
-            ->whereRaw('employee_roles.is_active = true')
+            ->whereRaw('employee_roles.is_active IS TRUE')
             ->where(function ($q) {
                 $q->whereNull('employee_roles.effective_date')->orWhere('employee_roles.effective_date', '<=', now());
             })
             ->where(function ($q) {
                 $q->whereNull('employee_roles.expiry_date')->orWhere('employee_roles.expiry_date', '>=', now());
             })
-            ->get(['roles.role_code', 'roles.meta']);
+            ->orderBy('roles.id')
+            ->get(['roles.id', 'roles.role_code', 'roles.role_name', 'roles.meta']);
+
+        $roleSummaries = $roles->map(fn ($role) => [
+            'id' => (int) $role->id,
+            'role_code' => (string) $role->role_code,
+            'role_name' => (string) ($role->role_name ?: $role->role_code),
+        ])->values()->all();
+
+        if ($isSuperAdmin) {
+            return [
+                'full' => true,
+                'modules' => array_keys(self::MODULES),
+                'enabled' => self::enabledModules(),
+                'capabilities' => array_keys(self::CAPABILITIES),
+                'roles' => $roleSummaries,
+            ];
+        }
 
         $enabled = self::enabledModules();
 
         if ($roles->isEmpty()) {
             // No role at all → regular employee (portal only, no admin modules).
-            return ['full' => false, 'modules' => [], 'enabled' => $enabled, 'capabilities' => []];
+            return [
+                'full' => false,
+                'modules' => [],
+                'enabled' => $enabled,
+                'capabilities' => [],
+                'roles' => [],
+            ];
         }
 
         $modules = [];
@@ -195,6 +213,7 @@ class AccessControl
                     'modules' => array_keys(self::MODULES),
                     'enabled' => $enabled,
                     'capabilities' => array_keys(self::CAPABILITIES),
+                    'roles' => $roleSummaries,
                 ];
             }
 
@@ -218,6 +237,7 @@ class AccessControl
             'modules' => $modules,
             'enabled' => $enabled,
             'capabilities' => $capabilities,
+            'roles' => $roleSummaries,
         ];
     }
 

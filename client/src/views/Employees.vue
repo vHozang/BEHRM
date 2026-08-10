@@ -97,34 +97,7 @@
     </div>
 
     <template v-else>
-      <BaseCard>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <BaseInput
-            v-model="filters.search"
-            placeholder="Tìm kiếm theo tên, mã NV..."
-            data-testid="input-search-employee"
-          />
-          <BaseSelect
-            v-model="filters.department"
-            :options="[{ label: 'Tất cả phòng ban', value: '' }, ...departmentFilterOptions]"
-            data-testid="select-department-filter"
-          />
-          <BaseSelect
-            v-model="filters.status"
-            :options="statusFilterOptions"
-            data-testid="select-status-filter"
-          />
-          <BaseButton
-            variant="outline"
-            @click="applyFilters"
-            data-testid="button-apply-filters"
-          >
-            Áp dụng
-          </BaseButton>
-        </div>
-      </BaseCard>
-
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <BaseCard class="p-4">
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -170,6 +143,33 @@
           </div>
         </BaseCard>
       </div>
+
+      <BaseCard>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <BaseInput
+            v-model="filters.search"
+            placeholder="Tìm kiếm theo tên, mã NV..."
+            data-testid="input-search-employee"
+          />
+          <BaseSelect
+            v-model="filters.department"
+            :options="[{ label: 'Tất cả phòng ban', value: '' }, ...departmentFilterOptions]"
+            data-testid="select-department-filter"
+          />
+          <BaseSelect
+            v-model="filters.status"
+            :options="statusFilterOptions"
+            data-testid="select-status-filter"
+          />
+          <BaseButton
+            variant="outline"
+            @click="applyFilters"
+            data-testid="button-apply-filters"
+          >
+            Áp dụng
+          </BaseButton>
+        </div>
+      </BaseCard>
 
       <BaseCard>
         <div v-if="filteredEmployees.length === 0" class="text-center py-8 text-muted-foreground">

@@ -47,6 +47,16 @@ class RoleJourneyTest extends TestCase
         $accountant = $this->actor('accountant', ['payroll']);
         $employee = $this->actor('employee');
 
+        $this->withToken($manager['token'])->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('data.roles.0.role_code', 'MANAGER')
+            ->assertJsonPath('data.roles.0.role_name', 'Manager')
+            ->assertJsonPath('access.roles.0.role_code', 'MANAGER');
+        $this->withToken($employee['token'])->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('data.roles', [])
+            ->assertJsonPath('access.roles', []);
+
         $this->withToken($admin['token'])->getJson('/api/v1/settings/catalog')->assertOk();
         $this->withToken($admin['token'])->getJson('/api/v1/salary-periods')->assertOk();
 

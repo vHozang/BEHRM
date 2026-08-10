@@ -40,22 +40,32 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { authService } from '../../services/authService';
+import { primaryUserRoleLabel } from '../../utils/userRole';
 import { dmy } from './mformat';
 
 const router = useRouter();
-const user = authService.getUser();
+const user = ref(authService.getUser());
 
-const initials = computed(() => (user?.full_name || 'NV').split(' ').slice(-2).map(w => w[0]).join('').toUpperCase());
+const initials = computed(() => (user.value?.full_name || 'NV').split(' ').slice(-2).map(w => w[0]).join('').toUpperCase());
 
-const info = [
-  { label: 'Mã nhân viên', value: user?.employee_code },
-  { label: 'Số điện thoại', value: user?.phone_number },
-  { label: 'Ngày vào làm', value: dmy(user?.hire_date) },
-  { label: 'Trạng thái', value: user?.status === 'ACTIVE' ? 'Đang làm việc' : user?.status },
-];
+const info = computed(() => [
+  { label: 'Vai trò', value: primaryUserRoleLabel(user.value) },
+  { label: 'Mã nhân viên', value: user.value?.employee_code },
+  { label: 'Số điện thoại', value: user.value?.phone_number },
+  { label: 'Ngày vào làm', value: dmy(user.value?.hire_date) },
+  { label: 'Trạng thái', value: user.value?.status === 'ACTIVE' ? 'Đang làm việc' : user.value?.status },
+]);
+
+onMounted(async () => {
+  try {
+    user.value = await authService.me();
+  } catch {
+    // Giữ dữ liệu phiên hiện có nếu đồng bộ hồ sơ tạm thời thất bại.
+  }
+});
 
 const goDesktop = () => {
   localStorage.setItem('prefer_desktop', '1'); // guard sẽ không tự đá về /m nữa

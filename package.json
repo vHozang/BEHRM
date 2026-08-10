@@ -13,7 +13,8 @@
     "test:employee-self-service": "node scripts/test-employee-self-service.mjs",
     "test:management-ui": "node scripts/test-management-ui.mjs",
     "test:money-input": "node scripts/test-money-input.mjs",
-    "test:payslips": "node scripts/test-payslip-ui.mjs"
+    "test:payslips": "node scripts/test-payslip-ui.mjs",
+    "test:user-role": "node scripts/test-user-role.mjs"
   },
   "dependencies": {
     "axios": "^1.18.1",

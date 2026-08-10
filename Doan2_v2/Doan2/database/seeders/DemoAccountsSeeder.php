@@ -11,10 +11,10 @@ class DemoAccountsSeeder extends Seeder
     public function run(): void
     {
         $roles = [
-            'ADMIN' => ['name' => 'Administrator', 'meta' => ['is_admin' => true]],
-            'HR' => ['name' => 'Human Resources', 'meta' => ['modules' => ['hr', 'time', 'recruitment', 'communications']]],
-            'MANAGER' => ['name' => 'Manager', 'meta' => ['modules' => ['time']]],
-            'EMPLOYEE' => ['name' => 'Employee', 'meta' => ['modules' => []]],
+            'ADMIN' => ['name' => 'Quản trị viên', 'meta' => ['is_admin' => true]],
+            'HR' => ['name' => 'Nhân sự', 'meta' => ['modules' => ['hr', 'time', 'recruitment', 'communications']]],
+            'MANAGER' => ['name' => 'Trưởng phòng', 'meta' => ['modules' => ['time']]],
+            'EMPLOYEE' => ['name' => 'Nhân viên', 'meta' => ['modules' => []]],
         ];
 
         foreach ($roles as $code => $role) {

@@ -1,6 +1,22 @@
 
 import axiosClient from './axiosClient';
 
+const normalizeUser = (user) => {
+  if (!user || typeof user !== 'object') return null;
+  user.employee_id = user.employee_id || user.id;
+  user.roles = Array.isArray(user.roles) ? user.roles : [];
+  delete user.password_hash;
+  return user;
+};
+
+const storeUser = (user) => {
+  const normalized = normalizeUser(user);
+  if (!normalized) return null;
+  localStorage.setItem('user', JSON.stringify(normalized));
+  localStorage.setItem('user_email', normalized.company_email || '');
+  return normalized;
+};
+
 const clearStoredSession = () => {
   localStorage.removeItem('auth_token');
   localStorage.removeItem('user');
@@ -27,21 +43,15 @@ export const authService = {
     // Server không gửi access thì fail closed về portal nhân viên.
     const access = response.data?.data?.access || response.data?.access || { full: false, modules: [] };
 
-    if (user) {
-      // Bản ghi login LÀ employee (id = employee_id) nhưng nhiều view đọc
-      // user.employee_id để self-scope API (RBAC 403 nếu thiếu) → gắn alias 1
-      // lần ở đây thay vì fallback rải rác từng view. Không lưu password_hash.
-      user.employee_id = user.employee_id || user.id;
-      delete user.password_hash;
-    }
+    const normalizedUser = normalizeUser(user);
 
     if (token) {
       localStorage.setItem('auth_token', token);
-      localStorage.setItem('user', JSON.stringify(user || {}));
+      localStorage.setItem('user', JSON.stringify(normalizedUser || {}));
       localStorage.setItem('access', JSON.stringify(access));
 
-      if (user) {
-        localStorage.setItem('user_email', user.company_email || '');
+      if (normalizedUser) {
+        localStorage.setItem('user_email', normalizedUser.company_email || '');
         // Admin shell if full access or any admin module is granted; else portal.
         const isAdminShell = access.full === true || (Array.isArray(access.modules) && access.modules.length > 0);
         localStorage.setItem('user_role', isAdminShell ? 'admin' : 'employee');
@@ -54,7 +64,9 @@ export const authService = {
   // Get current authenticated user
   me: async () => {
     const response = await axiosClient.get('/auth/me');
-    return response.data;
+    // /auth/me được axiosClient bóc envelope nên response.data chính là employee.
+    // Đồng bộ lại localStorage để các phiên đăng nhập cũ nhận được roles mới.
+    return storeUser(response.data) || response.data;
   },
 
   // Refresh the access token
@@ -109,10 +121,11 @@ export const authService = {
         full: a.full === true,
         modules: Array.isArray(a.modules) ? a.modules : [],
         enabled: Array.isArray(a.enabled) ? a.enabled : null,
-        capabilities: Array.isArray(a.capabilities) ? a.capabilities : []
+        capabilities: Array.isArray(a.capabilities) ? a.capabilities : [],
+        roles: Array.isArray(a.roles) ? a.roles : []
       };
     } catch {
-      return { full: false, modules: [], enabled: null, capabilities: [] };
+      return { full: false, modules: [], enabled: null, capabilities: [], roles: [] };
     }
   },
 

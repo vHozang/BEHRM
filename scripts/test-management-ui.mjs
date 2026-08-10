@@ -34,4 +34,10 @@ for (const [file, bindings] of expectedBindings) {
   for (const binding of bindings) assert.match(source, new RegExp(`\\.${binding}\\b`), `${file} thiếu ${binding}`);
 }
 
+const employeesSource = await readFile('client/src/views/Employees.vue', 'utf8');
+assert.ok(
+  employeesSource.indexOf('Tổng nhân viên') < employeesSource.indexOf('data-testid="input-search-employee"'),
+  'Dashboard nhân viên phải nằm trên bộ lọc'
+);
+
 console.log('Management UI regression checks passed.');

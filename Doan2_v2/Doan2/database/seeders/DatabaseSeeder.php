@@ -16,7 +16,7 @@ class DatabaseSeeder extends Seeder
         DB::table('roles')->updateOrInsert(
             ['role_code' => 'ADMIN'],
             [
-                'role_name' => 'Administrator',
+                'role_name' => 'Quản trị viên',
                 'description' => 'System administrator',
                 'is_system_role' => 'true',
                 'tenant_id' => 1,

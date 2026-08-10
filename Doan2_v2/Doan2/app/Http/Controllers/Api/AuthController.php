@@ -41,6 +41,7 @@ class AuthController extends Controller
         $access = AccessControl::forEmployee((int) $employee->id, ! empty($employee->is_super_admin));
 
         unset($employee->password_hash); // không bao giờ trả hash về client
+        $employee->roles = $access['roles'] ?? [];
 
         return response()->json([
             'status' => 200,
@@ -60,6 +61,7 @@ class AuthController extends Controller
         $employee = $request->attributes->get('auth_employee');
         $access = $request->attributes->get('access')
             ?? AccessControl::forEmployee((int) $employee['id'], ! empty($employee['is_super_admin']));
+        $employee['roles'] = $access['roles'] ?? [];
 
         return response()->json([
             'status' => 200,

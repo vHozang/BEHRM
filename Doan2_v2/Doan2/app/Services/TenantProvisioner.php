@@ -79,7 +79,7 @@ class TenantProvisioner
             $adminRoleId = (int) DB::table('roles')->insertGetId([
                 'tenant_id' => $newTenantId,
                 'role_code' => 'TENANT_ADMIN',
-                'role_name' => 'Tenant Admin',
+                'role_name' => 'Quản trị viên tổ chức',
                 'description' => 'Administrator within this tenant.',
                 'is_system_role' => DB::raw('true'),
                 'meta' => json_encode(['is_admin' => true]),
@@ -90,7 +90,7 @@ class TenantProvisioner
             $employeeRoleId = (int) DB::table('roles')->insertGetId([
                 'tenant_id' => $newTenantId,
                 'role_code' => 'EMPLOYEE',
-                'role_name' => 'Employee',
+                'role_name' => 'Nhân viên',
                 'description' => 'Standard employee.',
                 'is_system_role' => DB::raw('true'),
                 'meta' => json_encode(['is_admin' => false]),
