@@ -9,7 +9,8 @@ RUN apt-get update && apt-get install -y \
     git curl unzip zip libpq-dev libzip-dev libpng-dev libjpeg-dev \
     libfreetype6-dev libonig-dev libxml2-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo pdo_pgsql pgsql pdo_mysql zip gd mbstring bcmath pcntl exif \
+    && docker-php-ext-install -j"$(nproc)" pdo_pgsql pgsql pdo_mysql zip gd bcmath pcntl exif \
+    && php -r 'foreach (["dom", "simplexml", "xml", "xmlreader", "xmlwriter"] as $extension) { if (! extension_loaded($extension)) { fwrite(STDERR, "Missing PHP extension: {$extension}\n"); exit(1); } }' \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && apt-get clean \

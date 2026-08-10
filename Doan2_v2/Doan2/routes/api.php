@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\PersonnelDecisionController;
 use App\Http\Controllers\Api\RequestApprovalController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\ShiftCoverageController;
+use App\Http\Controllers\Api\ShiftRosterController;
 use App\Services\RecruitmentScoringService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -247,7 +248,13 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/attendance/recompute', [AttendanceController::class, 'recompute']);
         Route::post('/overtime-requests', [AttendanceController::class, 'storeOvertime']);
         Route::post('/overtime-requests/{id}/approve', [AttendanceController::class, 'approveOvertime'])->whereNumber('id');
-        Route::post('/shift-roster/generate', [AttendanceController::class, 'generateRoster']);
+        Route::get('/shift-roster/calendar', [ShiftRosterController::class, 'calendar']);
+        Route::get('/shift-roster/template', [ShiftRosterController::class, 'template']);
+        Route::post('/shift-roster/rotation/preview', [ShiftRosterController::class, 'rotationPreview']);
+        Route::post('/shift-roster/rotation/apply', [ShiftRosterController::class, 'rotationApply']);
+        Route::post('/shift-roster/import/preview', [ShiftRosterController::class, 'importPreview']);
+        Route::post('/shift-roster/import/apply', [ShiftRosterController::class, 'importApply']);
+        Route::post('/shift-roster/generate', [ShiftRosterController::class, 'generate']);
         Route::post('/shift-swaps', [AttendanceController::class, 'requestShiftSwap']);
         Route::post('/shift-swaps/{id}/approve', [AttendanceController::class, 'approveShiftSwap'])->whereNumber('id');
 

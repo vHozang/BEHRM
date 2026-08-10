@@ -17,6 +17,7 @@ class UiPreferencesTest extends TestCase
         parent::setUp();
 
         config(['hrm.display.money_group_separator' => '.']);
+        config(['hrm.attendance.weekly_rest_weekday' => 6]);
         DB::table('tenants')->updateOrInsert(['id' => 1], [
             'name' => 'UI preference tenant',
             'code' => 'UI-PREF',
@@ -46,7 +47,8 @@ class UiPreferencesTest extends TestCase
         $this->withToken($employeeToken)
             ->getJson('/api/v1/auth/ui-preferences')
             ->assertOk()
-            ->assertJsonPath('data.money_group_separator', '.');
+            ->assertJsonPath('data.money_group_separator', '.')
+            ->assertJsonPath('data.weekly_rest_weekday', 6);
 
         $this->withToken($adminToken)
             ->postJson('/api/v1/settings/save', [

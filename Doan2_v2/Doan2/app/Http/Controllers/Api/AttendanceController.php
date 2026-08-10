@@ -7,6 +7,7 @@ use App\Models\Attendance;
 use App\Models\OvertimeRequest;
 use App\Services\AttendanceSummaryService;
 use App\Services\TimesheetService;
+use App\Services\ShiftResolver;
 use App\Support\AttendanceVerification;
 use App\Support\HrmConfig;
 use App\Support\TenantContext;
@@ -19,6 +20,8 @@ use Illuminate\Support\Facades\Validator;
 
 class AttendanceController extends Controller
 {
+    public function __construct(private readonly ShiftResolver $shiftResolver) {}
+
     public function index(Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
@@ -133,11 +136,7 @@ class AttendanceController extends Controller
         }
 
         // Determine current shift and calculate late minutes
-        $shiftAssignment = DB::table('shift_assignments')
-            ->where('employee_id', $employeeId)
-            ->where('status', '!=', 'INACTIVE')
-            ->when(TenantContext::hasTenant(), fn ($q) => $q->where('shift_assignments.tenant_id', TenantContext::id()))
-            ->first();
+        $shiftAssignment = $this->shiftResolver->resolve((int) $employeeId, $today, TenantContext::id());
 
         $shiftTypeId = $shiftAssignment->shift_type_id ?? null;
         $shift = null;
@@ -875,28 +874,7 @@ class AttendanceController extends Controller
      */
     private function resolveShiftOnDate(int $employeeId, string $date): ?object
     {
-        $rows = DB::table('shift_assignments')
-            ->where('employee_id', $employeeId)
-            ->where('status', '!=', 'INACTIVE')
-            ->whereDate('effective_date', '<=', $date)
-            ->where(function ($q) use ($date) {
-                $q->whereNull('expiry_date')->orWhereDate('expiry_date', '>=', $date);
-            })
-            ->when(TenantContext::hasTenant(), fn ($q) => $q->where('shift_assignments.tenant_id', TenantContext::id()))
-            ->get();
-        if ($rows->isEmpty()) {
-            return null;
-        }
-
-        return $rows->sort(function ($a, $b) {
-            $aSpec = $a->expiry_date ? 1 : 0;
-            $bSpec = $b->expiry_date ? 1 : 0;
-            if ($aSpec !== $bSpec) {
-                return $bSpec - $aSpec;
-            }
-
-            return strcmp((string) $b->effective_date, (string) $a->effective_date);
-        })->first();
+        return $this->shiftResolver->resolve($employeeId, $date, TenantContext::id());
     }
 
     /** Tài khoản kỹ thuật (profile.system_account) không phải nhân sự thật. */

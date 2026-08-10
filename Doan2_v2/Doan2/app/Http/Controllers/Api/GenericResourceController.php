@@ -7,6 +7,8 @@ use App\Support\AuditLogger;
 use App\Support\HrmTables;
 use App\Support\ResourceBusinessRules;
 use App\Support\TenantContext;
+use App\Services\DepartmentManagerRoleService;
+use App\Services\ShiftRosterAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +24,11 @@ use Illuminate\Validation\ValidationException;
  */
 class GenericResourceController extends Controller
 {
+    public function __construct(
+        private readonly ShiftRosterAccess $shiftRosterAccess,
+        private readonly DepartmentManagerRoleService $departmentManagerRoles,
+    ) {}
+
     public function root(): JsonResponse
     {
         return $this->ok([
@@ -50,6 +57,10 @@ class GenericResourceController extends Controller
 
         if (TenantContext::hasTenant() && Schema::hasColumn($table, 'tenant_id')) {
             $query->where($table.'.tenant_id', TenantContext::id());
+        }
+
+        if ($table === 'shift_assignments') {
+            $query = $this->shiftRosterAccess->scopeAssignments($query, $request, $table);
         }
 
         if ($table === 'service_tickets' && ! $this->canManageServiceTickets($request)) {
@@ -116,6 +127,10 @@ class GenericResourceController extends Controller
             $query->where('tenant_id', TenantContext::id());
         }
 
+        if ($table === 'shift_assignments') {
+            $query = $this->shiftRosterAccess->scopeAssignments($query, $request, $table);
+        }
+
         $record = $query->first();
 
         if (! $record) {
@@ -155,7 +170,19 @@ class GenericResourceController extends Controller
         }
 
         $table = $this->tableOrFail($resource);
+        if ($table === 'shift_types' && ! $this->shiftRosterAccess->canManageShiftTypes($request)) {
+            abort(403, 'Chỉ Admin hoặc HR được quản lý định nghĩa ca');
+        }
         $payload = $this->payloadFor($request, $table);
+
+        if ($table === 'shift_assignments') {
+            $employeeId = (int) ($payload['employee_id'] ?? 0);
+            if ($employeeId > 0) {
+                $this->shiftRosterAccess->assertEmployee($request, $employeeId);
+            }
+            $payload['assigned_by'] = $this->shiftRosterAccess->actorId($request);
+            $payload = $this->normalizeManualShiftAssignment($payload, true);
+        }
 
         if ($table === 'service_tickets') {
             $payload['requester_id'] = (int) $request->attributes->get('auth_employee_id');
@@ -177,6 +204,10 @@ class GenericResourceController extends Controller
         }
 
         $newId = DB::table($table)->insertGetId($payload);
+
+        if ($table === 'departments') {
+            $this->departmentManagerRoles->syncTenant((int) TenantContext::id());
+        }
 
         $afterRow = DB::table($table)->where('id', $newId)->first();
 
@@ -213,6 +244,16 @@ class GenericResourceController extends Controller
 
         $table = $this->tableOrFail($resource);
 
+        if ($table === 'shift_types' && ! $this->shiftRosterAccess->canManageShiftTypes($request)) {
+            abort(403, 'Chỉ Admin hoặc HR được quản lý định nghĩa ca');
+        }
+        if ($table === 'shift_assignments') {
+            $this->shiftRosterAccess->assertAssignment($request, $id);
+            if ($request->filled('employee_id')) {
+                $this->shiftRosterAccess->assertEmployee($request, (int) $request->input('employee_id'));
+            }
+        }
+
         if ($table === 'service_tickets' && ! $this->canManageServiceTickets($request)) {
             $ticket = DB::table($table)->where('id', $id)
                 ->when(TenantContext::hasTenant(), fn ($q) => $q->where('tenant_id', TenantContext::id()))
@@ -241,6 +282,11 @@ class GenericResourceController extends Controller
     {
 
         $payload = $this->payloadFor($request, $table, $id);
+
+        if ($table === 'shift_assignments') {
+            $payload['assigned_by'] = $this->shiftRosterAccess->actorId($request);
+            $payload = $this->normalizeManualShiftAssignment($payload);
+        }
 
         // parent_id may arrive either flat or inside meta; payloadFor normalizes both.
         if ($table === 'departments' && isset($payload['meta'])) {
@@ -289,12 +335,23 @@ class GenericResourceController extends Controller
             AuditLogger::log('update', $table, $id, $diff['before'], $diff['after']);
         }
 
+        if ($table === 'departments') {
+            $this->departmentManagerRoles->syncTenant((int) TenantContext::id());
+        }
+
         return $this->ok($this->unpackMeta($afterRow, $table), Str::headline($resource).' updated');
     }
 
     public function destroy(Request $request, string $resource, int $id): JsonResponse
     {
         $table = $this->tableOrFail($resource);
+
+        if ($table === 'shift_types' && ! $this->shiftRosterAccess->canManageShiftTypes($request)) {
+            abort(403, 'Chỉ Admin hoặc HR được quản lý định nghĩa ca');
+        }
+        if ($table === 'shift_assignments') {
+            $this->shiftRosterAccess->assertAssignment($request, $id);
+        }
 
         if ($table === 'service_tickets') {
             return $this->conflict(['Ticket cần được chuyển trạng thái hủy để giữ lịch sử xử lý'], Str::headline($resource));
@@ -328,6 +385,10 @@ class GenericResourceController extends Controller
 
         AuditLogger::log('delete', $table, $id, $beforeRow ? (array) $beforeRow : null, null);
 
+        if ($table === 'departments') {
+            $this->departmentManagerRoles->syncTenant((int) TenantContext::id());
+        }
+
         return $this->ok(['id' => $id], Str::headline($resource).' deleted');
     }
 
@@ -340,6 +401,31 @@ class GenericResourceController extends Controller
         $access = (array) $request->attributes->get('access', []);
 
         return ! empty($access['full']) || in_array('communications', $access['modules'] ?? [], true);
+    }
+
+    private function normalizeManualShiftAssignment(array $payload, bool $creating = false): array
+    {
+        if ($creating || array_key_exists('is_day_off', $payload)) {
+            $raw = $payload['is_day_off'] ?? false;
+            if ($raw instanceof \Illuminate\Database\Query\Expression) {
+                $raw = $raw->getValue(DB::connection()->getQueryGrammar());
+            }
+            $isDayOff = in_array($raw, [true, 1, '1', 't', 'true', 'TRUE'], true);
+            $payload['is_day_off'] = $isDayOff ? DB::raw('true') : DB::raw('false');
+            if ($isDayOff) {
+                $payload['shift_type_id'] = null;
+            }
+        }
+
+        $meta = [];
+        if (! empty($payload['meta'])) {
+            $meta = is_string($payload['meta']) ? json_decode($payload['meta'], true) : (array) $payload['meta'];
+            $meta = is_array($meta) ? $meta : [];
+        }
+        $meta['source'] = 'manual';
+        $payload['meta'] = json_encode($meta, JSON_UNESCAPED_UNICODE);
+
+        return $payload;
     }
 
     private function payloadFor(Request $request, string $table, ?int $id = null): array

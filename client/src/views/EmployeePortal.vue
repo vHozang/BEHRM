@@ -887,6 +887,7 @@ import { onboardingService } from '../services/onboardingService';
 import { profileChangeService } from '../services/profileChangeService';
 import { contractService } from '../services/contractService';
 import { salaryService } from '../services/salaryService';
+import { settingsService } from '../services/settingsService';
 import { useNotificationStore } from '../stores/notificationStore';
 import { downloadCsv } from '../utils/csv';
 
@@ -944,18 +945,23 @@ const myShiftAssignments = ref([]);
 const myShiftTypes = ref([]);
 const rosterWeekOffset = ref(0); // 0 = tuần này; ±1 = tuần trước/sau
 const rosterLoading = ref(false);
+const weeklyRestWeekday = ref(0);
 
 const loadMyRoster = async (empId) => {
   rosterLoading.value = true;
   try {
-    const [assignRes, typesRes] = await Promise.all([
+    const [assignRes, typesRes, preferences] = await Promise.all([
       workScheduleService.getAll({ employee_id: empId, per_page: 500 }).catch(() => []),
       workShiftService.getAll().catch(() => []),
+      settingsService.getUiPreferences().catch(() => ({})),
     ]);
     const assigns = Array.isArray(assignRes) ? assignRes : (assignRes?.data || []);
     // Tự lọc theo NV hiện tại (phòng khi BE không lọc theo employee_id).
     myShiftAssignments.value = assigns.filter((s) => String(s.employee_id) === String(empId));
     myShiftTypes.value = Array.isArray(typesRes) ? typesRes : (typesRes?.data || []);
+    weeklyRestWeekday.value = Number.isInteger(Number(preferences?.weekly_rest_weekday))
+      ? Math.max(0, Math.min(6, Number(preferences.weekly_rest_weekday)))
+      : 0;
   } catch (e) {
     console.error('Error loading my roster:', e);
   } finally {
@@ -963,8 +969,42 @@ const loadMyRoster = async (empId) => {
   }
 };
 
-// Phân giải ca cho 1 ngày từ các phân ca effective-dated (chuẩn range-resolve):
-// ưu tiên bản ghi-đè 1 ngày (có expiry) hơn ca cố định; cùng loại lấy effective_date mới nhất.
+const decodeMeta = (value) => {
+  if (value && typeof value === 'object') return value;
+  if (typeof value !== 'string' || !value) return {};
+  try { return JSON.parse(value); } catch { return {}; }
+};
+
+const assignmentSource = (assignment) => {
+  const source = String(assignment?.source || decodeMeta(assignment?.meta).source || '').toLowerCase();
+  return source || (assignment?.expiry_date ? 'manual' : 'standing');
+};
+
+const sourceRank = (assignment) => ({
+  'shift-swap': 60, swap: 60, manual: 50, 'excel-import': 40, rotation: 20, 'roster-gen': 20,
+}[assignmentSource(assignment)] || 10);
+
+const rangeDays = (assignment) => {
+  if (!assignment?.expiry_date) return Number.MAX_SAFE_INTEGER;
+  return Math.round((new Date(`${String(assignment.expiry_date).slice(0, 10)}T00:00:00`) - new Date(`${String(assignment.effective_date).slice(0, 10)}T00:00:00`)) / 86400000);
+};
+
+const isTruthy = value => [true, 1, '1', 't', 'true', 'TRUE'].includes(value);
+
+const isShiftWorkday = (assignment, shift, dateStr) => {
+  if (isTruthy(assignment?.is_day_off) || !shift) return false;
+  const meta = decodeMeta(shift.meta);
+  const configuredDays = Array.isArray(shift.work_weekdays) ? shift.work_weekdays : meta.work_weekdays;
+  const date = new Date(`${dateStr}T00:00:00`);
+  if (Array.isArray(configuredDays) && configuredDays.length) {
+    const isoDay = date.getDay() || 7;
+    return configuredDays.map(Number).includes(isoDay);
+  }
+  return date.getDay() !== weeklyRestWeekday.value;
+};
+
+// Cùng quy tắc với ShiftResolver ở backend: ngoại lệ ngắn hơn thắng, sau đó
+// ưu tiên sửa tay/đổi ca, rồi mới tới lịch Excel và lịch xoay.
 const resolveShiftFor = (dateStr) => {
   const candidates = myShiftAssignments.value.filter((s) =>
     s.effective_date && String(s.effective_date).slice(0, 10) <= dateStr &&
@@ -972,13 +1012,16 @@ const resolveShiftFor = (dateStr) => {
   );
   if (!candidates.length) return null;
   candidates.sort((a, b) => {
-    const aSpec = a.expiry_date ? 1 : 0;
-    const bSpec = b.expiry_date ? 1 : 0;
-    if (aSpec !== bSpec) return bSpec - aSpec;
-    return String(b.effective_date).localeCompare(String(a.effective_date));
+    const specificity = rangeDays(a) - rangeDays(b);
+    if (specificity !== 0) return specificity;
+    const source = sourceRank(b) - sourceRank(a);
+    if (source !== 0) return source;
+    const effective = String(b.effective_date).localeCompare(String(a.effective_date));
+    return effective !== 0 ? effective : Number(b.id || 0) - Number(a.id || 0);
   });
   const assign = candidates[0];
-  return myShiftTypes.value.find((t) => String(t.id) === String(assign.shift_type_id)) || null;
+  const shift = myShiftTypes.value.find((t) => String(t.id) === String(assign.shift_type_id)) || null;
+  return isShiftWorkday(assign, shift, dateStr) ? shift : null;
 };
 
 const localDateStr = (d) =>
@@ -1013,9 +1056,7 @@ const rosterDays = computed(() => {
       dayName: names[i % 7],
       isToday: dateStr === todayStr,
       isWeekend: i % 7 >= 5,
-      // Chủ nhật = ngày nghỉ toàn hệ thống (TimePolicy) — không hiện ca dù có
-      // phân ca cố định (assignment permanent áp mọi ngày).
-      shift: i % 7 === 6 ? null : resolveShiftFor(dateStr),
+      shift: resolveShiftFor(dateStr),
     });
   }
   return days;

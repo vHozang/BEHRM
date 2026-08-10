@@ -47,6 +47,19 @@ class ResourceBusinessRules
 
         $result = self::runValidation($rules, $payload, $resource, null);
 
+        if ($resource === 'shift_assignments') {
+            $isDayOff = self::booleanValue($payload['is_day_off'] ?? false);
+            if (! $isDayOff && empty($payload['shift_type_id'])) {
+                $result['errors']['shift_type_id'][] = 'Ca làm là bắt buộc khi không chọn OFF';
+                $result['valid'] = false;
+            }
+            if (! empty($payload['expiry_date']) && ! empty($payload['effective_date'])
+                && (string) $payload['expiry_date'] < (string) $payload['effective_date']) {
+                $result['errors']['expiry_date'][] = 'Ngày kết thúc không được trước ngày hiệu lực';
+                $result['valid'] = false;
+            }
+        }
+
         return self::mergeForeignKeyValidation($result, $resource, $payload);
     }
 
@@ -79,6 +92,15 @@ class ResourceBusinessRules
         }
 
         return $result;
+    }
+
+    private static function booleanValue(mixed $value): bool
+    {
+        if ($value instanceof \Illuminate\Database\Query\Expression) {
+            $value = $value->getValue(DB::connection()->getQueryGrammar());
+        }
+
+        return in_array($value, [true, 1, '1', 't', 'true', 'TRUE'], true);
     }
 
     /**
@@ -115,6 +137,27 @@ class ResourceBusinessRules
         $rules = self::updateRules()[$resource] ?? [];
 
         $result = self::runValidation($rules, $payload, $resource, $id);
+
+        if ($resource === 'shift_assignments') {
+            $current = DB::table($resource)->where('id', $id)->first();
+            $isDayOff = array_key_exists('is_day_off', $payload)
+                ? self::booleanValue($payload['is_day_off'])
+                : self::booleanValue($current->is_day_off ?? false);
+            $shiftTypeId = array_key_exists('shift_type_id', $payload)
+                ? $payload['shift_type_id']
+                : ($current->shift_type_id ?? null);
+            if (! $isDayOff && empty($shiftTypeId)) {
+                $result['errors']['shift_type_id'][] = 'Ca làm là bắt buộc khi không chọn OFF';
+                $result['valid'] = false;
+            }
+
+            $effectiveDate = $payload['effective_date'] ?? ($current->effective_date ?? null);
+            $expiryDate = $payload['expiry_date'] ?? ($current->expiry_date ?? null);
+            if ($expiryDate && $effectiveDate && (string) $expiryDate < (string) $effectiveDate) {
+                $result['errors']['expiry_date'][] = 'Ngày kết thúc không được trước ngày hiệu lực';
+                $result['valid'] = false;
+            }
+        }
 
         return self::mergeForeignKeyValidation($result, $resource, $payload);
     }
@@ -370,7 +413,6 @@ class ResourceBusinessRules
             ],
             'shift_assignments' => [
                 ['field' => 'employee_id', 'rule' => 'required', 'message' => 'Nhân viên là bắt buộc'],
-                ['field' => 'shift_type_id', 'rule' => 'required', 'message' => 'Ca làm là bắt buộc'],
                 ['field' => 'effective_date', 'rule' => 'required', 'message' => 'Ngày hiệu lực là bắt buộc'],
             ],
             'assets' => [

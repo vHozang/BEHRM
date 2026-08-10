@@ -70,6 +70,7 @@ class DatabaseSeeder extends Seeder
         );
 
         $this->call(SeedDepartmentMetaSeeder::class);
+        $this->call(DepartmentManagerRoleSeeder::class);
         $this->call(LeaveTypeStatutorySeeder::class);
         $this->call(DemoCoverageSeeder::class);
         $this->call(DashboardDemoSeeder::class);
@@ -84,6 +85,7 @@ class DatabaseSeeder extends Seeder
         $this->call(FixDemoDataConsistencySeeder::class);
         $this->call(BackfillEmployeeBaseSalarySeeder::class);
         $this->call(StandardizePayrollSeeder::class);
+        $this->call(DepartmentManagerRoleSeeder::class);
 
         // Tài khoản demo KẾ TOÁN (role ACCOUNTANT → chỉ module payroll). phuc.trinh
         // (NV0013) do DemoCoverageSeeder tạo nên gán ở đây, sau khi seeder đã chạy.

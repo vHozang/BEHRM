@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Services\LeavePolicyService;
+use App\Services\ShiftResolver;
 use App\Support\AccessControl;
 use App\Support\ApprovalFlow;
 use App\Support\TenantContext;
@@ -17,9 +18,10 @@ use Illuminate\Support\Facades\Validator;
 
 class LeaveController extends Controller
 {
-    public function __construct(private LeavePolicyService $leavePolicy)
-    {
-    }
+    public function __construct(
+        private LeavePolicyService $leavePolicy,
+        private ShiftResolver $shiftResolver,
+    ) {}
     public function index(Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
@@ -440,18 +442,8 @@ class LeaveController extends Controller
     /** Phân giải ca có hiệu lực của NV trong 1 ngày (override có expiry ưu tiên). */
     private function resolveShiftForCoverage(int $employeeId, string $date, $tenantId): ?object
     {
-        $assign = DB::table('shift_assignments')
-            ->where('employee_id', $employeeId)
-            ->where('status', '!=', 'INACTIVE')
-            ->whereDate('effective_date', '<=', $date)
-            ->where(function ($q) use ($date) {
-                $q->whereNull('expiry_date')->orWhereDate('expiry_date', '>=', $date);
-            })
-            ->when($tenantId, fn ($q) => $q->where('tenant_id', $tenantId))
-            ->orderByRaw('CASE WHEN expiry_date IS NULL THEN 1 ELSE 0 END')
-            ->orderByDesc('effective_date')
-            ->first();
-        if (! $assign) {
+        $assign = $this->shiftResolver->resolve($employeeId, $date, $tenantId ? (int) $tenantId : null);
+        if (! $assign || ! $assign->shift_type_id || ! $this->shiftResolver->isAssignmentWorkday($assign, $date)) {
             return null;
         }
 

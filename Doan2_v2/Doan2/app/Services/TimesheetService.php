@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\DB;
  */
 class TimesheetService
 {
+    public function __construct(private readonly ShiftResolver $shiftResolver) {}
+
     /** Trạng thái coi là "có mặt" (NV đã đến làm). */
     private const PRESENT_STATUSES = ['ON_TIME', 'LATE', 'EARLY_LEAVE'];
 
@@ -35,8 +37,6 @@ class TimesheetService
     public function recompute(int $tenantId, int $legalEntityId, string $start, string $end, ?array $employeeIds = null): array
     {
         $shifts = $this->shiftMap($tenantId);
-        $assignments = $this->assignmentMap($tenantId);
-
         $rows = DB::table('attendances')
             ->where('tenant_id', $tenantId)
             ->where('legal_entity_id', $legalEntityId)
@@ -44,11 +44,22 @@ class TimesheetService
             ->when($employeeIds, fn ($q) => $q->whereIn('employee_id', $employeeIds))
             ->get();
 
+        $assignmentRows = $this->shiftResolver->rowsForRange(
+            $rows->pluck('employee_id')->map(fn ($id) => (int) $id)->unique()->values()->all(),
+            $start,
+            $end,
+            $tenantId,
+        );
+
         $updated = 0;
         $now = now();
 
         foreach ($rows as $row) {
-            $shiftId = $row->shift_type_id ?: ($assignments[$row->employee_id] ?? null);
+            $resolved = $this->shiftResolver->resolveFromRows(
+                $assignmentRows[(int) $row->employee_id] ?? [],
+                (string) $row->work_date,
+            );
+            $shiftId = $row->shift_type_id ?: ($resolved->shift_type_id ?? null);
             $shift = $shiftId ? ($shifts[$shiftId] ?? null) : null;
 
             $cls = TimePolicy::classifyAttendance($shift, $row->check_in_time, $row->check_out_time);
@@ -96,10 +107,6 @@ class TimesheetService
         $standardDays = TimePolicy::standardWorkingDays($start, $end);
         $halfDayHours = (float) HrmConfig::get('attendance.half_day_hours', 4);
 
-        // Ca của từng nhân viên (để xác định ngày nghỉ theo ca + cờ ca đêm).
-        $shifts = $this->shiftMap($tenantId);
-        $assignments = $this->assignmentMap($tenantId);
-
         // Header ngày trong tháng.
         $days = [];
         for ($d = $startDate; $d->lte($endDate); $d = $d->addDay()) {
@@ -121,12 +128,18 @@ class TimesheetService
             ->where('tenant_id', $tenantId)
             ->where('legal_entity_id', $legalEntityId)
             ->whereIn('status', ['ACTIVE', 'PROBATION'])
-            ->whereRaw("COALESCE((profile->>'system_account')::boolean, false) = false")
             ->when($employeeIds, fn ($q) => $q->whereIn('id', $employeeIds))
             ->orderBy('employee_code')
-            ->get(['id', 'full_name', 'employee_code', 'hire_date']);
+            ->get(['id', 'full_name', 'employee_code', 'hire_date', 'profile'])
+            ->filter(function ($employee): bool {
+                $profile = $this->decodeMeta($employee->profile ?? null);
+
+                return empty($profile['system_account']);
+            })
+            ->values();
 
         $empIds = $employees->pluck('id')->all();
+        $assignmentRows = $this->shiftResolver->rowsForRange($empIds, $start, $end, $tenantId);
 
         // Prefetch attendance / leave / OT cho cả tháng.
         $attByEmpDate = $this->attendanceIndex($tenantId, $legalEntityId, $start, $end, $empIds);
@@ -136,10 +149,6 @@ class TimesheetService
         $rows = [];
         foreach ($employees as $emp) {
             $hireDate = $emp->hire_date ? CarbonImmutable::parse($emp->hire_date)->toDateString() : null;
-            // Ca của nhân viên → ngày làm trong tuần (meta.work_weekdays) nếu có.
-            $empShiftId = $assignments[$emp->id] ?? null;
-            $empShift = $empShiftId ? ($shifts[$empShiftId] ?? null) : null;
-            $workWeekdays = $this->shiftWorkWeekdays($empShift); // null = dùng cấu hình chung
             $cells = [];
             $totals = [
                 'present_days' => 0, 'on_time_days' => 0, 'late_days' => 0,
@@ -155,9 +164,13 @@ class TimesheetService
                 $leave = $this->leaveOnDate($leaveByEmp[$emp->id] ?? [], $ds);
                 $leaveCode = $leave['code'] ?? null;
                 $ot = (float) ($otByEmpDate[$emp->id][$ds] ?? 0);
-                // Ngày nghỉ của RIÊNG nhân viên này (theo ca, fallback cấu hình chung).
-                $isRest = $workWeekdays !== null
-                    ? ! in_array((int) $day['dow'], $workWeekdays, true)
+                $assignment = $this->shiftResolver->resolveFromRows(
+                    $assignmentRows[(int) $emp->id] ?? [],
+                    $ds,
+                );
+                // Ngày nghỉ của riêng nhân viên, gồm cả OFF nhập từ file.
+                $isRest = $assignment
+                    ? ! $this->shiftResolver->isAssignmentWorkday($assignment, $ds)
                     : $day['is_rest'];
 
                 $cell = [
@@ -281,47 +294,6 @@ class TimesheetService
             ->get()
             ->keyBy('id')
             ->all();
-    }
-
-    /** Ca đang hiệu lực của mỗi nhân viên (đơn giản: bản ghi active mới nhất). */
-    private function assignmentMap(int $tenantId): array
-    {
-        $map = [];
-        DB::table('shift_assignments')
-            ->where('tenant_id', $tenantId)
-            ->where('status', '!=', 'INACTIVE')
-            ->orderByDesc('effective_date')
-            ->get(['employee_id', 'shift_type_id'])
-            ->each(function ($r) use (&$map) {
-                if (! isset($map[$r->employee_id])) {
-                    $map[$r->employee_id] = $r->shift_type_id;
-                }
-            });
-
-        return $map;
-    }
-
-    /**
-     * Ngày làm trong tuần của một ca (shift_types.meta.work_weekdays = [1..6]).
-     * Trả null nếu ca không cấu hình → dùng ngày nghỉ chung (weekly_rest_weekday).
-     *
-     * @return array<int,int>|null
-     */
-    private function shiftWorkWeekdays($shift): ?array
-    {
-        if (! $shift) {
-            return null;
-        }
-        $meta = $shift->meta ?? null;
-        if (is_string($meta)) {
-            $meta = json_decode($meta, true);
-        }
-        $wd = is_array($meta) ? ($meta['work_weekdays'] ?? null) : null;
-        if (! is_array($wd) || empty($wd)) {
-            return null;
-        }
-
-        return array_values(array_map('intval', $wd));
     }
 
     private function attendanceIndex(int $tenantId, int $legalEntityId, string $start, string $end, array $empIds): array

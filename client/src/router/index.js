@@ -201,7 +201,7 @@ const routes = [
       {
         path: 'shift-roster',
         name: 'shift-roster',
-        component: () => import('../views/ShiftRoster.vue'),
+        redirect: { path: '/shifts', query: { tab: 'roster' } },
         meta: { title: 'Bảng xếp ca trực quan', adminOnly: true }
       },
       {

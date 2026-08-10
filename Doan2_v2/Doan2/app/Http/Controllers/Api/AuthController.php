@@ -96,6 +96,7 @@ class AuthController extends Controller
             'message' => 'UI preferences',
             'data' => [
                 'money_group_separator' => in_array($separator, ['.', ','], true) ? $separator : '.',
+                'weekly_rest_weekday' => max(0, min(6, (int) HrmConfig::get('attendance.weekly_rest_weekday', 0))),
             ],
         ]);
     }
