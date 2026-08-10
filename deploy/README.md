@@ -79,7 +79,7 @@ Domain API production là `devtapcode.io.vn`. DNS phải trỏ tới `180.93.42.
 Khi VPS được tạo lại nhưng giữ nguyên IP, SSH có thể báo `REMOTE HOST IDENTIFICATION HAS CHANGED`. Trước khi xóa key cũ, đối chiếu fingerprint với console của nhà cung cấp VPS. Fingerprint hiện VPS đang trình bày là:
 
 ```text
-SHA256:TVkp/PLJCLAPKPCRB5Qn1orWYlDZ5+3Kl/S9F3r77pk (RSA)
+SHA256:OV1H5DnXvuWBHHoMg4ep36Mk0dNCwMXSu1Yndpyr2jA (RSA)
 ```
 
 Trên PowerShell, chỉ xóa entry của IP này (không xóa toàn bộ `known_hosts`):
