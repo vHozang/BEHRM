@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Install attendance bridge dependencies
+        run: npm ci --prefix tools/zk-bridge --no-audit --no-fund
+
       - name: Run frontend checks
         env:
           VITE_API_BASE_URL: /api/v1
