@@ -45,6 +45,13 @@
           </span>
         </template>
 
+        <template #cell-head="{ item }">
+          <div class="text-sm">
+            <span :class="headName(item) === 'Chưa gán' ? 'font-medium text-amber-700' : 'font-medium text-foreground'">{{ headName(item) }}</span>
+            <span v-if="headCode(item)" class="block text-xs text-muted-foreground">{{ headCode(item) }}</span>
+          </div>
+        </template>
+
         <template #cell-status="{ item }">
           <span
             :class="[
@@ -158,6 +165,14 @@
         </div>
         <p class="text-xs text-muted-foreground -mt-2">Hai trường này tự điền vào phần <b>BÊN A</b> khi tạo/in hợp đồng lao động.</p>
 
+        <BaseSelect
+          v-model="form.head_employee_id"
+          label="Người đứng đầu chi nhánh"
+          :options="headOptions"
+          :disabled="!editingId"
+          :hint="editingId ? 'Chỉ hiển thị nhân viên đang làm việc thuộc đúng chi nhánh này.' : 'Hãy lưu chi nhánh trước, phân nhân viên vào chi nhánh rồi quay lại chọn người đứng đầu.'"
+        />
+
         <div class="flex items-center gap-2">
           <input
             id="entity_active"
@@ -185,12 +200,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import BaseCard from '../components/BaseCard.vue';
 import BaseButton from '../components/BaseButton.vue';
 import BaseTable from '../components/BaseTable.vue';
 import BaseModal from '../components/BaseModal.vue';
+import BaseSelect from '../components/BaseSelect.vue';
 import { legalEntityService } from '../services/legalEntityService';
+import { employeeService } from '../services/employeeService';
 import { useToast } from '../composables/useToast';
 
 const toast = useToast();
@@ -202,20 +219,41 @@ const error = ref('');
 const formError = ref('');
 
 const entities = ref([]);
+const employees = ref([]);
 
 const showModal = ref(false);
 const editingId = ref(null);
 
-const form = ref({ name: '', code: '', tax_code: '', address: '', representative: '', representative_title: '', active: true });
+const form = ref({ name: '', code: '', tax_code: '', address: '', representative: '', representative_title: '', head_employee_id: '', active: true });
 
 const columns = [
   { key: 'name', label: 'Tên / Mã' },
   { key: 'tax_code', label: 'Mã số thuế' },
+  { key: 'head', label: 'Người đứng đầu' },
   { key: 'counts', label: 'Quy mô' },
   { key: 'status', label: 'Trạng thái' }
 ];
 
 const isActive = (item) => String(item?.status || '').toUpperCase() === 'ACTIVE' || !item?.status;
+
+const metaOf = (item) => {
+  if (item?.meta && typeof item.meta === 'object') return item.meta;
+  try { return JSON.parse(item?.meta || '{}') || {}; } catch { return {}; }
+};
+const employeeFor = id => employees.value.find(employee => String(employee.id) === String(id));
+const headName = item => employeeFor(metaOf(item).head_employee_id)?.full_name || 'Chưa gán';
+const headCode = item => employeeFor(metaOf(item).head_employee_id)?.employee_code || '';
+const headOptions = computed(() => {
+  const options = [{ label: 'Chưa gán người đứng đầu', value: '' }];
+  if (!editingId.value) return options;
+  return options.concat(employees.value
+    .filter(employee => Number(employee.legal_entity_id) === Number(editingId.value)
+      && ['active', 'probation'].includes(employee.employment_status))
+    .map(employee => ({
+      value: String(employee.id),
+      label: `${employee.full_name}${employee.employee_code ? ` (${employee.employee_code})` : ''}`
+    })));
+});
 
 const apiErrorMessage = (err, fallback) =>
   err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback;
@@ -224,7 +262,10 @@ const loadEntities = async () => {
   loading.value = true;
   error.value = '';
   try {
-    entities.value = await legalEntityService.getAll();
+    [entities.value, employees.value] = await Promise.all([
+      legalEntityService.getAll(),
+      employeeService.getLookup(true)
+    ]);
   } catch (err) {
     console.error('Error loading legal entities:', err);
     error.value = apiErrorMessage(err, 'Không thể tải danh sách chi nhánh');
@@ -234,7 +275,7 @@ const loadEntities = async () => {
 };
 
 const resetForm = () => {
-  form.value = { name: '', code: '', tax_code: '', address: '', representative: '', representative_title: '', active: true };
+  form.value = { name: '', code: '', tax_code: '', address: '', representative: '', representative_title: '', head_employee_id: '', active: true };
   editingId.value = null;
   formError.value = '';
 };
@@ -255,6 +296,7 @@ const openEditModal = (item) => {
     address: item.address || '',
     representative: meta.representative || '',
     representative_title: meta.representative_title || '',
+    head_employee_id: meta.head_employee_id ? String(meta.head_employee_id) : '',
     active: isActive(item)
   };
   formError.value = '';
@@ -284,6 +326,7 @@ const handleSave = async () => {
       meta: {
         representative: form.value.representative.trim() || null,
         representative_title: form.value.representative_title.trim() || null,
+        head_employee_id: editingId.value && form.value.head_employee_id ? Number(form.value.head_employee_id) : null,
       },
     };
     if (editingId.value) {

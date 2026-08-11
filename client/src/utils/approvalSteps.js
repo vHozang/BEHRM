@@ -30,8 +30,9 @@ const normStatus = (s) => STATUS_MAP[String(s || '').toUpperCase()] || 'CHỜ_DU
 export function statusVN(status) {
   const s = String(status || '').toUpperCase();
   if (['ĐÃ_DUYỆT', 'HOÀN_THÀNH', 'APPROVED', 'COMPLETED', 'DONE'].includes(s)) return 'Đã duyệt';
-  if (['TỪ_CHỐI', 'REJECTED'].includes(s)) return 'Từ chối';
+  if (['TỪ_CHỐI', 'REJECTED', 'DECLINED'].includes(s)) return 'Từ chối';
   if (['ĐÃ_HỦY', 'CANCELLED', 'CANCELED'].includes(s)) return 'Đã hủy';
+  if (s === 'OFFERED') return 'Chờ nhân viên phản hồi';
   if (['CHỜ_DUYỆT', 'ĐANG_XỬ_LÝ', 'PENDING', 'IN_PROGRESS'].includes(s)) return 'Chờ duyệt';
   return status ? String(status) : '—';
 }
@@ -40,8 +41,8 @@ export function statusVN(status) {
 export function statusVariant(status) {
   const s = String(status || '').toUpperCase();
   if (['ĐÃ_DUYỆT', 'HOÀN_THÀNH', 'APPROVED', 'COMPLETED', 'DONE'].includes(s)) return 'success';
-  if (['TỪ_CHỐI', 'REJECTED', 'ĐÃ_HỦY', 'CANCELLED', 'CANCELED'].includes(s)) return 'destructive';
-  if (['CHỜ_DUYỆT', 'ĐANG_XỬ_LÝ', 'PENDING', 'IN_PROGRESS'].includes(s)) return 'warning';
+  if (['TỪ_CHỐI', 'REJECTED', 'DECLINED', 'ĐÃ_HỦY', 'CANCELLED', 'CANCELED'].includes(s)) return 'destructive';
+  if (['CHỜ_DUYỆT', 'ĐANG_XỬ_LÝ', 'PENDING', 'IN_PROGRESS', 'OFFERED'].includes(s)) return 'warning';
   return 'default';
 }
 const isDecided = (s) => ['APPROVED', 'ĐÃ_DUYỆT', 'REJECTED', 'TỪ_CHỐI'].includes(String(s || '').toUpperCase());

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Attendance;
 use App\Support\HrmConfig;
 use App\Support\TimePolicy;
 use Carbon\CarbonImmutable;
@@ -18,7 +19,11 @@ use Illuminate\Support\Facades\DB;
  */
 class TimesheetService
 {
-    public function __construct(private readonly ShiftResolver $shiftResolver) {}
+    public function __construct(
+        private readonly ShiftResolver $shiftResolver,
+        private readonly AttendanceReconciliationService $attendanceReconciliation,
+        private readonly OvertimeReconciliationService $overtimeReconciliation,
+    ) {}
 
     /** Trạng thái coi là "có mặt" (NV đã đến làm). */
     private const PRESENT_STATUSES = ['ON_TIME', 'LATE', 'EARLY_LEAVE'];
@@ -37,7 +42,7 @@ class TimesheetService
     public function recompute(int $tenantId, int $legalEntityId, string $start, string $end, ?array $employeeIds = null): array
     {
         $shifts = $this->shiftMap($tenantId);
-        $rows = DB::table('attendances')
+        $rows = Attendance::query()
             ->where('tenant_id', $tenantId)
             ->where('legal_entity_id', $legalEntityId)
             ->whereBetween('work_date', [$start, $end])
@@ -52,7 +57,7 @@ class TimesheetService
         );
 
         $updated = 0;
-        $now = now();
+        $skippedLocked = 0;
 
         foreach ($rows as $row) {
             $resolved = $this->shiftResolver->resolveFromRows(
@@ -60,30 +65,27 @@ class TimesheetService
                 (string) $row->work_date,
             );
             $shiftId = $row->shift_type_id ?: ($resolved->shift_type_id ?? null);
-            $shift = $shiftId ? ($shifts[$shiftId] ?? null) : null;
-
-            $cls = TimePolicy::classifyAttendance($shift, $row->check_in_time, $row->check_out_time);
+            $isWorkday = ! $resolved || $this->shiftResolver->isAssignmentWorkday($resolved, (string) $row->work_date->toDateString());
+            $shift = $isWorkday && $shiftId ? ($shifts[$shiftId] ?? null) : null;
 
             // Giữ nguyên các đơn đã duyệt theo nhãn VN (ĐÃ_DUYỆT) — không đụng.
             if (in_array($row->status, self::APPROVED_STATUSES, true)) {
                 continue;
             }
 
-            $meta = $this->decodeMeta($row->meta);
-            $meta['late_minutes'] = $cls['late_minutes'];
-            $meta['early_leave_minutes'] = $cls['early_leave_minutes'];
-            $meta['worked_hours'] = $cls['worked_hours'];
-            $meta['classified_by'] = 'timesheet-engine';
-
-            DB::table('attendances')->where('id', $row->id)->update([
-                'status' => $cls['status'],
-                'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE),
-                'updated_at' => $now,
-            ]);
-            $updated++;
+            try {
+                $this->attendanceReconciliation->reconcileWithShift($row, $shift);
+                $updated++;
+            } catch (\RuntimeException $e) {
+                if ($e->getCode() === 409) {
+                    $skippedLocked++;
+                    continue;
+                }
+                throw $e;
+            }
         }
 
-        return ['scanned' => $rows->count(), 'updated' => $updated];
+        return ['scanned' => $rows->count(), 'updated' => $updated, 'skipped_locked' => $skippedLocked];
     }
 
     /**
@@ -155,6 +157,7 @@ class TimesheetService
                 'early_leave_days' => 0, 'half_days' => 0, 'absent_days' => 0, 'leave_days' => 0,
                 'holiday_days' => 0, 'rest_days' => 0, 'ot_days' => 0,
                 'late_minutes' => 0, 'early_leave_minutes' => 0,
+                'early_arrival_minutes' => 0, 'after_shift_minutes' => 0,
                 'worked_hours' => 0.0, 'overtime_hours' => 0.0,
             ];
 
@@ -177,10 +180,14 @@ class TimesheetService
                     'date' => $ds,
                     'late_minutes' => 0,
                     'early_leave_minutes' => 0,
+                    'early_arrival_minutes' => 0,
+                    'after_shift_minutes' => 0,
                     'worked_hours' => 0.0,
                     'overtime_hours' => $ot,
                     'leave_code' => $leaveCode,
                     'is_ot_day' => false,
+                    'payroll_review_status' => $att->payroll_review_status ?? null,
+                    'payroll_review_percent' => isset($att->payroll_review_percent) ? (int) $att->payroll_review_percent : null,
                 ];
                 $totals['overtime_hours'] += $ot;
 
@@ -190,10 +197,14 @@ class TimesheetService
                     $cell['check_out'] = $att->check_out_time;
                     $cell['late_minutes'] = (int) ($meta['late_minutes'] ?? 0);
                     $cell['early_leave_minutes'] = (int) ($meta['early_leave_minutes'] ?? 0);
+                    $cell['early_arrival_minutes'] = (int) ($meta['early_arrival_minutes'] ?? 0);
+                    $cell['after_shift_minutes'] = (int) ($meta['after_shift_minutes'] ?? 0);
                     $cell['worked_hours'] = (float) ($meta['worked_hours'] ?? 0);
 
                     $totals['late_minutes'] += $cell['late_minutes'];
                     $totals['early_leave_minutes'] += $cell['early_leave_minutes'];
+                    $totals['early_arrival_minutes'] += $cell['early_arrival_minutes'];
+                    $totals['after_shift_minutes'] += $cell['after_shift_minutes'];
                     $totals['worked_hours'] += $cell['worked_hours'];
 
                     // Nửa công: có đi làm nhưng giờ làm < ngưỡng nửa công.
@@ -303,11 +314,12 @@ class TimesheetService
         }
         $map = [];
         DB::table('attendances')
-            ->where('tenant_id', $tenantId)
-            ->where('legal_entity_id', $legalEntityId)
-            ->whereIn('employee_id', $empIds)
-            ->whereBetween('work_date', [$start, $end])
-            ->get()
+            ->leftJoin('attendance_payroll_reviews as apr', 'apr.attendance_id', '=', 'attendances.id')
+            ->where('attendances.tenant_id', $tenantId)
+            ->where('attendances.legal_entity_id', $legalEntityId)
+            ->whereIn('attendances.employee_id', $empIds)
+            ->whereBetween('attendances.work_date', [$start, $end])
+            ->get(['attendances.*', 'apr.status as payroll_review_status', 'apr.approved_percent as payroll_review_percent'])
             ->each(function ($r) use (&$map) {
                 $date = CarbonImmutable::parse($r->work_date)->toDateString();
                 $map[$r->employee_id][$date] = $r;
@@ -365,10 +377,12 @@ class TimesheetService
             ->whereIn('employee_id', $empIds)
             ->whereIn('status', self::APPROVED_STATUSES)
             ->whereBetween('work_date', [$start, $end])
-            ->get(['employee_id', 'work_date', 'total_hours'])
-            ->each(function ($r) use (&$map) {
+            ->get(['employee_id', 'work_date'])
+            ->unique(fn ($row) => $row->employee_id.'|'.$row->work_date)
+            ->each(function ($r) use (&$map, $tenantId) {
                 $date = CarbonImmutable::parse($r->work_date)->toDateString();
-                $map[$r->employee_id][$date] = ($map[$r->employee_id][$date] ?? 0) + (float) $r->total_hours;
+                $result = $this->overtimeReconciliation->reconcileDate($tenantId, (int) $r->employee_id, $date);
+                $map[$r->employee_id][$date] = $result['payable_overtime_hours'];
             });
 
         return $map;

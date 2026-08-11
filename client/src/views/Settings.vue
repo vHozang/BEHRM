@@ -78,6 +78,13 @@
                 <p v-if="item.key === 'attendance.device_upload_delay_minutes'" class="mt-1 text-xs text-muted-foreground">
                   Mặc định 15 phút. “Đồng bộ ngay” sẽ bỏ qua thời gian chờ.
                 </p>
+                <div
+                  v-if="item.key === 'attendance.violation_default_percent' && Number(values[item.key]) > 0"
+                  class="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800"
+                  data-testid="attendance-deduction-legal-warning"
+                >
+                  Chính sách khấu trừ theo phần trăm lương ngày có rủi ro pháp lý lao động. Chỉ bật sau khi nội quy lao động và quy trình HR đã được tư vấn/ban hành hợp lệ; HR vẫn phải duyệt từng trường hợp.
+                </div>
               </div>
             </div>
           </div>

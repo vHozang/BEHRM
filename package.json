@@ -14,8 +14,11 @@
     "test:management-ui": "node scripts/test-management-ui.mjs",
     "test:money-input": "node scripts/test-money-input.mjs",
     "test:payslips": "node scripts/test-payslip-ui.mjs",
+    "test:attendance-overtime": "node scripts/test-attendance-overtime.mjs",
+    "test:zk-bridge": "node tools/zk-bridge/bridge.test.js",
     "test:user-role": "node scripts/test-user-role.mjs",
-    "test:shift-roster": "node scripts/test-shift-roster.mjs"
+    "test:shift-roster": "node scripts/test-shift-roster.mjs",
+    "test:organization-chart": "node scripts/test-organization-chart.mjs"
   },
   "dependencies": {
     "axios": "^1.18.1",

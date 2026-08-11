@@ -42,6 +42,7 @@ class AttendanceSummaryService
 
     public function __construct(
         private readonly LeavePolicyService $leavePolicy,
+        private readonly OvertimeReconciliationService $overtimeReconciliation,
     ) {}
 
     /**
@@ -91,7 +92,8 @@ class AttendanceSummaryService
 
         foreach ($employees as $employeeId) {
             $att = $this->attendanceAggregate($employeeId, $start, $end, $tenantId, $legalEntityId);
-            $overtimeHours = $this->overtimeHours($employeeId, $start, $end, $tenantId);
+            $overtime = $this->overtimeReconciliation->reconcileRange($tenantId, (int) $employeeId, $start, $end);
+            $overtimeHours = $overtime['payable_overtime_hours'];
             $leave = $this->leaveDays($employeeId, $start, $end, $tenantId);
             $leaveDays = $leave['paid'];
 
@@ -110,6 +112,10 @@ class AttendanceSummaryService
                 'calendar_days' => $calendarDays,
                 'source' => 'attendance-summary',
                 'built_at' => $now->toIso8601String(),
+                'payable_overtime_minutes' => $overtime['payable_overtime_minutes'],
+                'verified_overtime_minutes' => $overtime['verified_overtime_minutes'],
+                'overtime_warnings' => $overtime['warnings'],
+                'overtime_blocking_issues' => $overtime['blocking_issues'],
             ];
 
             $payload = TenantContext::stamp([
@@ -191,21 +197,6 @@ class AttendanceSummaryService
         }
 
         return $totals;
-    }
-
-    /**
-     * Sum approved overtime hours overlapping the period (work_date in range).
-     */
-    private function overtimeHours(int $employeeId, string $start, string $end, int $tenantId): float
-    {
-        return (float) DB::table('overtime_requests')
-            ->where('tenant_id', $tenantId)
-            ->where('employee_id', $employeeId)
-            ->whereIn('status', self::APPROVED_STATUSES)
-            ->whereBetween('work_date', [$start, $end])
-            // OT đã quy đổi NGHỈ BÙ thì không trả tiền (tránh hưởng kép).
-            ->where(fn ($query) => $query->whereNull('meta->converted_to_comp_off')->orWhere('meta->converted_to_comp_off', false))
-            ->sum('total_hours');
     }
 
     /**

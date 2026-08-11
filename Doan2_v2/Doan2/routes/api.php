@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\AttendanceController;
 use App\Http\Controllers\Api\AttendanceDeviceController;
 use App\Http\Controllers\Api\AttendanceDeviceSyncController;
+use App\Http\Controllers\Api\AttendancePayrollReviewController;
 use App\Http\Controllers\Api\AttendanceRegularizationController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
@@ -19,14 +20,16 @@ use App\Http\Controllers\Api\LeaveController;
 use App\Http\Controllers\Api\LegalEntityController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OnboardingController;
+use App\Http\Controllers\Api\OrganizationChartController;
+use App\Http\Controllers\Api\OvertimeTicketController;
 use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\PayslipController;
+use App\Http\Controllers\Api\PersonnelDecisionController;
 use App\Http\Controllers\Api\PieceRateController;
 use App\Http\Controllers\Api\PlatformController;
 use App\Http\Controllers\Api\ProfileChangeRequestController;
 use App\Http\Controllers\Api\RecruitmentController;
 use App\Http\Controllers\Api\RecruitmentPostController;
-use App\Http\Controllers\Api\PersonnelDecisionController;
 use App\Http\Controllers\Api\RequestApprovalController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\ShiftCoverageController;
@@ -164,6 +167,7 @@ Route::prefix('v1')->group(function (): void {
 
         // ─── Employees ───────────────────────────────────
         Route::get('/employees/org-chart', [EmployeeController::class, 'orgChart']);
+        Route::get('/organization-chart/structure', [OrganizationChartController::class, 'structure']);
         Route::get('/employees/lookup', [EmployeeController::class, 'lookup']);
         Route::get('/employees', [EmployeeController::class, 'index']);
         Route::post('/employees', [EmployeeController::class, 'store']);
@@ -246,8 +250,13 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/attendance/summary/run', [AttendanceController::class, 'summaryRun']);
         Route::get('/attendance/timesheet', [AttendanceController::class, 'timesheet']);
         Route::post('/attendance/recompute', [AttendanceController::class, 'recompute']);
+        Route::get('/attendance/payroll-reviews', [AttendancePayrollReviewController::class, 'index']);
+        Route::post('/attendance/payroll-reviews/{id}/decision', [AttendancePayrollReviewController::class, 'decision'])->whereNumber('id');
         Route::post('/overtime-requests', [AttendanceController::class, 'storeOvertime']);
         Route::post('/overtime-requests/{id}/approve', [AttendanceController::class, 'approveOvertime'])->whereNumber('id');
+        Route::post('/overtime-tickets', [OvertimeTicketController::class, 'store']);
+        Route::post('/overtime-tickets/{id}/respond', [OvertimeTicketController::class, 'respond'])->whereNumber('id');
+        Route::post('/overtime-tickets/{id}/cancel', [OvertimeTicketController::class, 'cancel'])->whereNumber('id');
         Route::get('/shift-roster/calendar', [ShiftRosterController::class, 'calendar']);
         Route::get('/shift-roster/template', [ShiftRosterController::class, 'template']);
         Route::post('/shift-roster/rotation/preview', [ShiftRosterController::class, 'rotationPreview']);

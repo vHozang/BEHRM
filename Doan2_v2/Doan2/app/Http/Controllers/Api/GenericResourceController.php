@@ -3,12 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\DepartmentManagerRoleService;
+use App\Services\ShiftRosterAccess;
 use App\Support\AuditLogger;
 use App\Support\HrmTables;
 use App\Support\ResourceBusinessRules;
 use App\Support\TenantContext;
-use App\Services\DepartmentManagerRoleService;
-use App\Services\ShiftRosterAccess;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -175,6 +176,10 @@ class GenericResourceController extends Controller
         }
         $payload = $this->payloadFor($request, $table);
 
+        if ($table === 'departments' && ($errors = $this->departmentReferenceErrors($payload)) !== []) {
+            return $this->validationError($errors);
+        }
+
         if ($table === 'shift_assignments') {
             $employeeId = (int) ($payload['employee_id'] ?? 0);
             if ($employeeId > 0) {
@@ -298,6 +303,9 @@ class GenericResourceController extends Controller
             if ($newParent && $this->departmentAncestryContains($newParent, (int) $id)) {
                 return $this->validationError(['parent_id' => ['Không thể chọn phòng ban con/cháu làm phòng ban cha (tạo vòng lặp)']]);
             }
+            if (($errors = $this->departmentReferenceErrors($payload, $id)) !== []) {
+                return $this->validationError($errors);
+            }
         }
 
         // Validate business rules before updating
@@ -407,7 +415,7 @@ class GenericResourceController extends Controller
     {
         if ($creating || array_key_exists('is_day_off', $payload)) {
             $raw = $payload['is_day_off'] ?? false;
-            if ($raw instanceof \Illuminate\Database\Query\Expression) {
+            if ($raw instanceof Expression) {
                 $raw = $raw->getValue(DB::connection()->getQueryGrammar());
             }
             $isDayOff = in_array($raw, [true, 1, '1', 't', 'true', 'TRUE'], true);
@@ -490,6 +498,13 @@ class GenericResourceController extends Controller
                 if (array_key_exists('manager_id', $incomingMeta)) {
                     $incomingMeta['manager_id'] = $this->departmentReferenceId($incomingMeta['manager_id'], 'manager_id', 'employees');
                 }
+                if (array_key_exists('unit_type', $incomingMeta)) {
+                    $unitType = strtoupper(trim((string) $incomingMeta['unit_type']));
+                    if (! in_array($unitType, ['DEPARTMENT', 'WORKSHOP', 'TEAM'], true)) {
+                        throw ValidationException::withMessages(['unit_type' => ['Loại đơn vị không hợp lệ']]);
+                    }
+                    $incomingMeta['unit_type'] = $unitType;
+                }
             }
 
             $mergedMeta = array_merge($existingMeta, $incomingMeta);
@@ -514,6 +529,70 @@ class GenericResourceController extends Controller
         }
 
         return $id;
+    }
+
+    /** @return array<string, array<int, string>> */
+    private function departmentReferenceErrors(array $payload, ?int $departmentId = null): array
+    {
+        $meta = isset($payload['meta'])
+            ? (is_string($payload['meta']) ? json_decode($payload['meta'], true) : (array) $payload['meta'])
+            : [];
+        $meta = is_array($meta) ? $meta : [];
+
+        $requestedEntityId = isset($payload['legal_entity_id']) ? (int) $payload['legal_entity_id'] : 0;
+        $legalEntityId = $requestedEntityId;
+        if ($departmentId) {
+            $currentEntityId = (int) DB::table('departments')
+                ->where('id', $departmentId)
+                ->where('tenant_id', TenantContext::id())
+                ->value('legal_entity_id');
+            if ($requestedEntityId && $requestedEntityId !== $currentEntityId) {
+                return ['legal_entity_id' => ['Không thể đổi chi nhánh trực tiếp từ màn hình phòng ban']];
+            }
+            $legalEntityId = $currentEntityId;
+        }
+        if (! $legalEntityId) {
+            $legalEntityId = (int) TenantContext::legalEntityId();
+        }
+
+        $errors = [];
+        $entityExists = DB::table('legal_entities')
+            ->where('id', $legalEntityId)
+            ->where('tenant_id', TenantContext::id())
+            ->exists();
+        if (! $entityExists) {
+            $errors['legal_entity_id'][] = 'Chi nhánh không thuộc công ty hiện tại';
+        }
+        $parentId = (int) ($meta['parent_id'] ?? 0);
+        if ($parentId) {
+            $parentEntityId = (int) DB::table('departments')
+                ->where('id', $parentId)
+                ->where('tenant_id', TenantContext::id())
+                ->value('legal_entity_id');
+            if ($parentEntityId !== $legalEntityId) {
+                $errors['parent_id'][] = 'Đơn vị cha phải thuộc cùng chi nhánh';
+            }
+        }
+
+        $managerId = (int) ($meta['manager_id'] ?? 0);
+        if ($managerId) {
+            $manager = DB::table('employees')
+                ->where('id', $managerId)
+                ->where('tenant_id', TenantContext::id())
+                ->first(['legal_entity_id', 'status', 'profile']);
+            if (! $manager || (int) $manager->legal_entity_id !== $legalEntityId) {
+                $errors['manager_id'][] = 'Người phụ trách phải thuộc cùng chi nhánh';
+            } elseif (! in_array(strtoupper((string) $manager->status), ['ACTIVE', 'PROBATION'], true)) {
+                $errors['manager_id'][] = 'Người phụ trách phải đang làm việc hoặc thử việc';
+            } else {
+                $profile = is_string($manager->profile ?? null) ? json_decode($manager->profile, true) : (array) ($manager->profile ?? []);
+                if (in_array($profile['system_account'] ?? false, [true, 1, '1', 't', 'true'], true)) {
+                    $errors['manager_id'][] = 'Không thể chọn tài khoản hệ thống làm người phụ trách';
+                }
+            }
+        }
+
+        return $errors;
     }
 
     /**
@@ -576,9 +655,9 @@ class GenericResourceController extends Controller
         }
 
         if ($table === 'departments') {
-            foreach (['parent_id', 'parent_department_id', 'manager_id'] as $key) {
+            foreach (['parent_id', 'parent_department_id', 'manager_id', 'unit_type'] as $key) {
                 if (! array_key_exists($key, $metaData)) {
-                    $metaData[$key] = null;
+                    $metaData[$key] = $key === 'unit_type' ? 'DEPARTMENT' : null;
                 }
             }
         }

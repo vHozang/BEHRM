@@ -433,16 +433,25 @@
           <table class="w-full text-sm"><thead class="sticky top-0 bg-card"><tr class="border-b border-border text-left"><th class="p-3">Nhân viên</th><th class="p-3">Lỗi</th><th class="p-3">Hướng xử lý</th></tr></thead>
             <tbody><tr v-for="issue in readinessResult.issues" :key="`${issue.employee_id}-${issue.issue_code}`" class="border-b border-border/60 last:border-0 align-top">
               <td class="p-3"><p class="font-medium">{{ issue.full_name }}</p><p class="text-xs text-muted-foreground">{{ issue.employee_code }} · {{ issue.department_name || '-' }}</p></td>
-              <td class="p-3"><p>{{ issue.message }}</p><p class="text-[11px] text-muted-foreground mt-1">{{ issue.issue_code }}</p></td>
+              <td class="p-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  <p>{{ issue.message }}</p>
+                  <span v-if="issue.can_override === false" class="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase text-red-700">Bắt buộc xử lý</span>
+                </div>
+                <p class="mt-1 text-[11px] text-muted-foreground">{{ issue.issue_code }}</p>
+              </td>
               <td class="p-3 text-muted-foreground">{{ issue.resolution_hint }}</td>
             </tr></tbody>
           </table>
         </div>
         <p v-if="readinessResult.fail_count" class="text-sm text-amber-700">Nhân viên pass vẫn có thể nhận phiếu. Danh sách không pass sẽ được lưu để HR/Kế toán xử lý ở kỳ sau.</p>
+        <div v-if="readinessResult.has_non_bypassable_issues" class="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800" data-testid="readiness-non-bypassable-warning">
+          Review chấm công chưa xử lý, OT thiếu punch hoặc khấu trừ vượt thực nhận phải được sửa trước. Tùy chọn <code>allow_partial</code> không thể bỏ qua các lỗi này.
+        </div>
       </div>
       <template #footer>
         <BaseButton variant="outline" @click="readinessOpen = false">Hủy</BaseButton>
-        <BaseButton @click="confirmReadinessAction">
+        <BaseButton :disabled="readinessResult?.has_non_bypassable_issues" @click="confirmReadinessAction">
           {{ readinessResult?.fail_count ? 'Xác nhận với danh sách loại trừ' : 'Xác nhận' }}
         </BaseButton>
       </template>
@@ -798,6 +807,10 @@ const approveClose = async () => {
 };
 
 const confirmReadinessAction = async () => {
+  if (readinessResult.value?.has_non_bypassable_issues) {
+    notificationStore.addError('Cần xử lý hết review chấm công và lỗi OT bắt buộc trước khi trình/chốt kỳ.');
+    return;
+  }
   const action = readinessAction.value;
   const allowPartial = Number(readinessResult.value?.fail_count || 0) > 0;
   readinessOpen.value = false;

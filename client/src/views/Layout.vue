@@ -853,15 +853,21 @@ const filteredGroups = computed(() => {
       const m = GROUP_MODULE[group.id];
       const hasPayslipIssueAccess = group.id === 'payroll'
         && authService.hasCapability('payslip_issues.view');
-      return group.id === 'communications' || !m || authService.canAccessModule(m) || hasPayslipIssueAccess;
+      const hasOrganizationAccess = group.id === 'hr'
+        && authService.hasCapability('org_chart.view');
+      return group.id === 'communications' || !m || authService.canAccessModule(m) || hasPayslipIssueAccess || hasOrganizationAccess;
     })
     .map(group => {
       const issuesOnly = group.id === 'payroll'
         && !authService.canAccessModule('payroll')
         && authService.hasCapability('payslip_issues.view');
+      const organizationOnly = group.id === 'hr'
+        && !authService.canAccessModule('hr')
+        && authService.hasCapability('org_chart.view');
       const items = group.items
         .filter(item => isAdmin.value || !item.adminOnly)
         .filter(item => !issuesOnly || item.path === '/salaries')
+        .filter(item => !organizationOnly || item.path === '/organization-chart')
         .map(item => issuesOnly ? { ...item, label: 'Phiếu chưa phát hành' } : item);
 
       return { ...group, items };

@@ -121,7 +121,8 @@ const handleLogin = async () => {
     // Auth token, user, access and user_role are stored by authService.login.
     // Admin shell = full access OR any admin module granted (role-based RBAC).
     const access = authService.getAccess();
-    const isAdmin = access.full === true || access.modules.length > 0;
+    const canViewOrganization = access.capabilities.includes('org_chart.view');
+    const isAdmin = access.full === true || access.modules.length > 0 || canViewOrganization;
     const role = isAdmin ? 'admin' : 'employee';
     localStorage.setItem('role', JSON.stringify({ code: role }));
     localStorage.setItem('user_role', role);
@@ -132,7 +133,7 @@ const handleLogin = async () => {
 
     // Redirect based on role
     if (isAdmin) {
-      router.push('/');
+      router.push(canViewOrganization && !access.full && access.modules.length === 0 ? '/organization-chart' : '/');
     } else {
       router.push('/employee-portal');
     }

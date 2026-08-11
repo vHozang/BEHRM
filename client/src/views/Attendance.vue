@@ -214,17 +214,29 @@
           </button>
         </div>
 
-        <!-- Admin: lọc lượt cần xem xét (chống gian lận) -->
-        <button
-          v-else
-          @click="needsReviewOnly = !needsReviewOnly"
-          :class="['px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5',
-                   needsReviewOnly ? 'border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-400' : 'border-border text-muted-foreground hover:bg-muted']"
-          title="Chỉ hiện các lượt chấm công ngoài phạm vi cần duyệt"
-        >
-          <span>⚠ Cần xem xét</span>
-          <span v-if="needsReviewCount" class="px-1.5 rounded-full bg-amber-500 text-white text-[10px]">{{ needsReviewCount }}</span>
-        </button>
+        <div v-else class="flex flex-wrap items-center justify-end gap-2">
+          <!-- Xác minh vị trí/thiết bị và review khấu trừ là hai nghiệp vụ độc lập. -->
+          <button
+            @click="needsReviewOnly = !needsReviewOnly"
+            :class="['px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5',
+                     needsReviewOnly ? 'border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-400' : 'border-border text-muted-foreground hover:bg-muted']"
+            title="Chỉ hiện các lượt chấm công ngoài phạm vi cần duyệt"
+          >
+            <span>⚠ Cần xem xét</span>
+            <span v-if="needsReviewCount" class="px-1.5 rounded-full bg-amber-500 text-white text-[10px]">{{ needsReviewCount }}</span>
+          </button>
+          <button
+            v-if="canReviewPayroll"
+            @click="payrollReviewOnly = !payrollReviewOnly"
+            :class="['px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5',
+                     payrollReviewOnly ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-400' : 'border-border text-muted-foreground hover:bg-muted']"
+            title="Chỉ hiện ngày đi trễ/về sớm đang chờ HR quyết định"
+            data-testid="filter-attendance-payroll-review"
+          >
+            <span>Khấu trừ chờ HR duyệt</span>
+            <span v-if="payrollReviewCount" class="px-1.5 rounded-full bg-red-500 text-white text-[10px]">{{ payrollReviewCount }}</span>
+          </button>
+        </div>
       </template>
 
       <!-- Loading State -->
@@ -289,8 +301,12 @@
                 <p class="flex justify-between"><span>Trạng thái:</span> <span class="font-medium text-foreground">{{ getStatusText(dayObj.record.status) }}</span></p>
                 <p class="flex justify-between"><span>Giờ vào:</span> <span class="font-medium text-foreground">{{ formatTime(dayObj.record.check_in_time) }}</span></p>
                 <p class="flex justify-between"><span>Giờ ra:</span> <span class="font-medium text-foreground">{{ formatTime(dayObj.record.check_out_time) }}</span></p>
-                <p v-if="dayObj.record.total_work_hours" class="flex justify-between"><span>Tổng giờ:</span> <span class="font-medium text-foreground">{{ dayObj.record.total_work_hours }}h</span></p>
+                <p class="flex justify-between"><span>Ca:</span> <span class="font-medium text-foreground">{{ shiftLabel(dayObj.record) }}</span></p>
+                <p class="flex justify-between"><span>Công hợp lệ:</span> <span class="font-medium text-foreground">{{ formatMinutes(dayObj.record.regular_worked_minutes) }}</span></p>
+                <p v-if="dayObj.record.early_arrival_minutes" class="flex justify-between text-sky-600"><span>Đến sớm:</span> <span class="font-medium">{{ dayObj.record.early_arrival_minutes }} phút</span></p>
                 <p v-if="dayObj.record.late_minutes" class="flex justify-between text-amber-600"><span>Đi muộn:</span> <span class="font-medium">{{ dayObj.record.late_minutes }} phút</span></p>
+                <p v-if="dayObj.record.early_leave_minutes" class="flex justify-between text-orange-600"><span>Về sớm:</span> <span class="font-medium">{{ dayObj.record.early_leave_minutes }} phút</span></p>
+                <p v-if="dayObj.record.after_shift_minutes" class="flex justify-between text-sky-600"><span>Ở lại sau ca:</span> <span class="font-medium">{{ dayObj.record.after_shift_minutes }} phút</span></p>
                 <p v-if="dayObj.record.notes" class="text-muted-foreground italic border-t pt-1 mt-1">{{ dayObj.record.notes }}</p>
               </div>
             </div>
@@ -338,6 +354,33 @@
           <template #cell-total_work_hours="{ value }">
             <span class="text-sm font-medium">{{ value || 0 }}h</span>
           </template>
+
+          <template #cell-assigned_shift="{ item }">
+            <div class="text-xs">
+              <p class="font-semibold">{{ shiftLabel(item) }}</p>
+              <p class="text-muted-foreground">{{ shiftWindow(item) }}</p>
+            </div>
+          </template>
+
+          <template #cell-valid_work="{ item }">
+            <span class="text-sm font-semibold">{{ formatMinutes(item.regular_worked_minutes) }}</span>
+          </template>
+
+          <template #cell-early_arrival_minutes="{ value }">
+            <span :class="timingMetricClass(value, 'info')">{{ formatMinutes(value) }}</span>
+          </template>
+
+          <template #cell-late_minutes="{ value }">
+            <span :class="timingMetricClass(value, 'warning')">{{ formatMinutes(value) }}</span>
+          </template>
+
+          <template #cell-early_leave_minutes="{ value }">
+            <span :class="timingMetricClass(value, 'danger')">{{ formatMinutes(value) }}</span>
+          </template>
+
+          <template #cell-after_shift_minutes="{ value }">
+            <span :class="timingMetricClass(value, 'info')">{{ formatMinutes(value) }}</span>
+          </template>
           
           <template #cell-status="{ value }">
             <BaseBadge :variant="getStatusVariant(value)">
@@ -350,6 +393,19 @@
               :class="['inline-flex items-center px-2 py-0.5 rounded text-xs font-medium', verifyInfo(item).cls]"
               :title="verifyInfo(item).title"
             >{{ verifyInfo(item).label }}</span>
+          </template>
+
+          <template v-if="orgLens" #cell-payroll_review="{ item }">
+            <button
+              v-if="isUnresolvedPayrollReview(item) && canReviewPayroll"
+              type="button"
+              :class="payrollReviewBadge(item)"
+              @click="openPayrollReview(item)"
+              data-testid="button-attendance-payroll-review"
+            >
+              {{ payrollReviewLabel(item) }}
+            </button>
+            <span v-else :class="payrollReviewBadge(item)">{{ payrollReviewLabel(item) }}</span>
           </template>
 
           <template v-if="orgLens" #actions="{ item }">
@@ -416,22 +472,13 @@
             <p class="font-medium">{{ formatDate(editingRecord.record_date) }}</p>
           </div>
         </div>
-        <BaseSelect
-          v-model="editForm.status"
-          label="Trạng thái"
-          :options="checkInStatusOptions"
-        />
-        <BaseInput
-          v-model="editForm.late_minutes"
-          label="Phút đi muộn"
-          type="number"
-        />
-        <BaseInput
-          v-model="editForm.overtime_hours"
-          label="Giờ tăng ca"
-          type="number"
-          step="0.5"
-        />
+        <div class="grid grid-cols-2 gap-4">
+          <BaseInput v-model="editForm.check_in_time" label="Giờ vào buổi 1" type="time" />
+          <BaseInput v-model="editForm.check_out_time" label="Giờ ra buổi 1" type="time" />
+          <BaseInput v-model="editForm.check_in_time_2" label="Giờ vào buổi 2" type="time" />
+          <BaseInput v-model="editForm.check_out_time_2" label="Giờ ra buổi 2" type="time" />
+        </div>
+        <p class="text-xs text-muted-foreground">Công hợp lệ, đi trễ, về sớm và thời gian ngoài ca sẽ được hệ thống tính lại từ các lượt chấm và ca được gán.</p>
         <BaseInput
           v-model="editForm.notes"
           label="Ghi chú"
@@ -463,9 +510,23 @@
             <BaseBadge :variant="getStatusVariant(logRecord.status)">{{ getStatusText(logRecord.status) }}</BaseBadge>
           </div>
           <div>
-            <p class="text-muted-foreground">Tổng giờ làm</p>
-            <p class="font-medium">{{ logRecord.worked_hours || logRecord.total_work_hours || 0 }}h</p>
+            <p class="text-muted-foreground">Công hợp lệ</p>
+            <p class="font-medium">{{ formatMinutes(logRecord.regular_worked_minutes) }}</p>
           </div>
+        </div>
+
+        <div class="rounded-xl border border-border bg-muted/20 p-3">
+          <div class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+            <div><p class="text-muted-foreground">Ca được gán</p><p class="font-medium">{{ shiftLabel(logRecord) }}</p></div>
+            <div><p class="text-muted-foreground">Khung ca</p><p class="font-medium">{{ shiftWindow(logRecord) }}</p></div>
+            <div><p class="text-muted-foreground">Có mặt thực tế</p><p class="font-medium">{{ formatMinutes(logRecord.raw_presence_minutes) }}</p></div>
+            <div><p class="text-muted-foreground">Đến sớm</p><p class="font-medium text-sky-600">{{ formatMinutes(logRecord.early_arrival_minutes) }}</p></div>
+            <div><p class="text-muted-foreground">Đi trễ</p><p class="font-medium text-amber-600">{{ formatMinutes(logRecord.late_minutes) }}</p></div>
+            <div><p class="text-muted-foreground">Về sớm</p><p class="font-medium text-orange-600">{{ formatMinutes(logRecord.early_leave_minutes) }}</p></div>
+            <div><p class="text-muted-foreground">Ở lại sau ca</p><p class="font-medium text-sky-600">{{ formatMinutes(logRecord.after_shift_minutes) }}</p></div>
+            <div><p class="text-muted-foreground">Review khấu trừ</p><p><span :class="payrollReviewBadge(logRecord)">{{ payrollReviewLabel(logRecord) }}</span></p></div>
+          </div>
+          <p class="mt-3 text-xs text-muted-foreground">Đến sớm và ở lại sau ca chỉ là cảnh báo; không cộng vào công thường hoặc OT khi chưa có đơn/ticket được duyệt.</p>
         </div>
 
         <!-- Lượt chấm (hỗ trợ 2 buổi/ngày) -->
@@ -525,6 +586,42 @@
         <BaseButton variant="outline" @click="showLogModal = false">Đóng</BaseButton>
       </template>
     </BaseModal>
+
+    <BaseModal v-model="showPayrollReviewModal" title="Duyệt khấu trừ đi trễ / về sớm">
+      <div v-if="payrollReviewRecord" class="space-y-4">
+        <div class="rounded-xl border border-border bg-muted/30 p-4 text-sm">
+          <p class="font-semibold">{{ payrollReviewRecord.full_name || payrollReviewRecord.employee_name || payrollReviewRecord.employee_code }}</p>
+          <p class="mt-1 text-muted-foreground">{{ formatDate(payrollReviewRecord.attendance_date) }} · {{ shiftLabel(payrollReviewRecord) }}</p>
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <p>Đi trễ: <strong class="text-amber-600">{{ payrollReviewRecord.late_minutes || 0 }} phút</strong></p>
+            <p>Về sớm: <strong class="text-orange-600">{{ payrollReviewRecord.early_leave_minutes || 0 }} phút</strong></p>
+          </div>
+          <p class="mt-2 text-xs text-muted-foreground">HR chỉ quyết định tỷ lệ; màn hình này không hiển thị lương hoặc số tiền khấu trừ.</p>
+        </div>
+        <BaseSelect
+          v-model="payrollDecision.percent"
+          label="Mức xử lý"
+          :options="payrollPercentOptions"
+          required
+        />
+        <div>
+          <label class="mb-2 block text-sm font-medium">Lý do / ghi chú</label>
+          <textarea
+            v-model="payrollDecision.note"
+            rows="4"
+            class="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            :placeholder="payrollDecisionNeedsNote ? 'Bắt buộc khi miễn hoặc đổi mức mặc định' : 'Ghi chú quyết định (không bắt buộc)'"
+          ></textarea>
+          <p v-if="payrollDecisionNeedsNote" class="mt-1 text-xs text-amber-600">Bắt buộc ghi lý do khi chọn 0% hoặc khác mức mặc định {{ payrollDefaultPercent }}%.</p>
+        </div>
+      </div>
+      <template #footer>
+        <BaseButton variant="outline" :disabled="savingPayrollDecision" @click="showPayrollReviewModal = false">Hủy</BaseButton>
+        <BaseButton :disabled="savingPayrollDecision" @click="submitPayrollDecision">
+          {{ savingPayrollDecision ? 'Đang lưu...' : 'Lưu quyết định' }}
+        </BaseButton>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -546,6 +643,9 @@ import { useToast } from '../composables/useToast';
 const toast = useToast();
 
 const isAdmin = computed(() => authService.isAdmin());
+const access = computed(() => authService.getAccess());
+const roleCodes = computed(() => access.value.roles.map((role) => String(role.role_code || '').toUpperCase()));
+const canReviewPayroll = computed(() => access.value.full || roleCodes.value.some((role) => ['ADMIN', 'TENANT_ADMIN', 'HR'].includes(role)));
 
 // Dual-lens: admins toggle company-wide vs their own ("My Space").
 const lens = ref('org'); // 'org' = toàn công ty | 'mine' = của tôi
@@ -568,6 +668,15 @@ const workModes = [
   { value: 'on_site', label: '🚧 Công trình' },
 ];
 const needsReviewOnly = ref(false);
+const payrollReviewOnly = ref(false);
+const showPayrollReviewModal = ref(false);
+const payrollReviewRecord = ref(null);
+const savingPayrollDecision = ref(false);
+const payrollDecision = ref({ percent: '0', note: '' });
+const payrollPercentOptions = [0, 25, 50, 75, 100].map((value) => ({
+  value: String(value),
+  label: value === 0 ? '0% - miễn khấu trừ' : `${value}% lương cơ bản một ngày`,
+}));
 const syncAccessAvailable = ref(false);
 const syncingDevices = ref(false);
 const deviceSync = ref({ upload_delay_minutes: 15, devices: [] });
@@ -795,27 +904,39 @@ const filters = ref({
 });
 
 const editForm = ref({
-  status: '',
-  late_minutes: 0,
-  overtime_hours: 0,
+  check_in_time: '',
+  check_out_time: '',
+  check_in_time_2: '',
+  check_out_time_2: '',
   notes: ''
 });
 
 const adminColumns = [
   { key: 'employee', label: 'Nhân viên' },
   { key: 'attendance_date', label: 'Ngày' },
+  { key: 'assigned_shift', label: 'Ca được gán' },
   { key: 'check_in_time', label: 'Giờ vào' },
   { key: 'check_out_time', label: 'Giờ ra' },
-  { key: 'total_work_hours', label: 'Tổng giờ' },
+  { key: 'valid_work', label: 'Công hợp lệ' },
+  { key: 'early_arrival_minutes', label: 'Đến sớm' },
+  { key: 'late_minutes', label: 'Đi trễ' },
+  { key: 'early_leave_minutes', label: 'Về sớm' },
+  { key: 'after_shift_minutes', label: 'Sau ca' },
   { key: 'status', label: 'Trạng thái' },
+  { key: 'payroll_review', label: 'Khấu trừ' },
   { key: 'verify', label: 'Xác minh' },
 ];
 
 const employeeColumns = [
   { key: 'attendance_date', label: 'Ngày' },
+  { key: 'assigned_shift', label: 'Ca được gán' },
   { key: 'check_in_time', label: 'Giờ vào' },
   { key: 'check_out_time', label: 'Giờ ra' },
-  { key: 'total_work_hours', label: 'Tổng giờ' },
+  { key: 'valid_work', label: 'Công hợp lệ' },
+  { key: 'early_arrival_minutes', label: 'Đến sớm' },
+  { key: 'late_minutes', label: 'Đi trễ' },
+  { key: 'early_leave_minutes', label: 'Về sớm' },
+  { key: 'after_shift_minutes', label: 'Sau ca' },
   { key: 'status', label: 'Trạng thái' },
 ];
 
@@ -831,27 +952,26 @@ const scopedRecords = computed(() => {
 });
 
 const displayRecords = computed(() => {
+  let result = scopedRecords.value;
   if (orgLens.value && needsReviewOnly.value) {
-    return scopedRecords.value.filter(r => r.review_status === 'needs_review');
+    result = result.filter(r => r.review_status === 'needs_review');
   }
-  return scopedRecords.value;
+  if (orgLens.value && payrollReviewOnly.value) {
+    result = result.filter(isUnresolvedPayrollReview);
+  }
+  return result;
 });
 
 // Số lượt chấm công cần admin xem xét (chống gian lận).
 const needsReviewCount = computed(() =>
   records.value.filter(r => r.review_status === 'needs_review').length
 );
+const payrollReviewCount = computed(() => records.value.filter(isUnresolvedPayrollReview).length);
 
 const statusOptions = [
   { label: 'Tất cả', value: '' },
   { label: 'Có mặt', value: 'present' },
   { label: 'Vắng', value: 'absent' },
-  { label: 'Đi muộn', value: 'late' },
-  { label: 'Nửa ngày', value: 'half_day' },
-];
-
-const checkInStatusOptions = [
-  { label: 'Có mặt', value: 'present' },
   { label: 'Đi muộn', value: 'late' },
   { label: 'Nửa ngày', value: 'half_day' },
 ];
@@ -893,6 +1013,99 @@ const formatTime = (time) => {
   return s;
 };
 
+const formatMinutes = (value) => {
+  const minutes = Math.max(0, Number(value || 0));
+  if (!minutes) return '0 phút';
+  const hours = Math.floor(minutes / 60);
+  const rest = Math.round(minutes % 60);
+  if (!hours) return `${rest} phút`;
+  return rest ? `${hours}h ${rest}p` : `${hours}h`;
+};
+
+const shiftLabel = (record) => record?.assigned_shift_code
+  || record?.assigned_shift?.shift_code
+  || record?.assigned_shift_name
+  || record?.assigned_shift?.shift_name
+  || 'Chưa gán ca';
+
+const shiftWindow = (record) => {
+  const start = record?.shift_start;
+  const end = record?.shift_end;
+  if (!start && !end) return '—';
+  return `${formatTime(start)} - ${formatTime(end)}`;
+};
+
+const timingMetricClass = (value, tone) => {
+  const active = Number(value || 0) > 0;
+  if (!active) return 'text-xs text-muted-foreground';
+  const tones = {
+    info: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+    warning: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    danger: 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
+  };
+  return `inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${tones[tone] || tones.info}`;
+};
+
+const payrollReviewOf = (record) => record?.payroll_review || null;
+const payrollReviewStatus = (record) => String(payrollReviewOf(record)?.status || record?.payroll_review_status || '').toUpperCase();
+const isUnresolvedPayrollReview = (record) => ['PENDING', 'STALE'].includes(payrollReviewStatus(record));
+const payrollReviewLabel = (record) => ({
+  PENDING: 'Chờ HR duyệt',
+  STALE: 'Cần duyệt lại',
+  APPROVED: `Đã duyệt ${payrollReviewOf(record)?.approved_percent ?? record?.payroll_review_percent ?? 0}%`,
+  WAIVED: 'Đã miễn',
+  APPLIED: `Đã áp dụng ${payrollReviewOf(record)?.approved_percent ?? record?.payroll_review_percent ?? 0}%`,
+}[payrollReviewStatus(record)] || 'Không phát sinh');
+const payrollReviewBadge = (record) => {
+  const status = payrollReviewStatus(record);
+  const base = 'inline-flex rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap';
+  if (status === 'PENDING') return `${base} bg-amber-500/15 text-amber-700 dark:text-amber-300`;
+  if (status === 'STALE') return `${base} bg-red-500/15 text-red-700 dark:text-red-300`;
+  if (['APPROVED', 'APPLIED'].includes(status)) return `${base} bg-blue-500/15 text-blue-700 dark:text-blue-300`;
+  if (status === 'WAIVED') return `${base} bg-emerald-500/15 text-emerald-700 dark:text-emerald-300`;
+  return `${base} bg-muted text-muted-foreground`;
+};
+const payrollDefaultPercent = computed(() => Number(payrollReviewOf(payrollReviewRecord.value)?.default_percent || 0));
+const payrollDecisionNeedsNote = computed(() => {
+  const percent = Number(payrollDecision.value.percent);
+  return percent === 0 || percent !== payrollDefaultPercent.value;
+});
+
+const openPayrollReview = (record) => {
+  if (!canReviewPayroll.value || !isUnresolvedPayrollReview(record)) return;
+  payrollReviewRecord.value = record;
+  payrollDecision.value = {
+    percent: String(payrollReviewOf(record)?.default_percent ?? 0),
+    note: '',
+  };
+  showPayrollReviewModal.value = true;
+};
+
+const submitPayrollDecision = async () => {
+  const review = payrollReviewOf(payrollReviewRecord.value);
+  if (!review?.id || savingPayrollDecision.value) return;
+  if (payrollDecisionNeedsNote.value && !String(payrollDecision.value.note || '').trim()) {
+    toast.error('Vui lòng ghi lý do khi miễn hoặc thay đổi mức mặc định.');
+    return;
+  }
+  savingPayrollDecision.value = true;
+  try {
+    await attendanceService.decidePayrollReview(
+      review.id,
+      Number(payrollDecision.value.percent),
+      String(payrollDecision.value.note || '').trim(),
+    );
+    toast.success('Đã lưu quyết định khấu trừ chấm công.');
+    showPayrollReviewModal.value = false;
+    payrollReviewRecord.value = null;
+    await loadData();
+  } catch (err) {
+    toast.error(firstError(err, 'Không thể lưu quyết định khấu trừ'));
+  } finally {
+    savingPayrollDecision.value = false;
+  }
+};
+
 const getStatusVariant = (status) => {
   const variants = {
     present: 'success',
@@ -921,9 +1134,10 @@ const getStatusText = (status) => {
 const openEditModal = (record) => {
   editingRecord.value = record;
   editForm.value = {
-    status: record.status || 'present',
-    late_minutes: record.late_minutes || 0,
-    overtime_hours: record.overtime_hours || 0,
+    check_in_time: record.check_in_time ? String(record.check_in_time).slice(0, 5) : '',
+    check_out_time: record.check_out_time ? String(record.check_out_time).slice(0, 5) : '',
+    check_in_time_2: record.check_in_time_2 ? String(record.check_in_time_2).slice(0, 5) : '',
+    check_out_time_2: record.check_out_time_2 ? String(record.check_out_time_2).slice(0, 5) : '',
     notes: record.notes || ''
   };
   showEditModal.value = true;

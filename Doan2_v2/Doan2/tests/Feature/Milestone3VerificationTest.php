@@ -108,7 +108,8 @@ class Milestone3VerificationTest extends TestCase
     }
 
     /**
-     * PATCH /attendances/{id} with non-standard columns merges them into JSON 'meta' column.
+     * Free-form notes are merged, while calculated timing metrics remain
+     * authoritative and cannot be overwritten manually.
      */
     public function test_patch_attendance_non_standard_fields_meta(): void
     {
@@ -137,7 +138,7 @@ class Milestone3VerificationTest extends TestCase
         $meta = json_decode($updated->meta, true);
 
         $this->assertEquals('old_val', $meta['existing_key'] ?? null);
-        $this->assertEquals(15, $meta['late_minutes'] ?? null);
+        $this->assertEquals(0, $meta['late_minutes'] ?? null);
         $this->assertEquals('traffic jam', $meta['notes'] ?? null);
         $this->assertEquals('ON_TIME', $updated->status);
     }

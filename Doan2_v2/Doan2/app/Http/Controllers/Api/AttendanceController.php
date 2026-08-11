@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\OvertimeRequest;
 use App\Services\AttendanceSummaryService;
+use App\Services\AttendanceReconciliationService;
+use App\Services\OvertimeReconciliationService;
 use App\Services\TimesheetService;
 use App\Services\ShiftResolver;
 use App\Support\AttendanceVerification;
@@ -20,13 +22,20 @@ use Illuminate\Support\Facades\Validator;
 
 class AttendanceController extends Controller
 {
-    public function __construct(private readonly ShiftResolver $shiftResolver) {}
+    public function __construct(
+        private readonly ShiftResolver $shiftResolver,
+        private readonly AttendanceReconciliationService $attendanceReconciliation,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
 
-        $query = Attendance::with(['employee:id,full_name,employee_code'])
+        $query = Attendance::with([
+            'employee:id,full_name,employee_code',
+            'shiftType:id,shift_code,shift_name,start_time,end_time,meta',
+            'payrollReview:id,attendance_id,late_minutes,early_leave_minutes,default_percent,approved_percent,status,decision_note,decided_by,decided_at,stale_at,applied_at',
+        ])
             ->orderByDesc('id');
 
         foreach (['employee_id', 'work_date', 'status', 'shift_type_id'] as $field) {
@@ -67,7 +76,7 @@ class AttendanceController extends Controller
         $page = $query->paginate($perPage);
 
         return $this->ok([
-            'items' => $page->items(),
+            'items' => collect($page->items())->map(fn (Attendance $attendance) => $this->decorateAttendance($attendance))->all(),
             'pagination' => [
                 'current_page' => $page->currentPage(),
                 'per_page' => $page->perPage(),
@@ -79,13 +88,17 @@ class AttendanceController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $attendance = Attendance::with(['employee:id,full_name'])->find($id);
+        $attendance = Attendance::with([
+            'employee:id,full_name,employee_code',
+            'shiftType:id,shift_code,shift_name,start_time,end_time,meta',
+            'payrollReview',
+        ])->find($id);
 
         if (! $attendance) {
             return $this->notFound();
         }
 
-        return $this->ok($attendance, 'Attendance detail');
+        return $this->ok($this->decorateAttendance($attendance), 'Attendance detail');
     }
 
     /**
@@ -124,6 +137,13 @@ class AttendanceController extends Controller
             ->first();
 
         if ($existing && $existing->check_in_time) {
+            if ($this->attendanceReconciliation->isClosedDate($existing)) {
+                return response()->json([
+                    'status' => 409,
+                    'message' => 'Kỳ lương chứa ngày chấm công này đã chốt, không thể sửa trực tiếp.',
+                    'data' => null,
+                ], 409);
+            }
             // Second check-in (support 2 sessions/day)
             if ($existing->check_in_time_2) {
                 return $this->validationError([
@@ -132,7 +152,13 @@ class AttendanceController extends Controller
             }
             $existing->update(['check_in_time_2' => now()->toTimeString()]);
 
-            return $this->ok($existing->fresh(), 'Check-in buổi 2 thành công');
+            $this->attendanceReconciliation->reconcile(
+                $existing->fresh(),
+                (int) $request->attributes->get('auth_employee_id'),
+            );
+            $fresh = $existing->fresh(['employee:id,full_name,employee_code', 'shiftType', 'payrollReview']);
+
+            return $this->ok($this->decorateAttendance($fresh), 'Check-in buổi 2 thành công');
         }
 
         // Determine current shift and calculate late minutes
@@ -190,12 +216,18 @@ class AttendanceController extends Controller
             ], JSON_UNESCAPED_UNICODE),
         ]);
 
+        $this->attendanceReconciliation->reconcile(
+            $attendance,
+            (int) $request->attributes->get('auth_employee_id'),
+        );
+        $fresh = $attendance->fresh(['employee:id,full_name,employee_code', 'shiftType', 'payrollReview']);
+
         return response()->json([
             'status' => 201,
             'message' => $reviewStatus === 'needs_review'
                 ? 'Đã ghi nhận chấm công — cần quản trị xem xét (ngoài phạm vi).'
                 : 'Check-in thành công',
-            'data' => $attendance,
+            'data' => $this->decorateAttendance($fresh),
         ], 201);
     }
 
@@ -220,14 +252,20 @@ class AttendanceController extends Controller
 
         $today = now()->toDateString();
 
-        $attendance = Attendance::where('employee_id', $employeeId)
-            ->where('work_date', $today)
-            ->first();
+        $attendance = $this->attendanceForCheckout((int) $employeeId, $today);
 
         if (! $attendance) {
             return $this->validationError([
                 'employee_id' => ['Nhân viên chưa check-in hôm nay'],
             ]);
+        }
+
+        if ($this->attendanceReconciliation->isClosedDate($attendance)) {
+            return response()->json([
+                'status' => 409,
+                'message' => 'Kỳ lương chứa ngày chấm công này đã chốt, không thể sửa trực tiếp.',
+                'data' => null,
+            ], 409);
         }
 
         $shift = null;
@@ -237,10 +275,7 @@ class AttendanceController extends Controller
                 ->first();
         }
 
-        // Phân loại lại theo cả giờ vào/ra (về sớm vượt dung sai → EARLY_LEAVE,
-        // nhưng đi trễ vẫn ưu tiên LATE).
         $checkOutTime = now()->toTimeString();
-        $cls = TimePolicy::classifyAttendance($shift, (string) $attendance->check_in_time, $checkOutTime);
 
         // Merge các chỉ số công vào meta (không có cột vật lý trên attendances).
         $existingMeta = [];
@@ -250,10 +285,6 @@ class AttendanceController extends Controller
                 $existingMeta = [];
             }
         }
-        $existingMeta['late_minutes'] = $cls['late_minutes'];
-        $existingMeta['early_leave_minutes'] = $cls['early_leave_minutes'];
-        $existingMeta['worked_hours'] = $cls['worked_hours'];
-
         // Ghi nhận xác minh lượt check-out (IP/vị trí/thiết bị) để đối chiếu.
         if ($request->filled('latitude') || $request->filled('longitude') || $request->ip()) {
             $vOut = AttendanceVerification::evaluate(
@@ -273,16 +304,19 @@ class AttendanceController extends Controller
         if ($attendance->check_in_time_2 && ! $attendance->check_out_time_2) {
             $attendance->update([
                 'check_out_time_2' => now()->toTimeString(),
-                'status' => $cls['status'],
                 'meta' => $metaJson,
             ]);
         } else {
             $attendance->update([
                 'check_out_time' => $checkOutTime,
-                'status' => $cls['status'],
                 'meta' => $metaJson,
             ]);
         }
+
+        $this->attendanceReconciliation->reconcile(
+            $attendance->fresh(),
+            (int) $request->attributes->get('auth_employee_id'),
+        );
 
         // Đi làm ngày nghỉ/lễ → tự đề xuất đơn tăng ca chờ duyệt.
         $otSuggested = \App\Support\OvertimeSuggester::suggest([
@@ -294,7 +328,9 @@ class AttendanceController extends Controller
             'shift' => $shift,
         ]);
 
-        return $this->ok($attendance->fresh(), $otSuggested
+        $fresh = $attendance->fresh(['employee:id,full_name,employee_code', 'shiftType', 'payrollReview']);
+
+        return $this->ok($this->decorateAttendance($fresh), $otSuggested
             ? 'Check-out thành công. Đã tạo đơn tăng ca (làm ngày nghỉ/lễ) chờ duyệt.'
             : 'Check-out thành công');
     }
@@ -308,6 +344,14 @@ class AttendanceController extends Controller
 
         if (! $attendance) {
             return $this->notFound();
+        }
+
+        if ($this->attendanceReconciliation->isClosedDate($attendance)) {
+            return response()->json([
+                'status' => 409,
+                'message' => 'Kỳ lương chứa ngày chấm công này đã chốt, không thể sửa trực tiếp.',
+                'data' => null,
+            ], 409);
         }
 
         $validator = Validator::make($request->all(), [
@@ -351,7 +395,21 @@ class AttendanceController extends Controller
 
         $attendance->update($payload);
 
-        return $this->ok($attendance->fresh()->load('employee:id,full_name,employee_code'), 'Cập nhật thành công');
+        try {
+            $this->attendanceReconciliation->reconcile(
+                $attendance->fresh(),
+                (int) $request->attributes->get('auth_employee_id'),
+            );
+        } catch (\RuntimeException $e) {
+            if ($e->getCode() === 409) {
+                return response()->json(['status' => 409, 'message' => $e->getMessage(), 'data' => null], 409);
+            }
+            throw $e;
+        }
+
+        $fresh = $attendance->fresh(['employee:id,full_name,employee_code', 'shiftType', 'payrollReview']);
+
+        return $this->ok($this->decorateAttendance($fresh), 'Cập nhật thành công');
     }
 
 
@@ -359,7 +417,7 @@ class AttendanceController extends Controller
     // OVERTIME REQUESTS
     // ═══════════════════════════════════════════════════════
 
-    public function overtimeIndex(Request $request): JsonResponse
+    public function overtimeIndex(Request $request, OvertimeReconciliationService $reconciliation): JsonResponse
     {
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
 
@@ -373,9 +431,22 @@ class AttendanceController extends Controller
         }
 
         $page = $query->paginate($perPage);
+        $cache = [];
+        foreach ($page->items() as $item) {
+            if (! in_array($item->status, ['APPROVED', 'ĐÃ_DUYỆT'], true)) {
+                continue;
+            }
+            $date = $item->work_date->toDateString();
+            $key = $item->employee_id.'|'.$date;
+            $cache[$key] ??= $reconciliation->reconcileDate((int) $item->tenant_id, (int) $item->employee_id, $date);
+        }
+        $items = OvertimeRequest::with(['employee:id,full_name,employee_code,department_id'])
+            ->whereIn('id', collect($page->items())->pluck('id'))
+            ->orderByDesc('id')
+            ->get();
 
         return $this->ok([
-            'items' => $page->items(),
+            'items' => $items,
             'pagination' => [
                 'current_page' => $page->currentPage(),
                 'per_page' => $page->perPage(),
@@ -390,9 +461,9 @@ class AttendanceController extends Controller
         $validator = Validator::make($request->all(), [
             'employee_id' => 'required|exists:employees,id',
             'work_date' => 'required|date',
-            'total_hours' => 'nullable|numeric|min:0.5',
-            'start_time' => 'nullable|string',
-            'end_time' => 'nullable|string',
+            'total_hours' => 'nullable|numeric|min:0.25',
+            'start_time' => ['required', 'regex:/^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$/'],
+            'end_time' => ['required', 'regex:/^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$/'],
             'reason' => 'nullable|string',
         ], [
             'employee_id.required' => 'Mã nhân viên là bắt buộc',
@@ -407,13 +478,21 @@ class AttendanceController extends Controller
         if (! TenantContext::ownsRow('employees', $employeeId)) {
             return $this->validationError(['employee_id' => ['Nhân viên không thuộc công ty hiện tại']]);
         }
+        $actorId = (int) $request->attributes->get('auth_employee_id');
+        if ($employeeId !== $actorId) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Nhân viên chỉ được gửi đơn tăng ca của chính mình. Quản lý hãy dùng ticket tăng ca.',
+                'data' => null,
+            ], 403);
+        }
 
         $start = $request->input('start_time');
         $end = $request->input('end_time');
         // Phân loại theo luật (loại ngày, giờ đêm, hệ số) + tính tổng giờ.
         $cls = TimePolicy::classifyOvertime($request->input('work_date'), $start, $end, $request->input('total_hours'));
-        if ($cls['total_hours'] < 0.5) {
-            return $this->validationError(['total_hours' => ['Tổng giờ tăng ca phải ≥ 0.5h (hoặc nhập giờ bắt đầu/kết thúc)']]);
+        if ($cls['total_hours'] * 60 < 15) {
+            return $this->validationError(['total_hours' => ['Khung tăng ca phải tối thiểu 15 phút.']]);
         }
 
         // Chặn vượt giới hạn OT theo luật (ngày/tháng/năm).
@@ -436,6 +515,7 @@ class AttendanceController extends Controller
                 'pay_factor' => $cls['pay_factor'],
                 'label' => $cls['label'],
                 'reason' => $request->input('reason'),
+                'kind' => 'EMPLOYEE_REQUEST',
             ],
             'created_at' => now(),
             'updated_at' => now(),
@@ -448,7 +528,11 @@ class AttendanceController extends Controller
         ], 201);
     }
 
-    public function approveOvertime(Request $request, int $id): JsonResponse
+    public function approveOvertime(
+        Request $request,
+        int $id,
+        OvertimeReconciliationService $reconciliation,
+    ): JsonResponse
     {
         $ot = OvertimeRequest::find($id);
 
@@ -499,16 +583,20 @@ class AttendanceController extends Controller
                 return;
             }
             if ($compOff && (bool) HrmConfig::get('overtime.comp_off_enabled', true)) {
-                $ot->update(['status' => 'APPROVED', 'meta' => $meta]);
-                $days = $this->creditCompOff($ot);
                 $meta['converted_to_comp_off'] = true;
-                $meta['comp_off_days'] = $days;
-                $ot->update(['meta' => $meta]);
-                $message = "Đã duyệt & quy đổi {$ot->total_hours}h tăng ca thành {$days} ngày nghỉ bù";
+                $meta['comp_off_pending_reconciliation'] = true;
+                $ot->update(['status' => 'APPROVED', 'meta' => $meta]);
+                $message = 'Đã duyệt OT; nghỉ bù sẽ được cấp theo phút chấm công thực tế đã đối soát.';
             } else {
                 $ot->update(['status' => 'APPROVED', 'meta' => $meta]);
             }
         });
+
+        $reconciliation->reconcileDate(
+            (int) $ot->tenant_id,
+            (int) $ot->employee_id,
+            $ot->work_date->toDateString(),
+        );
 
         \App\Support\Notifier::notify(
             (int) $ot->employee_id,
@@ -519,78 +607,6 @@ class AttendanceController extends Controller
         );
 
         return $this->ok($ot->fresh(), $message);
-    }
-
-    /**
-     * Cộng số dư NGHỈ BÙ (COMP_OFF) cho nhân viên từ một đơn OT đã duyệt.
-     * Số ngày bù = giờ OT × comp_off_rate / giờ chuẩn/ngày. Ghi ledger GRANT.
-     */
-    private function creditCompOff(OvertimeRequest $ot): float
-    {
-        $rate = (float) HrmConfig::get('overtime.comp_off_rate', 1.0);
-        $std = (float) HrmConfig::get('attendance.standard_hours_per_day', 8);
-        $days = $std > 0 ? round((float) $ot->total_hours * $rate / $std, 2) : 0.0;
-        if ($days <= 0) {
-            return 0.0;
-        }
-
-        $typeId = DB::table('leave_types')
-            ->where('tenant_id', TenantContext::id())
-            ->where('leave_type_code', 'COMP_OFF')
-            ->value('id');
-        if (! $typeId) {
-            return 0.0;
-        }
-
-        $year = (string) \Carbon\Carbon::parse($ot->work_date)->year;
-        $bal = DB::table('leave_balances')
-            ->where('tenant_id', TenantContext::id())
-            ->where('employee_id', $ot->employee_id)
-            ->where('leave_type_id', $typeId)
-            ->where('year', $year)
-            ->first();
-
-        $now = now();
-        $before = $bal ? (float) $bal->remaining_days : 0.0;
-
-        if ($bal) {
-            DB::table('leave_balances')->where('id', $bal->id)->update([
-                'total_days' => (float) $bal->total_days + $days,
-                'remaining_days' => (float) $bal->remaining_days + $days,
-                'updated_at' => $now,
-            ]);
-        } else {
-            DB::table('leave_balances')->insert(TenantContext::stamp([
-                'employee_id' => $ot->employee_id,
-                'leave_type_id' => $typeId,
-                'year' => $year,
-                'total_days' => $days,
-                'used_days' => 0,
-                'remaining_days' => $days,
-                'meta' => json_encode(['source' => 'comp_off'], JSON_UNESCAPED_UNICODE),
-                'tenant_id' => TenantContext::id(),
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]));
-        }
-
-        DB::table('leave_transactions')->insert(TenantContext::stamp([
-            'employee_id' => $ot->employee_id,
-            'leave_type_id' => $typeId,
-            'transaction_date' => $now->toDateString(),
-            'transaction_type' => 'GRANT',
-            'quantity' => $days,
-            'before_balance' => $before,
-            'after_balance' => $before + $days,
-            'reference_id' => $ot->id,
-            'reference_type' => 'OVERTIME',
-            'reason' => "Nghỉ bù từ tăng ca ngày {$ot->work_date} ({$ot->total_hours}h)",
-            'tenant_id' => TenantContext::id(),
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]));
-
-        return $days;
     }
 
     /**
@@ -884,6 +900,52 @@ class AttendanceController extends Controller
         $p = is_string($profile) ? json_decode($profile, true) : (array) $profile;
 
         return is_array($p) && ! empty($p['system_account']);
+    }
+
+    private function decorateAttendance(Attendance $attendance): Attendance
+    {
+        $meta = is_string($attendance->meta)
+            ? (json_decode($attendance->meta, true) ?: [])
+            : (array) ($attendance->meta ?? []);
+        foreach ([
+            'regular_worked_minutes',
+            'raw_presence_minutes',
+            'early_arrival_minutes',
+            'late_minutes',
+            'early_leave_minutes',
+            'after_shift_minutes',
+            'scheduled_minutes',
+            'worked_hours',
+            'shift_start',
+            'shift_end',
+        ] as $key) {
+            $attendance->setAttribute($key, $meta[$key] ?? 0);
+        }
+
+        return $attendance;
+    }
+
+    private function attendanceForCheckout(int $employeeId, string $today): ?Attendance
+    {
+        $todayAttendance = Attendance::where('employee_id', $employeeId)
+            ->where('work_date', $today)
+            ->first();
+        if ($todayAttendance) {
+            return $todayAttendance;
+        }
+
+        // CA3 belongs to the date on which the shift starts. A checkout after
+        // midnight must therefore close yesterday's still-open attendance row.
+        return Attendance::where('employee_id', $employeeId)
+            ->where('work_date', \Carbon\Carbon::parse($today)->subDay()->toDateString())
+            ->whereNotNull('check_in_time')
+            ->where(function ($query): void {
+                $query->whereNull('check_out_time')
+                    ->orWhere(function ($second): void {
+                        $second->whereNotNull('check_in_time_2')->whereNull('check_out_time_2');
+                    });
+            })
+            ->first();
     }
 
     /**

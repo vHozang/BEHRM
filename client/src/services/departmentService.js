@@ -17,6 +17,7 @@ const mapDepartment = (dept) => {
     is_active: ![false, 0, '0', 'f', 'false', 'INACTIVE'].includes(status),
     parent_id: meta.parent_id ?? meta.parent_department_id ?? dept.parent_id ?? null,
     manager_id: meta.manager_id || dept.manager_id || null,
+    unit_type: String(meta.unit_type || dept.unit_type || 'DEPARTMENT').toUpperCase(),
     cost_center: meta.cost_center || dept.cost_center || '',
     budget: meta.budget ?? dept.budget ?? null,
   };
@@ -43,6 +44,7 @@ export const departmentService = {
       department_name: data.name,
       manager_id: data.manager_id,
       parent_id: data.parent_id,
+      unit_type: data.unit_type || 'DEPARTMENT',
       status: data.is_active ?? true
     };
     const response = await axiosClient.post('/departments', payload);

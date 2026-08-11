@@ -32,6 +32,15 @@ let uploadDelayMinutes = normalizeUploadDelay(process.env.UPLOAD_DELAY_MINUTES |
 let isRunning = false;
 let isControlRunning = false;
 
+const PUNCH_STATE_BY_CODE = Object.freeze({
+  0: 'CHECK_IN',
+  1: 'CHECK_OUT',
+  2: 'BREAK_OUT',
+  3: 'BREAK_IN',
+  4: 'OVERTIME_IN',
+  5: 'OVERTIME_OUT',
+});
+
 function loadState() {
   try {
     const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
@@ -56,9 +65,11 @@ async function readAndForward({ force = false } = {}) {
   if (isRunning) return { ok: false, busy: true, processed: 0, error: 'Bridge đang đọc máy' };
 
   isRunning = true;
-  const ZKLib = require('node-zklib');
-  const zk = new ZKLib(DEVICE_IP, DEVICE_PORT, 10000, 4000);
+  let zk = null;
   try {
+    installNodeZkLibRecordDecoder();
+    const ZKLib = require('node-zklib');
+    zk = new ZKLib(DEVICE_IP, DEVICE_PORT, 10000, 4000);
     await zk.createSocket();
     const res = await zk.getAttendances();
     const rows = (res && res.data) || [];
@@ -73,6 +84,8 @@ async function readAndForward({ force = false } = {}) {
         recorded_at_ms: recordTime.getTime(),
         device_id: DEVICE_ID,
         verify_method: mapVerify(row.verifyMode ?? row.type),
+        punch_state: mapPunchState(row.attendanceState ?? row.state),
+        device_state: normalizeDeviceState(row.attendanceState ?? row.state),
       };
     });
 
@@ -139,7 +152,7 @@ async function readAndForward({ force = false } = {}) {
     console.error('Lỗi đọc/gửi:', message);
     return { ok: false, processed: 0, error: message };
   } finally {
-    try { await zk.disconnect(); } catch (_) {}
+    try { await zk?.disconnect(); } catch (_) {}
     isRunning = false;
   }
 }
@@ -215,9 +228,69 @@ function errorMessage(error) {
 
 function mapVerify(value) {
   // ZKTeco verify mode: 1=fingerprint, 15=face, 2/3=card/password (tuỳ máy).
-  if (value === 15 || value === 'face') return 'face';
-  if (value === 2 || value === 3 || value === 'card') return 'card';
+  const code = Number(value);
+  const name = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (code === 15 || name === 'face') return 'face';
+  if (code === 2 || code === 3 || name === 'card') return 'card';
   return 'fingerprint';
+}
+
+function mapPunchState(value) {
+  if (typeof value === 'string') {
+    const normalized = value.trim().toUpperCase().replace(/[\s-]+/g, '_');
+    const aliases = {
+      CHECKIN: 'CHECK_IN',
+      IN: 'CHECK_IN',
+      CHECKOUT: 'CHECK_OUT',
+      OUT: 'CHECK_OUT',
+      BREAKOUT: 'BREAK_OUT',
+      BREAKIN: 'BREAK_IN',
+      OVERTIMEIN: 'OVERTIME_IN',
+      OVERTIMEOUT: 'OVERTIME_OUT',
+      OT_IN: 'OVERTIME_IN',
+      OT_OUT: 'OVERTIME_OUT',
+    };
+    if (Object.values(PUNCH_STATE_BY_CODE).includes(normalized)) return normalized;
+    if (aliases[normalized]) return aliases[normalized];
+  }
+
+  const code = Number(value);
+  return Number.isInteger(code) && PUNCH_STATE_BY_CODE[code]
+    ? PUNCH_STATE_BY_CODE[code]
+    : 'AUTO';
+}
+
+function normalizeDeviceState(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const code = Number(value);
+  return Number.isInteger(code) ? code : String(value).slice(0, 50);
+}
+
+/**
+ * node-zklib 1.3 đọc đúng mã nhân viên và thời gian nhưng bỏ hai byte trạng
+ * thái. Giữ nguyên decoder ổn định của thư viện và chỉ bổ sung các byte ZKTeco
+ * chuẩn: verify mode ở offset 26, trạng thái vào/ra ở offset 31.
+ */
+function enrichRecordData40(recordData, record = {}) {
+  if (!Buffer.isBuffer(recordData) || recordData.length < 32) return record;
+  return {
+    ...record,
+    verifyMode: recordData.readUIntLE(26, 1),
+    attendanceState: recordData.readUIntLE(31, 1),
+  };
+}
+
+function installNodeZkLibRecordDecoder() {
+  const utils = require('node-zklib/utils');
+  if (utils.decodeRecordData40?.hrmStateAware === true) return;
+
+  const originalDecoder = utils.decodeRecordData40;
+  const stateAwareDecoder = (recordData) => enrichRecordData40(
+    recordData,
+    originalDecoder(recordData)
+  );
+  stateAwareDecoder.hrmStateAware = true;
+  utils.decodeRecordData40 = stateAwareDecoder;
 }
 
 function formatLocalDateTime(value) {
@@ -256,7 +329,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  enrichRecordData40,
   formatLocalDateTime,
+  installNodeZkLibRecordDecoder,
   isEligibleForAutomaticUpload,
+  mapPunchState,
+  mapVerify,
   normalizeUploadDelay,
 };

@@ -94,6 +94,11 @@ class LegalEntityController extends Controller
         $data = $validator->validated();
         $data['status'] = $data['status'] ?? 'ACTIVE';
 
+        $headError = $this->validateHeadEmployee($data['meta']['head_employee_id'] ?? null, null);
+        if ($headError) {
+            return $this->validationError(['head_employee_id' => [$headError]]);
+        }
+
         // tenant_id is auto-stamped by the BelongsToTenant trait on create.
         $entity = LegalEntity::create($data);
 
@@ -147,6 +152,15 @@ class LegalEntityController extends Controller
 
         $allowed = ['name', 'code', 'tax_code', 'address', 'status', 'meta'];
         $data = collect($request->all())->only($allowed)->toArray();
+
+        if (array_key_exists('meta', $data)) {
+            $incomingMeta = is_array($data['meta']) ? $data['meta'] : [];
+            $headError = $this->validateHeadEmployee($incomingMeta['head_employee_id'] ?? null, $entity->id);
+            if ($headError) {
+                return $this->validationError(['head_employee_id' => [$headError]]);
+            }
+            $data['meta'] = array_merge(is_array($entity->meta) ? $entity->meta : [], $incomingMeta);
+        }
 
         $entity->update($data);
 
@@ -220,5 +234,32 @@ class LegalEntityController extends Controller
             'message' => 'Dữ liệu không hợp lệ',
             'data' => ['errors' => $errors],
         ], 422);
+    }
+
+    private function validateHeadEmployee(mixed $employeeId, ?int $entityId): ?string
+    {
+        if ($employeeId === null || $employeeId === '') {
+            return null;
+        }
+        if (! $entityId) {
+            return 'Hãy lưu chi nhánh trước, sau đó chọn người đứng đầu thuộc chi nhánh này';
+        }
+
+        $employee = DB::table('employees')
+            ->where('id', (int) $employeeId)
+            ->where('tenant_id', TenantContext::id())
+            ->first(['id', 'legal_entity_id', 'status', 'profile']);
+        if (! $employee || (int) $employee->legal_entity_id !== $entityId) {
+            return 'Người đứng đầu phải thuộc đúng chi nhánh';
+        }
+        if (! in_array(strtoupper((string) $employee->status), ['ACTIVE', 'PROBATION'], true)) {
+            return 'Người đứng đầu phải đang làm việc hoặc thử việc';
+        }
+        $profile = is_string($employee->profile ?? null) ? json_decode($employee->profile, true) : (array) ($employee->profile ?? []);
+        if (in_array($profile['system_account'] ?? false, [true, 1, '1', 't', 'true'], true)) {
+            return 'Không thể chọn tài khoản hệ thống làm người đứng đầu';
+        }
+
+        return null;
     }
 }

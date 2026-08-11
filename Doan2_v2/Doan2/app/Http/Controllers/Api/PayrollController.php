@@ -300,6 +300,9 @@ class PayrollController extends Controller
         $readiness = $readinessService->analyze($period);
         $allowPartial = $request->boolean('allow_partial');
         $issueService->syncPayrollIssues($period, $readiness, $submitterId, $allowPartial);
+        if (! empty($readiness['has_non_bypassable_issues'])) {
+            return $this->mandatoryReadinessRequired($readiness);
+        }
         if ($readiness['fail_count'] > 0 && ! $allowPartial) {
             return $this->partialConfirmationRequired($readiness);
         }
@@ -391,6 +394,9 @@ class PayrollController extends Controller
         $readiness = $readinessService->analyze($period);
         $allowPartial = $request->boolean('allow_partial');
         $issueService->syncPayrollIssues($period, $readiness, $approverId, $allowPartial);
+        if (! empty($readiness['has_non_bypassable_issues'])) {
+            return $this->mandatoryReadinessRequired($readiness);
+        }
         if ($readiness['fail_count'] > 0 && ! $allowPartial) {
             return $this->partialConfirmationRequired($readiness);
         }
@@ -795,6 +801,20 @@ class PayrollController extends Controller
             'data' => [
                 'errors' => [
                     'allow_partial' => ['Kiểm tra danh sách lỗi và xác nhận phát hành một phần.'],
+                ],
+                'readiness' => $readiness,
+            ],
+        ], 422);
+    }
+
+    private function mandatoryReadinessRequired(array $readiness): JsonResponse
+    {
+        return response()->json([
+            'status' => 422,
+            'message' => 'Kỳ lương còn review chấm công hoặc lỗi OT bắt buộc xử lý.',
+            'data' => [
+                'errors' => [
+                    'readiness' => ['Không thể bỏ qua các lỗi này bằng allow_partial.'],
                 ],
                 'readiness' => $readiness,
             ],

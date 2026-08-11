@@ -112,6 +112,19 @@ class SettingsController extends Controller
                 ['key' => 'attendance.standard_days_per_week', 'label' => 'Số ngày làm chuẩn / tuần', 'type' => 'int'],
                 ['key' => 'attendance.weekly_rest_weekday', 'label' => 'Ngày nghỉ hằng tuần (0=CN..6=T7)', 'type' => 'int'],
                 ['key' => 'attendance.late_grace_minutes', 'label' => 'Dung sai đi trễ (phút)', 'type' => 'int'],
+                ['key' => 'attendance.early_leave_grace_minutes', 'label' => 'Ngưỡng về sớm tạo review (phút)', 'type' => 'int'],
+                [
+                    'key' => 'attendance.violation_default_percent',
+                    'label' => 'Mức khấu trừ mặc định khi trễ/về sớm (cần kiểm tra nội quy và pháp luật)',
+                    'type' => 'select',
+                    'options' => [
+                        ['value' => 0, 'label' => '0% - chỉ cảnh báo'],
+                        ['value' => 25, 'label' => '25% lương ngày'],
+                        ['value' => 50, 'label' => '50% lương ngày'],
+                        ['value' => 75, 'label' => '75% lương ngày'],
+                        ['value' => 100, 'label' => '100% lương ngày'],
+                    ],
+                ],
                 ['key' => 'attendance.device_upload_delay_minutes', 'label' => 'Thời gian chờ tự động tải dữ liệu máy chấm công (phút)', 'type' => 'int', 'min' => 1, 'max' => 1440],
                 ['key' => 'attendance.half_day_hours', 'label' => 'Ngưỡng nửa công (giờ)', 'type' => 'float'],
                 ['key' => 'overtime.daily_max_hours', 'label' => 'OT tối đa / ngày (Đ.107: ≤4h)', 'type' => 'float'],
@@ -215,6 +228,11 @@ class SettingsController extends Controller
             if ($key === 'display.money_group_separator' && ! in_array($value, ['.', ','], true)) {
                 return $this->validationError([
                     $key => ['Dấu phân cách tiền chỉ có thể là dấu chấm hoặc dấu phẩy'],
+                ]);
+            }
+            if ($key === 'attendance.violation_default_percent' && ! in_array((int) $value, [0, 25, 50, 75, 100], true)) {
+                return $this->validationError([
+                    $key => ['Mức khấu trừ chỉ được chọn 0, 25, 50, 75 hoặc 100%.'],
                 ]);
             }
             HrmConfig::set($key, $value);

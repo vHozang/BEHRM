@@ -261,7 +261,7 @@ class ShiftCoverageController extends Controller
                 'start_time' => $start,
                 'end_time' => $end,
                 'total_hours' => $cls['total_hours'],
-                'status' => 'PENDING',
+                'status' => 'APPROVED',
                 'meta' => [
                     'day_type' => $cls['day_type'],
                     'multiplier' => $cls['multiplier'],
@@ -270,6 +270,9 @@ class ShiftCoverageController extends Controller
                     'label' => $cls['label'],
                     'reason' => 'Phủ ca thay người vắng (coverage #' . $req->id . ')',
                     'source' => 'shift-coverage',
+                    'kind' => 'MANAGER_TICKET',
+                    'accepted_by_employee' => true,
+                    'accepted_at' => now()->toIso8601String(),
                     'coverage_request_id' => $req->id,
                 ],
                 'created_at' => now(),
@@ -291,7 +294,7 @@ class ShiftCoverageController extends Controller
             $req->created_by,
             'Đã nhận phủ ca',
             $coverName . ' đã nhận phủ ca ngày ' . $this->dmy($req->work_date)
-                . ' (' . $cls['total_hours'] . 'h) — đơn tăng ca đã được tạo, chờ duyệt.',
+                . ' (' . $cls['total_hours'] . 'h) — ticket tăng ca đã được chấp nhận và có hiệu lực.',
             'shift_coverage_request', $req->id, ['priority' => 'normal'], (int) $offer->employee_id
         );
 
@@ -299,7 +302,7 @@ class ShiftCoverageController extends Controller
             'offer' => DB::table('shift_coverage_offers')->find($id),
             'overtime_request_id' => $otId,
             'classification' => $cls['label'],
-        ], 'Đã nhận phủ ca — đơn tăng ca (' . $cls['label'] . ') đã được tạo, chờ duyệt');
+        ], 'Đã nhận phủ ca — ticket tăng ca (' . $cls['label'] . ') đã được duyệt tự động');
     }
 
     /** POST /shift-coverage-requests/{id}/cancel — QL huỷ yêu cầu phủ ca. */

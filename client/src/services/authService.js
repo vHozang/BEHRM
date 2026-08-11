@@ -53,7 +53,10 @@ export const authService = {
       if (normalizedUser) {
         localStorage.setItem('user_email', normalizedUser.company_email || '');
         // Admin shell if full access or any admin module is granted; else portal.
-        const isAdminShell = access.full === true || (Array.isArray(access.modules) && access.modules.length > 0);
+        const capabilities = Array.isArray(access.capabilities) ? access.capabilities : [];
+        const isAdminShell = access.full === true
+          || (Array.isArray(access.modules) && access.modules.length > 0)
+          || capabilities.some(capability => ['org_chart.view', 'payslip_issues.view'].includes(capability));
         localStorage.setItem('user_role', isAdminShell ? 'admin' : 'employee');
       }
     }
@@ -177,7 +180,11 @@ export const authService = {
   // Check if current user is admin
   isAdmin: () => {
     const role = localStorage.getItem('user_role');
-    return role === 'admin';
+    const access = authService.getAccess();
+    return role === 'admin'
+      || access.full
+      || access.modules.length > 0
+      || access.capabilities.some(capability => ['org_chart.view', 'payslip_issues.view'].includes(capability));
   },
 
   // Check if current user is employee (non-admin)

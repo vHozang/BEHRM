@@ -6,6 +6,7 @@ use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Attendance extends Model
 {
@@ -29,5 +30,15 @@ class Attendance extends Model
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);
+    }
+
+    public function payrollReview(): HasOne
+    {
+        return $this->hasOne(AttendancePayrollReview::class);
+    }
+
+    public function shiftType(): BelongsTo
+    {
+        return $this->belongsTo(ShiftType::class);
     }
 }

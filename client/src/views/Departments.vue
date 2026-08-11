@@ -70,7 +70,7 @@
               <IconBuilding class="w-4 h-4 flex-shrink-0" />
               <div class="flex-1 min-w-0">
                 <p class="font-medium text-sm truncate">{{ row.dept.name }}</p>
-                <p class="text-xs text-muted-foreground truncate">{{ row.dept.code }} · {{ getDeptEmployeeCount(row.dept.id) }} NV · {{ formatCurrency(deptCostOf(row.dept.id)) }}</p>
+                <p class="text-xs text-muted-foreground truncate">{{ unitTypeLabel(row.dept.unit_type) }} · {{ row.dept.code }} · {{ getDeptEmployeeCount(row.dept.id) }} NV · {{ formatCurrency(deptCostOf(row.dept.id)) }}</p>
               </div>
               <span v-if="isOverBudget(row.dept)" class="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" title="Vượt ngân sách"></span>
               <BaseBadge size="sm" :variant="row.dept.is_active !== false ? 'success' : 'default'">
@@ -137,6 +137,10 @@
                 <BaseBadge :variant="selectedDept.is_active !== false ? 'success' : 'default'">
                   {{ selectedDept.is_active !== false ? 'Hoạt động' : 'Tạm dừng' }}
                 </BaseBadge>
+              </div>
+              <div>
+                <p class="text-sm text-muted-foreground">Loại đơn vị</p>
+                <p class="font-medium">{{ unitTypeLabel(selectedDept.unit_type) }}</p>
               </div>
               <div>
                 <p class="text-sm text-muted-foreground">Phòng ban cha</p>
@@ -312,6 +316,11 @@
           placeholder="VD: Phòng Công nghệ thông tin"
         />
         <BaseSelect
+          v-model="form.unit_type"
+          label="Loại đơn vị"
+          :options="unitTypeOptions"
+        />
+        <BaseSelect
           v-model="form.parent_id"
           label="Phòng ban cha"
           :options="parentOptions"
@@ -360,6 +369,7 @@ import BaseModal from '../components/BaseModal.vue';
 import IconBuilding from '../components/IconBuilding.vue';
 import { departmentService } from '../services/departmentService';
 import { employeeService } from '../services/employeeService';
+import { authService } from '../services/authService';
 import { settingsService } from '../services/settingsService';
 import { useNotificationStore } from '../stores/notificationStore';
 import { downloadCsv } from '../utils/csv';
@@ -407,14 +417,23 @@ const form = ref({
   name: '',
   parent_id: '',
   manager_id: '',
+  unit_type: 'DEPARTMENT',
   cost_center: '',
   budget: '',
   is_active: 'true'
 });
 
+const formLegalEntityId = computed(() => {
+  if (isEditing.value) return departments.value.find(department => Number(department.id) === Number(editingId.value))?.legal_entity_id || null;
+  return authService.getUser()?.legal_entity_id || null;
+});
+
 const managerOptions = computed(() => [
   { label: 'Chưa gán', value: '' },
-  ...allEmployees.value.map((e) => ({ label: `${e.full_name}${e.employee_code ? ` (${e.employee_code})` : ''}`, value: String(e.id) }))
+  ...allEmployees.value
+    .filter(employee => !formLegalEntityId.value || Number(employee.legal_entity_id) === Number(formLegalEntityId.value))
+    .filter(employee => ['active', 'probation'].includes(employee.employment_status))
+    .map((e) => ({ label: `${e.full_name}${e.employee_code ? ` (${e.employee_code})` : ''}`, value: String(e.id) }))
 ]);
 
 // Employees eligible to be assigned as PRIMARY here: those not already in this dept.
@@ -521,10 +540,22 @@ const statusOptions = [
   { label: 'Tạm dừng', value: 'false' }
 ];
 
+const unitTypeOptions = [
+  { label: 'Phòng ban', value: 'DEPARTMENT' },
+  { label: 'Phân xưởng', value: 'WORKSHOP' },
+  { label: 'Tổ / Bộ phận', value: 'TEAM' }
+];
+const unitTypeLabel = type => ({
+  DEPARTMENT: 'Phòng ban',
+  WORKSHOP: 'Phân xưởng',
+  TEAM: 'Tổ / Bộ phận'
+}[String(type || 'DEPARTMENT').toUpperCase()] || 'Phòng ban');
+
 const parentOptions = computed(() => {
   const options = [{ label: 'Không có', value: '' }];
   departments.value.forEach(d => {
-    if (!isEditing.value || d.id !== editingId.value) {
+    if ((!formLegalEntityId.value || Number(d.legal_entity_id) === Number(formLegalEntityId.value))
+        && (!isEditing.value || d.id !== editingId.value)) {
       options.push({ label: d.name, value: String(d.id) });
     }
   });
@@ -615,6 +646,7 @@ const resetForm = () => {
     name: '',
     parent_id: '',
     manager_id: '',
+    unit_type: 'DEPARTMENT',
     cost_center: '',
     budget: '',
     is_active: 'true'
@@ -640,6 +672,7 @@ const openEditModal = (dept) => {
     name: dept.name || '',
     parent_id: dept.parent_id ? String(dept.parent_id) : '',
     manager_id: dept.manager_id ? String(dept.manager_id) : '',
+    unit_type: dept.unit_type || 'DEPARTMENT',
     cost_center: dept.cost_center || '',
     budget: dept.budget ?? '',
     is_active: dept.is_active !== false ? 'true' : 'false'
@@ -911,6 +944,7 @@ const handleSubmit = async () => {
       name: form.value.name,
       parent_id: form.value.parent_id ? parseInt(form.value.parent_id) : null,
       manager_id: form.value.manager_id ? parseInt(form.value.manager_id) : null,
+      unit_type: form.value.unit_type || 'DEPARTMENT',
       cost_center: form.value.cost_center || null,
       budget: form.value.budget === '' || form.value.budget === null ? null : Number(form.value.budget),
       is_active: form.value.is_active === 'true' ? 1 : 0

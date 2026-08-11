@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\LegalEntity;
 use App\Repositories\OrganizationChartRepository;
+use App\Services\LeavePolicyService;
 use App\Support\AccessControl;
 use App\Support\EmployeeStatus;
 use App\Support\TenantContext;
@@ -13,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -46,7 +48,7 @@ class EmployeeController extends Controller
         // Mã NV tự sinh: tiếp nối số NVxxxx lớn nhất hiện có.
         $maxCode = (int) DB::table('employees')->where('tenant_id', $tenantId)
             ->where('employee_code', '~', '^NV[0-9]+$')
-            ->selectRaw("max(substring(employee_code from 3)::int) m")->value('m');
+            ->selectRaw('max(substring(employee_code from 3)::int) m')->value('m');
 
         $deptCache = [];
         $posCache = [];
@@ -178,9 +180,9 @@ class EmployeeController extends Controller
         // Cấp số dư phép năm hiện tại cho người mới (idempotent).
         if ($created > 0) {
             try {
-                app(\App\Services\LeavePolicyService::class)->recomputeBalances($tenantId, (int) now()->year);
+                app(LeavePolicyService::class)->recomputeBalances($tenantId, (int) now()->year);
             } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('Import: recomputeBalances failed: '.$e->getMessage());
+                Log::warning('Import: recomputeBalances failed: '.$e->getMessage());
             }
         }
 
@@ -211,8 +213,8 @@ class EmployeeController extends Controller
     /** Bỏ dấu tiếng Việt để sinh mã code từ tên. */
     private function viSlug(string $s): string
     {
-        $from = ['à','á','ả','ã','ạ','ă','ằ','ắ','ẳ','ẵ','ặ','â','ầ','ấ','ẩ','ẫ','ậ','đ','è','é','ẻ','ẽ','ẹ','ê','ề','ế','ể','ễ','ệ','ì','í','ỉ','ĩ','ị','ò','ó','ỏ','õ','ọ','ô','ồ','ố','ổ','ỗ','ộ','ơ','ờ','ớ','ở','ỡ','ợ','ù','ú','ủ','ũ','ụ','ư','ừ','ứ','ử','ữ','ự','ỳ','ý','ỷ','ỹ','ỵ'];
-        $to = ['a','a','a','a','a','a','a','a','a','a','a','a','a','a','a','a','a','d','e','e','e','e','e','e','e','e','e','e','e','i','i','i','i','i','o','o','o','o','o','o','o','o','o','o','o','o','o','o','o','o','o','u','u','u','u','u','u','u','u','u','u','u','y','y','y','y','y'];
+        $from = ['à', 'á', 'ả', 'ã', 'ạ', 'ă', 'ằ', 'ắ', 'ẳ', 'ẵ', 'ặ', 'â', 'ầ', 'ấ', 'ẩ', 'ẫ', 'ậ', 'đ', 'è', 'é', 'ẻ', 'ẽ', 'ẹ', 'ê', 'ề', 'ế', 'ể', 'ễ', 'ệ', 'ì', 'í', 'ỉ', 'ĩ', 'ị', 'ò', 'ó', 'ỏ', 'õ', 'ọ', 'ô', 'ồ', 'ố', 'ổ', 'ỗ', 'ộ', 'ơ', 'ờ', 'ớ', 'ở', 'ỡ', 'ợ', 'ù', 'ú', 'ủ', 'ũ', 'ụ', 'ư', 'ừ', 'ứ', 'ử', 'ữ', 'ự', 'ỳ', 'ý', 'ỷ', 'ỹ', 'ỵ'];
+        $to = ['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'd', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'e', 'i', 'i', 'i', 'i', 'i', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'y', 'y', 'y', 'y', 'y'];
 
         return str_replace($from, $to, mb_strtolower($s));
     }
@@ -280,11 +282,13 @@ class EmployeeController extends Controller
     }
 
     /** Lightweight data for selectors; never returns profile or salary fields. */
-    public function lookup(): JsonResponse
+    public function lookup(Request $request): JsonResponse
     {
         $employees = Employee::query()
-            ->select(['id', 'employee_code', 'full_name', 'status', 'department_id', 'position_id', 'manager_id'])
+            ->with(['position:id,position_code,position_name'])
+            ->select(['id', 'employee_code', 'full_name', 'status', 'legal_entity_id', 'department_id', 'position_id', 'manager_id'])
             ->where(fn ($query) => $query->whereNull('profile->system_account')->orWhere('profile->system_account', false))
+            ->when($request->filled('legal_entity_id'), fn ($query) => $query->where('legal_entity_id', (int) $request->query('legal_entity_id')))
             ->orderBy('full_name')
             ->get();
 

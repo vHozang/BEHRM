@@ -181,10 +181,17 @@ return [
         // Ngày nghỉ hằng tuần: 0=CN .. 6=T7 (Đ.111: ≥ 1 ngày/tuần).
         'weekly_rest_weekday' => 0,
         // Dung sai đi trễ (phút) trước khi tính LATE.
-        'late_grace_minutes' => 5,
+        'late_grace_minutes' => 15,
+        // A violation starts at exactly this many minutes.
+        'early_leave_grace_minutes' => 15,
+        // Legal-safe default: HR must explicitly approve any non-zero deduction.
+        'violation_default_percent' => 0,
         // Bridge giữ punch mới trong khoảng này trước khi tự động tải lên HRM.
         // HR có thể dùng "Đồng bộ ngay" để bỏ qua thời gian chờ cho một lượt.
         'device_upload_delay_minutes' => env('HRM_ATT_DEVICE_UPLOAD_DELAY_MINUTES', 15),
+        // Chỉ dùng cho thiết bị/import cũ không gửi trạng thái Check-In/Out:
+        // punch thứ hai quá gần punch đầu được coi là quét lặp, không phải giờ ra.
+        'device_auto_checkout_min_minutes' => env('HRM_ATT_DEVICE_AUTO_CHECKOUT_MIN_MINUTES', 60),
         // Ngưỡng giờ để tính nửa công.
         'half_day_hours' => 4,
 

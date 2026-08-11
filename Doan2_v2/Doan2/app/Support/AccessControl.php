@@ -31,13 +31,16 @@ class AccessControl
 
     public const CAPABILITIES = [
         'payslip_issues.view' => 'Xem danh sách phiếu lương chưa phát hành',
+        'org_chart.view' => 'Xem sơ đồ tổ chức theo đơn vị',
     ];
 
     private const ROLE_CAPABILITIES = [
-        'ADMIN' => ['payslip_issues.view'],
-        'TENANT_ADMIN' => ['payslip_issues.view'],
+        'ADMIN' => ['payslip_issues.view', 'org_chart.view'],
+        'TENANT_ADMIN' => ['payslip_issues.view', 'org_chart.view'],
         'ACCOUNTANT' => ['payslip_issues.view'],
-        'HR' => ['payslip_issues.view'],
+        'HR' => ['payslip_issues.view', 'org_chart.view'],
+        'MANAGER' => ['org_chart.view'],
+        'DEPT_HEAD' => ['org_chart.view'],
     ];
 
     /**
@@ -46,7 +49,7 @@ class AccessControl
      * used across modules).
      */
     private const PATH_MODULE = [
-        'employees' => 'hr', 'organization' => 'hr', 'departments' => 'hr',
+        'employees' => 'hr', 'organization' => 'hr', 'organization-chart' => 'hr', 'departments' => 'hr',
         'contracts' => 'hr', 'contract-types' => 'hr', 'contract-templates' => 'hr',
         'contract-change-logs' => 'hr', 'contract-histories' => 'hr',
         'personnel-decisions' => 'hr',   // quyết định nhân sự: tăng lương/điều chuyển/thôi việc
@@ -66,7 +69,7 @@ class AccessControl
         'shift-schedules' => 'time', 'shift-schedule-details' => 'time',
         'shift-roster' => 'time', 'shift-swaps' => 'time',
         'shift-coverage-requests' => 'time', 'shift-coverage-offers' => 'time',
-        'overtime-requests' => 'time', 'leave-requests' => 'time',
+        'overtime-requests' => 'time', 'overtime-tickets' => 'time', 'leave-requests' => 'time',
         'leave-types' => 'time', 'leave-balances' => 'time',
         'leave-advancement-config' => 'time', 'leave-advancement-requests' => 'time',
         'leave-carryover-tracking' => 'time', 'leave-transactions' => 'time',
@@ -134,7 +137,7 @@ class AccessControl
      */
     public static function enabledModules(): array
     {
-        $set = \App\Support\HrmConfig::get('modules.enabled', null);
+        $set = HrmConfig::get('modules.enabled', null);
         if (! is_array($set)) {
             return array_keys(self::MODULES); // unset → everything enabled
         }
@@ -322,6 +325,10 @@ class AccessControl
 
         if ($segment === 'payroll' && str_starts_with(strtolower($path), 'payroll/payslip-issues')) {
             return in_array('payslip_issues.view', $access['capabilities'] ?? [], true);
+        }
+
+        if ($segment === 'organization-chart') {
+            return in_array('org_chart.view', $access['capabilities'] ?? [], true);
         }
 
         // The management dashboard contains tenant-wide aggregates. It is for

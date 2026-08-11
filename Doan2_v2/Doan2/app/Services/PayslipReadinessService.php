@@ -10,6 +10,8 @@ class PayslipReadinessService
 {
     private const TOLERANCE = 1.0;
 
+    public function __construct(private readonly OvertimeReconciliationService $overtimeReconciliation) {}
+
     public function analyze(SalaryPeriod $period): array
     {
         $employees = $this->eligibleEmployees($period);
@@ -27,10 +29,52 @@ class PayslipReadinessService
 
         $ready = [];
         $issues = [];
+        $unresolvedReviews = DB::table('attendance_payroll_reviews')
+            ->where('tenant_id', $period->tenant_id)
+            ->whereBetween('work_date', [$period->start_date, $period->end_date])
+            ->whereIn('status', ['PENDING', 'STALE'])
+            ->get()
+            ->groupBy('employee_id');
+        $overtimeEmployeeIds = DB::table('overtime_requests')
+            ->where('tenant_id', $period->tenant_id)
+            ->whereBetween('work_date', [$period->start_date, $period->end_date])
+            ->whereIn('status', ['APPROVED', 'ĐÃ_DUYỆT'])
+            ->pluck('employee_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->flip();
 
         foreach ($employees as $employee) {
             $detail = $details->get($employee->id);
             $employeeIssues = $this->validateEmployee($employee, $detail, $breakdowns);
+            foreach ($unresolvedReviews->get($employee->id, collect()) as $review) {
+                $employeeIssues[] = $this->issue(
+                    $employee,
+                    $detail,
+                    'ATTENDANCE_REVIEW_'.$review->status,
+                    'Review đi trễ/về sớm ngày '.\Carbon\Carbon::parse($review->work_date)->format('d/m/Y').' chưa được HR xử lý.',
+                    'HR cần chọn mức khấu trừ hoặc miễn trước khi trình/chốt kỳ.',
+                    false,
+                );
+            }
+            if ($overtimeEmployeeIds->has((int) $employee->id)) {
+                $overtime = $this->overtimeReconciliation->reconcileRange(
+                    (int) $period->tenant_id,
+                    (int) $employee->id,
+                    $period->start_date->toDateString(),
+                    $period->end_date->toDateString(),
+                );
+                foreach ($overtime['blocking_issues'] as $otIssue) {
+                    $employeeIssues[] = $this->issue(
+                        $employee,
+                        $detail,
+                        $otIssue['issue_code'],
+                        $otIssue['message'].' Ngày '.\Carbon\Carbon::parse($otIssue['work_date'])->format('d/m/Y').'.',
+                        'Bổ sung/correct punch hoặc hủy đơn OT sai trước khi chốt kỳ.',
+                        false,
+                    );
+                }
+            }
 
             if ($employeeIssues === []) {
                 $ready[] = [
@@ -56,6 +100,8 @@ class PayslipReadinessService
             'pass_count' => count($ready),
             'fail_count' => $failedEmployees,
             'can_publish_partially' => count($ready) > 0,
+            'non_bypassable_count' => collect($issues)->where('can_override', false)->count(),
+            'has_non_bypassable_issues' => collect($issues)->contains(fn (array $issue) => ($issue['can_override'] ?? true) === false),
             'ready' => $ready,
             'issues' => $issues,
         ];
@@ -165,6 +211,20 @@ class PayslipReadinessService
             );
         }
 
+        $meta = is_string($detail->meta ?? null)
+            ? (json_decode($detail->meta, true) ?: [])
+            : (array) ($detail->meta ?? []);
+        if (! empty($meta['attendance_deduction_exceeds_net'])) {
+            $issues[] = $this->issue(
+                $employee,
+                $detail,
+                'ATTENDANCE_DEDUCTION_EXCEEDS_NET',
+                'Khấu trừ đi trễ/về sớm vượt thực nhận trước khoản khấu trừ này.',
+                'HR cần giảm tỷ lệ review; hệ thống không tự giới hạn số tiền.',
+                false,
+            );
+        }
+
         return $issues;
     }
 
@@ -173,7 +233,8 @@ class PayslipReadinessService
         ?object $detail,
         string $code,
         string $message,
-        string $hint
+        string $hint,
+        bool $canOverride = true,
     ): array {
         return [
             'employee_id' => (int) $employee->id,
@@ -185,6 +246,7 @@ class PayslipReadinessService
             'issue_code' => $code,
             'message' => $message,
             'resolution_hint' => $hint,
+            'can_override' => $canOverride,
         ];
     }
 
@@ -255,6 +317,9 @@ class PayslipReadinessService
         $analysis['pass_count'] = count($analysis['ready']);
         $analysis['fail_count'] = collect($analysis['issues'])->pluck('employee_id')->unique()->count();
         $analysis['can_publish_partially'] = $analysis['pass_count'] > 0;
+        $analysis['non_bypassable_count'] = collect($analysis['issues'])->where('can_override', false)->count();
+        $analysis['has_non_bypassable_issues'] = collect($analysis['issues'])
+            ->contains(fn (array $issue) => ($issue['can_override'] ?? true) === false);
 
         return $analysis;
     }

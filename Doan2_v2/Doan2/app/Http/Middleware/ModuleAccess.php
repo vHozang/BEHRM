@@ -197,6 +197,24 @@ class ModuleAccess
             return false;
         }
 
+        // Manager OT tickets: employees may accept/decline only tickets that
+        // belong to them. Creating or cancelling tickets remains a management
+        // action guarded by the time module and the controller's role checks.
+        if ($segment === 'overtime-tickets' && str_contains($path, '/respond')) {
+            $parts = explode('/', ltrim($path, '/'));
+            $ticketId = $parts[1] ?? '';
+            if (is_numeric($ticketId)) {
+                $ownerId = (int) \Illuminate\Support\Facades\DB::table('overtime_requests')
+                    ->where('id', (int) $ticketId)
+                    ->whereRaw("meta->>'kind' = 'MANAGER_TICKET'")
+                    ->value('employee_id');
+
+                return $ownerId === $employeeId;
+            }
+
+            return false;
+        }
+
         // Shift swaps (đổi ca với đồng nghiệp): an employee may LIST their own
         // swaps (as requester or target) and FILE a new swap where they are the
         // requester. Approve/reject are management actions (need the time module).

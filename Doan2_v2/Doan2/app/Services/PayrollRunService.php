@@ -250,13 +250,13 @@ class PayrollRunService
                 $otBuckets = [];           // [hệ số => giờ] tách thường/CN/lễ cho phiếu ADMS
                 $otNightHours = 0.0;       // giờ đêm hưởng phụ trội
                 foreach ($otRows as $ot) {
-                    $h = (float) ($ot->total_hours ?? 0);
-                    if ($h <= 0) {
-                        continue;
-                    }
                     $otMeta = [];
                     if (! empty($ot->meta)) {
                         $otMeta = is_string($ot->meta) ? (json_decode($ot->meta, true) ?: []) : (array) $ot->meta;
+                    }
+                    $h = max(0, (float) ($otMeta['payable_overtime_minutes'] ?? 0) / 60);
+                    if ($h <= 0) {
+                        continue;
                     }
                     $factor = $otMeta['pay_factor'] ?? $otMeta['multiplier'] ?? $defaultOtMultiplier;
                     $factor = (float) $factor;
@@ -363,9 +363,30 @@ class PayrollRunService
                 $taxableIncome = max(0.0, round($grossTaxable - $empInsurance['total'] - $relief, 4));
                 $pit = $this->tax->pit($taxableIncome);
 
-                // net floored at 0 — an employee is never paid a negative salary.
-                // Khấu trừ cố định trừ Ở ĐÂY (sau thuế).
-                $net = round(max(0.0, $gross - $empInsurance['total'] - $pit['tax'] - $fixedDeductions), 4);
+                $preAttendanceDeductionNet = round($gross - $empInsurance['total'] - $pit['tax'] - $fixedDeductions, 4);
+                $standardDaysForViolation = $attendance && (float) ($attendance->standard_days ?? 0) > 0
+                    ? (float) $attendance->standard_days
+                    : 0.0;
+                $attendanceViolationDeduction = 0.0;
+                $attendanceReviewRows = collect();
+                if ($standardDaysForViolation > 0) {
+                    $attendanceReviewRows = DB::table('attendance_payroll_reviews')
+                        ->where('tenant_id', $tenantId)
+                        ->where('employee_id', $employeeId)
+                        ->whereBetween('work_date', [$periodStart, $periodEnd])
+                        ->whereIn('status', ['APPROVED', 'APPLIED'])
+                        ->whereNotNull('approved_percent')
+                        ->get(['id', 'approved_percent']);
+                    foreach ($attendanceReviewRows as $review) {
+                        $attendanceViolationDeduction += ($baseSalary / $standardDaysForViolation)
+                            * ((float) $review->approved_percent / 100);
+                    }
+                    $attendanceViolationDeduction = round($attendanceViolationDeduction, 4);
+                }
+
+                // This deduction is deliberately after insurance and PIT. Do not
+                // clamp a negative result: readiness must expose it for HR to fix.
+                $net = round($preAttendanceDeductionNet - $attendanceViolationDeduction, 4);
 
                 $meta = [
                     'engine' => 'vn-payroll-v1',
@@ -390,6 +411,10 @@ class PayrollRunService
                     'piece_rate_pay' => $pieceRatePay,
                     'bonus_total' => $bonusTotal,
                     'fixed_deduction_total' => $fixedDeductions,
+                    'pre_attendance_deduction_net' => $preAttendanceDeductionNet,
+                    'attendance_violation_deduction' => $attendanceViolationDeduction,
+                    'attendance_review_ids' => $attendanceReviewRows->pluck('id')->map(fn ($id) => (int) $id)->all(),
+                    'attendance_deduction_exceeds_net' => $attendanceViolationDeduction > $preAttendanceDeductionNet,
                     'gross' => $gross,
                     'gross_taxable' => $grossTaxable,
                     'allowances_taxable' => $allowancesTaxable,
@@ -463,6 +488,7 @@ class PayrollRunService
                     ['DEDUCTION', 'INS_BHTN', 'BHTN (1%)', $empInsurance['bhtn']],
                     ['DEDUCTION', 'PIT', 'Thuế TNCN', $pit['tax']],
                     ['DEDUCTION', 'FIXED_DEDUCTION', 'Khấu trừ cố định', $fixedDeductions],
+                    ['DEDUCTION', 'ATTENDANCE_VIOLATION', 'Khấu trừ đi trễ/về sớm', $attendanceViolationDeduction],
                     ['INFO', 'INS_BASE', 'Nền đóng BHXH (lương + PC tính chất lương)', $insuranceBase],
                     ['INFO', 'WORK_DAYS', 'Số ngày công thực tế (chuẩn '.(float) ($attendance?->standard_days ?? 26).')', (float) ($attendance?->actual_work_days ?? 0)],
                     ['INFO', 'RELIEF', 'Giảm trừ gia cảnh ('.$dependentCount.' người phụ thuộc)', $relief],
@@ -477,6 +503,12 @@ class PayrollRunService
                 $totals['insurance'] += $empInsurance['total'];
                 $totals['pit'] += $pit['tax'];
                 $totals['net'] += $net;
+                if ($attendanceReviewRows->isNotEmpty()) {
+                    DB::table('attendance_payroll_reviews')
+                        ->whereIn('id', $attendanceReviewRows->pluck('id')->all())
+                        ->where('status', 'APPROVED')
+                        ->update(['status' => 'APPLIED', 'applied_at' => $now, 'updated_at' => $now]);
+                }
                 $processed++;
             }
         });

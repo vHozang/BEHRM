@@ -38,7 +38,10 @@ jobs:
           npm run test:management-ui
           npm run test:money-input
           npm run test:payslips
+          npm run test:attendance-overtime
           npm run test:user-role
+          npm run test:shift-roster
+          npm run test:organization-chart
           npm run build
 
       - name: Run attendance bridge checks

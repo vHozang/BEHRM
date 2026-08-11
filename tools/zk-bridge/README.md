@@ -40,8 +40,11 @@ Bridge đọc máy mỗi 30s (đổi qua `POLL_MS`) nhưng chỉ tự gửi punc
 chờ do Admin đặt tại **Cấu hình nghiệp vụ → Công & Tăng ca**. Mặc định là 15 phút.
 HR có nút **Đồng bộ ngay** ở màn hình Chấm công; bridge hỏi lệnh từ VPS mỗi 5s
 (`CONTROL_POLL_MS`) và bỏ qua thời gian chờ cho riêng lượt đó. Laptop không cần mở
-cổng inbound. Backend tự quyết định **check-in / check-out**, phân loại trễ/sớm theo
-ca và ghi vào `attendances` (`meta.source = device`).
+cổng inbound. Bridge đọc cả trạng thái **Check-In / Check-Out** đã chọn trên máy;
+backend dùng đúng trạng thái đó, phân loại trễ/sớm theo ca và ghi lịch sử punch
+vào `attendances.meta.device_events`. Với thiết bị/import cũ không có trạng thái,
+backend mới dùng cơ chế suy luận tương thích và bỏ qua lần quét lặp dưới 60 phút
+(đổi bằng `HRM_ATT_DEVICE_AUTO_CHECKOUT_MIN_MINUTES`).
 
 Bridge lưu mốc đã gửi trong `.zk-bridge-state.json`, nên khởi động lại không đọc lại
 toàn bộ lịch sử. Khi lắp máy thật vào production lần đầu, đặt
@@ -66,18 +69,23 @@ có quyền Administrator. Hai file cấu hình này không được commit vào
 ## Nếu máy KHÔNG nói chuyện được qua 4370 (một số đời Wise Eye khoá SDK)
 
 Dùng phần mềm **Wise Eye On 39** đi kèm máy để **xuất Excel/CSV** log chấm công, rồi
-gửi cùng định dạng punch lên API (mỗi dòng = `{enroll_id, timestamp, verify_method}`):
+gửi cùng định dạng punch lên API (mỗi dòng gồm mã nhân viên, thời gian, phương
+thức xác thực và trạng thái vào/ra):
 
 ```bash
 curl -X POST http://localhost/api/v1/internal/attendance/device-punch \
   -H "x-device-token: dev_token_cua_may" \
   -H "Content-Type: application/json" \
-  -d '{"punches":[{"enroll_id":"2","timestamp":"2026-06-27 08:03:00","verify_method":"fingerprint"}]}'
+  -d '{"punches":[{"enroll_id":"2","timestamp":"2026-06-27 08:03:00","verify_method":"fingerprint","punch_state":"CHECK_IN","device_state":0}]}'
 ```
 
 ## Ghi chú
 
 - `verify_method`: `fingerprint` (vân tay) | `face` (khuôn mặt) | `card` (thẻ) — chỉ để hiển thị/đối soát.
+- `punch_state`: `CHECK_IN`, `CHECK_OUT`, `BREAK_OUT`, `BREAK_IN`, `OVERTIME_IN`
+  hoặc `OVERTIME_OUT`. Mã ZKTeco gốc tương ứng là `0..5` trong `device_state`.
+- Nếu dùng Wise Eye On 39 để xuất file, cần ánh xạ đúng cột trạng thái; không gán
+  mọi dòng là `AUTO` nếu file có sẵn thông tin Vào/Ra.
 - Gửi lại punch cũ là an toàn: backend cập nhật giờ ra muộn nhất, không tạo trùng.
 - Máy đặt ở Docker/host khác mạng với máy chấm công thì chạy bridge ngay tại máy trong LAN
   rồi trỏ `API_BASE` về địa chỉ backend.

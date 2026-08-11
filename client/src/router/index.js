@@ -339,7 +339,19 @@ router.beforeEach((to, from, next) => {
     const token = localStorage.getItem('auth_token');
     const isAuthenticated = !!token;
     const userRole = localStorage.getItem('user_role') || 'employee';
-    const isAdmin = userRole === 'admin';
+    let earlyAccess = { full: false, modules: [], capabilities: [] };
+    try {
+      const stored = JSON.parse(localStorage.getItem('access') || '{}');
+      earlyAccess = {
+        full: stored.full === true,
+        modules: Array.isArray(stored.modules) ? stored.modules : [],
+        capabilities: Array.isArray(stored.capabilities) ? stored.capabilities : []
+      };
+    } catch {}
+    const isAdmin = userRole === 'admin'
+      || earlyAccess.full
+      || earlyAccess.modules.length > 0
+      || earlyAccess.capabilities.some(capability => ['org_chart.view', 'payslip_issues.view'].includes(capability));
 
     if (to.meta.requiresAuth && !isAuthenticated) {
       next('/login');
@@ -347,7 +359,7 @@ router.beforeEach((to, from, next) => {
     }
     
     if (to.path === '/login' && isAuthenticated) {
-      next(isAdmin ? '/' : '/employee-portal');
+      next(isAdmin ? (earlyAccess.capabilities.includes('org_chart.view') && !earlyAccess.full && earlyAccess.modules.length === 0 ? '/organization-chart' : '/') : '/employee-portal');
       return;
     }
     
@@ -408,7 +420,7 @@ router.beforeEach((to, from, next) => {
       } catch {}
       const canUseDashboard = access.full || access.modules.some(m => ['hr', 'time', 'recruitment'].includes(m));
       if (to.path === '/' && !canUseDashboard) {
-        next(access.modules.includes('payroll') ? '/salaries' : '/employee-portal');
+        next(access.capabilities.includes('org_chart.view') ? '/organization-chart' : (access.modules.includes('payroll') ? '/salaries' : '/employee-portal'));
         return;
       }
       const match = ROUTE_MODULE.find(([p]) => to.path === p || to.path.startsWith(p + '/'));
@@ -416,8 +428,10 @@ router.beforeEach((to, from, next) => {
         const mod = match[1];
         const issuesOnlySalary = to.path === '/salaries'
           && access.capabilities.includes('payslip_issues.view');
-        const roleAllows = access.full || access.modules.includes(mod) || issuesOnlySalary;
-        const enabledOk = issuesOnlySalary || mod === 'settings' || access.enabled === null || access.enabled.includes(mod);
+        const organizationOnly = to.path === '/organization-chart'
+          && access.capabilities.includes('org_chart.view');
+        const roleAllows = access.full || access.modules.includes(mod) || issuesOnlySalary || organizationOnly;
+        const enabledOk = issuesOnlySalary || organizationOnly || mod === 'settings' || access.enabled === null || access.enabled.includes(mod);
         if (!roleAllows || !enabledOk) {
           next('/');
           return;

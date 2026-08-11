@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Services\AttendanceTimeCalculator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -212,87 +213,12 @@ class TimePolicy
      */
     public static function classifyAttendance($shift, ?string $checkIn, ?string $checkOut): array
     {
-        $grace = (int) HrmConfig::get('attendance.late_grace_minutes', 5);
-
-        // Không có giờ vào → vắng.
-        if (! $checkIn) {
-            return ['status' => 'ABSENT', 'late_minutes' => 0, 'early_leave_minutes' => 0, 'worked_hours' => 0.0];
-        }
-
-        $ci = self::toMin(substr($checkIn, 0, 5));
-        $co = $checkOut ? self::toMin(substr($checkOut, 0, 5)) : null;
-        if ($co !== null && $co < $ci) {
-            $co += 1440; // ca qua đêm
-        }
-
-        $late = 0;
-        $early = 0;
-        $breakMin = 0;
-
-        $start = $shift->start_time ?? (is_array($shift) ? ($shift['start_time'] ?? null) : null);
-        $end = $shift->end_time ?? (is_array($shift) ? ($shift['end_time'] ?? null) : null);
-        $meta = $shift->meta ?? (is_array($shift) ? ($shift['meta'] ?? null) : null);
-        if (is_string($meta)) {
-            $meta = json_decode($meta, true) ?: [];
-        }
-        $breakMin = (int) ($meta['break_minutes'] ?? 0);
-
-        // CA GÃY (split shift): meta.segments = [{start,end},...] (nhiều khung giờ).
-        // Giờ vào = đầu khung đầu, giờ ra = cuối khung cuối; nghỉ giữa = tổng
-        // khoảng trống giữa các khung (thay cho break_minutes đơn).
-        $segments = is_array($meta) ? ($meta['segments'] ?? null) : null;
-        if (is_array($segments) && count($segments) >= 1) {
-            $mins = [];
-            foreach ($segments as $seg) {
-                $s = self::toMin(substr((string) ($seg['start'] ?? '00:00'), 0, 5));
-                $e = self::toMin(substr((string) ($seg['end'] ?? '00:00'), 0, 5));
-                if ($e <= $s) {
-                    $e += 1440;
-                }
-                $mins[] = [$s, $e];
-            }
-            usort($mins, fn ($a, $b) => $a[0] <=> $b[0]);
-            $start = sprintf('%02d:%02d', intdiv($mins[0][0] % 1440, 60), $mins[0][0] % 60);
-            $lastEnd = end($mins)[1];
-            // Tổng nghỉ giữa các khung.
-            $breakMin = 0;
-            for ($k = 1; $k < count($mins); $k++) {
-                $breakMin += max(0, $mins[$k][0] - $mins[$k - 1][1]);
-            }
-            // Dùng lastEnd (phút tuyệt đối) cho tính về sớm bên dưới.
-            $end = sprintf('%02d:%02d', intdiv($lastEnd % 1440, 60), $lastEnd % 60);
-        }
-
-        if ($start) {
-            $late = max(0, $ci - self::toMin(substr((string) $start, 0, 5)));
-        }
-        if ($end && $co !== null) {
-            $shiftEnd = self::toMin(substr((string) $end, 0, 5));
-            if ($shiftEnd <= self::toMin(substr((string) $start, 0, 5))) {
-                $shiftEnd += 1440; // ca qua đêm / khung cuối qua nửa đêm
-            }
-            $early = max(0, $shiftEnd - $co);
-        }
-
-        $workedHours = 0.0;
-        if ($co !== null) {
-            $workedHours = round(max(0, ($co - $ci) - $breakMin) / 60, 2);
-        }
-
-        // Ưu tiên trạng thái: vắng > trễ > về sớm > đúng giờ (áp dung sai).
-        $status = 'ON_TIME';
-        if ($late > $grace) {
-            $status = 'LATE';
-        } elseif ($early > $grace) {
-            $status = 'EARLY_LEAVE';
-        }
-
-        return [
-            'status' => $status,
-            'late_minutes' => $late,
-            'early_leave_minutes' => $early,
-            'worked_hours' => $workedHours,
-        ];
+        return (new AttendanceTimeCalculator())->calculate(
+            $shift,
+            '2000-01-01',
+            $checkIn,
+            $checkOut,
+        );
     }
 
     /**
