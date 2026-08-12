@@ -6,6 +6,8 @@ const mapIncoming = (item) => {
     ...item,
     work_date: item.effective_date || item.work_date,
     shift_id: item.shift_type_id || item.shift_id,
+    employee_name: item.employee_name || item.full_name || item.employee?.full_name || '',
+    employee_code: item.employee_code || item.employee?.employee_code || '',
   };
 };
 

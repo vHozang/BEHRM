@@ -869,7 +869,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 import BaseButton from '../components/BaseButton.vue';
 import BaseCard from '../components/BaseCard.vue';
@@ -880,6 +880,7 @@ import BaseSkeleton from '../components/BaseSkeleton.vue';
 import { employeeService } from '../services/employeeService';
 import { leaveService } from '../services/leaveService';
 import { attendanceService } from '../services/attendanceService';
+import { attendanceRealtimeService } from '../services/attendanceRealtimeService';
 import { workScheduleService } from '../services/workScheduleService';
 import { workShiftService } from '../services/workShiftService';
 import { shiftCoverageService } from '../services/shiftCoverageService';
@@ -1313,15 +1314,15 @@ const loadEmployeeInfo = async (userId) => {
 const loadAttendanceData = async (empId) => {
   try {
     const [year, month] = attendanceMonth.value.split('-').map(Number);
-    const response = await attendanceService.getAll({
+    const response = await attendanceService.getCursorPage({
       employee_id: empId,
       month: month,
-      year: year
+      year: year,
+      limit: 50,
     });
     const raw = Array.isArray(response) ? response
       : (response?.items || response?.data?.items || response?.data || []);
-    // Backend hiện KHÔNG lọc theo month/year (không phải cột) → trả toàn bộ lịch sử.
-    // Lọc đúng tháng đang chọn ở client để "Tiến độ tháng này" + lịch sử khớp nhãn.
+    // Keep a defensive client-side month check for backwards-compatible servers.
     const records = raw.filter(r => {
       const d = String(r.attendance_date || r.work_date || r.record_date || '').slice(0, 7);
       return d === `${year}-${String(month).padStart(2, '0')}`;
@@ -1821,8 +1822,15 @@ onMounted(async () => {
         loadChangeRequests(empId),
         loadMyContracts(empId),
       ]);
+      attendanceRealtimeService.connect((event) => {
+        if (event.reset_required || Number(event.employee_id) === Number(empId)) loadAttendanceData(empId);
+      }).catch(() => attendanceRealtimeService.startFallback((event) => {
+        if (event.reset_required || Number(event.employee_id) === Number(empId)) loadAttendanceData(empId);
+      }));
     }
   }
   pageLoading.value = false;
 });
+
+onUnmounted(() => attendanceRealtimeService.disconnect());
 </script>

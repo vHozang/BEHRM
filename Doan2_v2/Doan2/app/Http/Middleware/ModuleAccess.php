@@ -257,7 +257,40 @@ class ModuleAccess
         }
 
         if (! in_array($segment, self::SELF_SERVICE, true)) {
+            if ($segment === 'attendance' && (
+                in_array($path, ['attendance/overview', 'attendance/changes'], true)
+                || str_starts_with($path, 'attendance/realtime/')
+            )) {
+                return true;
+            }
+            if ($segment === 'attendance' && str_starts_with($path, 'attendance/timesheet')) {
+                $method = strtoupper($request->method());
+                if ($method === 'GET' && preg_match('#^attendance/timesheet/exports/([^/]+)(?:/download)?$#', $path, $matches)) {
+                    $export = \Illuminate\Support\Facades\DB::table('attendance_timesheet_exports')
+                        ->where('id', $matches[1])
+                        ->first(['requested_by', 'filters']);
+                    $filters = is_string($export?->filters) ? json_decode($export->filters, true) : (array) ($export?->filters ?? []);
+
+                    return (int) ($export?->requested_by ?? 0) === $employeeId
+                        && (int) ($filters['employee_id'] ?? 0) === $employeeId;
+                }
+
+                $target = $request->input('employee_id', $request->query('employee_id'));
+
+                return $target !== null && (int) $target === $employeeId;
+            }
             return false;
+        }
+
+        if ($segment === 'attendances' && strtoupper($request->method()) === 'GET') {
+            $parts = explode('/', ltrim($path, '/'));
+            $attendanceId = $parts[1] ?? '';
+            if (is_numeric($attendanceId)) {
+                $ownerId = (int) \Illuminate\Support\Facades\DB::table('attendances')
+                    ->where('id', (int) $attendanceId)->value('employee_id');
+
+                return $ownerId === $employeeId;
+            }
         }
 
         $target = $request->input('employee_id', $request->query('employee_id'));

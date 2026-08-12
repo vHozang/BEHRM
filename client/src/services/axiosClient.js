@@ -93,8 +93,15 @@ axiosClient.interceptors.response.use(
       
       // Case 1: GenericResourceController format (has items array and pagination object)
       if (payload && typeof payload === 'object' && Array.isArray(payload.items)) {
+        // Keep the complete envelope for cursor-based APIs. Existing callers
+        // still receive the normalized plain array on response.data.
+        response.pageData = {
+          ...payload,
+          items: payload.items.map(normalizeItem),
+        };
         response.data = payload.items.map(normalizeItem);
         response.pagination = payload.pagination || null;
+        response.summary = payload.summary || null;
       }
       // Case 2: Standard Laravel Paginator format (has current_page and data array)
       else if (payload && typeof payload === 'object' && payload.current_page !== undefined && Array.isArray(payload.data)) {

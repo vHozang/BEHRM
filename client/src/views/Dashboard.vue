@@ -330,7 +330,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, h } from 'vue';
+import { ref, onMounted, onUnmounted, computed, h } from 'vue';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Filler } from 'chart.js';
 import { Line, Doughnut } from 'vue-chartjs';
 import BaseCard from '../components/BaseCard.vue';
@@ -344,6 +344,7 @@ import IconClock from '../components/IconClock.vue';
 import { activityLogService } from '../services/activityLogService';
 import { dashboardService } from '../services/dashboardService';
 import { authService } from '../services/authService';
+import { useAttendanceStore } from '../stores/attendanceStore';
 import { useI18n } from '../i18n';
 
 const { t, locale } = useI18n();
@@ -358,6 +359,9 @@ const serverStats = ref(null);
 const canManageHr = computed(() => authService.canAccessModule('hr'));
 const canRecruit = computed(() => authService.canAccessModule('recruitment'));
 const canViewActivities = computed(() => authService.canAccessModule('settings'));
+const canViewAttendance = computed(() => authService.canAccessModule('time'));
+const attendanceStore = useAttendanceStore();
+let attendancePrefetchHandle = null;
 
 // ----- Greeting + date (hero) -----
 const userName = computed(() => {
@@ -923,7 +927,30 @@ async function loadDashboard() {
   }
 }
 
-onMounted(loadDashboard);
+const prefetchAttendance = () => {
+  if (!canViewAttendance.value) return;
+  const now = new Date();
+  const params = {
+    from: new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('en-CA'),
+    to: new Date(now.getFullYear(), now.getMonth() + 1, 0).toLocaleDateString('en-CA'),
+  };
+  attendanceStore.prefetchFirstPage(params).catch(() => {});
+};
+
+onMounted(() => {
+  loadDashboard();
+  if ('requestIdleCallback' in window) {
+    attendancePrefetchHandle = window.requestIdleCallback(prefetchAttendance, { timeout: 2500 });
+  } else {
+    attendancePrefetchHandle = window.setTimeout(prefetchAttendance, 1200);
+  }
+});
+
+onUnmounted(() => {
+  if (attendancePrefetchHandle === null) return;
+  if ('cancelIdleCallback' in window) window.cancelIdleCallback(attendancePrefetchHandle);
+  else window.clearTimeout(attendancePrefetchHandle);
+});
 </script>
 
 <style scoped>

@@ -7,6 +7,8 @@ use App\Http\Controllers\Api\AttendanceDeviceController;
 use App\Http\Controllers\Api\AttendanceDeviceSyncController;
 use App\Http\Controllers\Api\AttendancePayrollReviewController;
 use App\Http\Controllers\Api\AttendanceRegularizationController;
+use App\Http\Controllers\Api\AttendanceRealtimeController;
+use App\Http\Controllers\Api\AttendanceTimesheetExportController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ContractController;
@@ -231,6 +233,10 @@ Route::prefix('v1')->group(function (): void {
 
         // ─── Attendance & Shifts ─────────────────────────
         Route::get('/attendances', [AttendanceController::class, 'index']);
+        Route::get('/attendance/overview', [AttendanceController::class, 'overview']);
+        Route::get('/attendance/changes', [AttendanceController::class, 'changes']);
+        Route::get('/attendance/realtime/config', [AttendanceRealtimeController::class, 'config']);
+        Route::post('/attendance/realtime/auth', [AttendanceRealtimeController::class, 'authenticate']);
         Route::get('/attendances/{id}', [AttendanceController::class, 'show'])->whereNumber('id');
         Route::patch('/attendances/{id}', [AttendanceController::class, 'update'])->whereNumber('id');
         Route::post('/attendances/check-in', [AttendanceController::class, 'checkIn']);
@@ -249,6 +255,9 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/overtime-requests/usage', [AttendanceController::class, 'overtimeUsage']);
         Route::post('/attendance/summary/run', [AttendanceController::class, 'summaryRun']);
         Route::get('/attendance/timesheet', [AttendanceController::class, 'timesheet']);
+        Route::post('/attendance/timesheet/exports', [AttendanceTimesheetExportController::class, 'store']);
+        Route::get('/attendance/timesheet/exports/{id}', [AttendanceTimesheetExportController::class, 'show']);
+        Route::get('/attendance/timesheet/exports/{id}/download', [AttendanceTimesheetExportController::class, 'download']);
         Route::post('/attendance/recompute', [AttendanceController::class, 'recompute']);
         Route::get('/attendance/payroll-reviews', [AttendancePayrollReviewController::class, 'index']);
         Route::post('/attendance/payroll-reviews/{id}/decision', [AttendancePayrollReviewController::class, 'decision'])->whereNumber('id');

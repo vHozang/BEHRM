@@ -34,7 +34,7 @@
             <BaseBadge :variant="statusVariant(r.status)">{{ statusText(r.status) }}</BaseBadge>
           </div>
           <p class="text-sm text-muted-foreground mt-1">
-            Người vắng: <strong>{{ r.absent_employee_id ? empName(r.absent_employee_id) : '— (thiếu người)' }}</strong>
+            Người vắng: <strong>{{ r.absent_employee_id ? (r.absent_employee_name || empName(r.absent_employee_id)) : '— (thiếu người)' }}</strong>
             · Lý do: {{ reasonText(r.reason) }}
           </p>
           <p class="text-sm mt-1">
@@ -51,7 +51,7 @@
       <div v-if="r.offers && r.offers.length" class="mt-3 border-t border-border pt-3 space-y-1.5">
         <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Chuỗi giao ca</p>
         <div v-for="o in r.offers" :key="o.id" class="flex items-center justify-between text-sm">
-          <span>{{ empName(o.employee_id) }} · {{ (o.start_time||'').slice(0,5) }}–{{ (o.end_time||'').slice(0,5) }} ({{ Number(o.hours) }}h)</span>
+          <span>{{ o.employee_name || empName(o.employee_id) }} · {{ (o.start_time||'').slice(0,5) }}–{{ (o.end_time||'').slice(0,5) }} ({{ Number(o.hours) }}h)</span>
           <BaseBadge :variant="offerVariant(o.status)">{{ offerText(o.status) }}</BaseBadge>
         </div>
       </div>
@@ -68,13 +68,13 @@
             <option v-for="s in shiftTypes" :key="s.id" :value="s.id">{{ s.shift_code }} ({{ (s.start_time||'').slice(0,5) }}–{{ (s.end_time||'').slice(0,5) }})</option>
           </select>
         </div>
-        <div>
-          <label class="block text-sm font-medium text-foreground mb-1">Người vắng (nếu có)</label>
-          <select v-model="form.absent_employee_id" class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground">
-            <option value="">-- Không xác định / thiếu người --</option>
-            <option v-for="e in employees" :key="e.id" :value="e.id">{{ e.full_name }}</option>
-          </select>
-        </div>
+        <RemoteEmployeeSelect
+          v-model="form.absent_employee_id"
+          label="Người vắng (nếu có)"
+          placeholder="Không xác định hoặc nhập mã/tên"
+          :initial-label="employeeLabel(form.absent_employee_id)"
+          @select="rememberEmployee"
+        />
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-sm font-medium text-foreground mb-1">Lý do</label>
@@ -102,13 +102,12 @@
           <p>{{ shiftCode(offerTarget.shift_type_id) }} · {{ formatDate(offerTarget.work_date) }} · còn thiếu
             <strong>{{ Number(offerTarget.hours_needed) - Number(offerTarget.hours_covered) }}h</strong></p>
         </div>
-        <div>
-          <label class="block text-sm font-medium text-foreground mb-1">Người phủ ca <span class="text-destructive">*</span></label>
-          <select v-model="offerForm.employee_id" class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground">
-            <option value="">-- Chọn nhân viên --</option>
-            <option v-for="e in offerableEmployees" :key="e.id" :value="e.id">{{ e.full_name }}</option>
-          </select>
-        </div>
+        <RemoteEmployeeSelect
+          v-model="offerForm.employee_id"
+          label="Người phủ ca"
+          :initial-label="employeeLabel(offerForm.employee_id)"
+          @select="rememberEmployee"
+        />
         <div class="grid grid-cols-2 gap-3">
           <BaseInput v-model="offerForm.start_time" type="time" label="Từ giờ" />
           <BaseInput v-model="offerForm.end_time" type="time" label="Đến giờ" />
@@ -131,9 +130,9 @@ import BaseCard from '../components/BaseCard.vue';
 import BaseModal from '../components/BaseModal.vue';
 import BaseInput from '../components/BaseInput.vue';
 import BaseBadge from '../components/BaseBadge.vue';
+import RemoteEmployeeSelect from '../components/RemoteEmployeeSelect.vue';
 import { shiftCoverageService } from '../services/shiftCoverageService';
 import { workShiftService } from '../services/workShiftService';
-import { employeeService } from '../services/employeeService';
 import { useToast } from '../composables/useToast';
 
 const toast = useToast();
@@ -148,6 +147,17 @@ const empMap = ref({});
 const shiftMap = ref({});
 const empName = (id) => empMap.value[id] || `NV #${id}`;
 const shiftCode = (id) => shiftMap.value[id] || `Ca #${id}`;
+const employeeLabel = (id) => {
+  const employee = employees.value.find(item => String(item.id) === String(id));
+  return employee ? `${employee.employee_code || ''} · ${employee.full_name}`.replace(/^ · /, '') : '';
+};
+const rememberEmployee = (employee) => {
+  if (!employee) return;
+  const index = employees.value.findIndex(item => String(item.id) === String(employee.id));
+  if (index >= 0) employees.value[index] = employee;
+  else employees.value.push(employee);
+  empMap.value[employee.id] = employee.full_name;
+};
 
 const formatDate = (d) => (d ? new Date(d).toLocaleDateString('vi-VN') : '-');
 const reasonText = (r) => ({ no_show: 'Vắng không báo', sick: 'Ốm/đột xuất', leave: 'Nghỉ phép', extra_demand: 'Cần thêm người' }[r] || r || '-');
@@ -194,9 +204,6 @@ const showOffer = ref(false);
 const offerTarget = ref(null);
 const offerForm = ref({ employee_id: '', start_time: '', end_time: '' });
 const offerError = ref('');
-const offerableEmployees = computed(() =>
-  employees.value.filter((e) => String(e.id) !== String(offerTarget.value?.absent_employee_id))
-);
 const openOffer = (r) => {
   offerTarget.value = r;
   offerForm.value = { employee_id: '', start_time: '', end_time: '' };
@@ -241,6 +248,14 @@ const load = async () => {
   try {
     const params = statusFilter.value ? { status: statusFilter.value } : {};
     requests.value = await shiftCoverageService.getRequests(params);
+    requests.value.forEach((request) => {
+      if (request.absent_employee_id && request.absent_employee_name) {
+        empMap.value[request.absent_employee_id] = request.absent_employee_name;
+      }
+      (request.offers || []).forEach((offer) => {
+        if (offer.employee_id && offer.employee_name) empMap.value[offer.employee_id] = offer.employee_name;
+      });
+    });
   } catch (e) {
     console.error('load coverage', e);
     requests.value = [];
@@ -250,14 +265,9 @@ const load = async () => {
 };
 
 onMounted(async () => {
-  const [shiftsRes, empRes] = await Promise.all([
-    workShiftService.getAll().catch(() => []),
-    employeeService.getLookup().catch(() => []),
-  ]);
+  const shiftsRes = await workShiftService.getAll().catch(() => []);
   shiftTypes.value = shiftsRes?.data || shiftsRes || [];
   shiftTypes.value.forEach((s) => { shiftMap.value[s.id] = s.shift_code; });
-  employees.value = empRes?.data || empRes || [];
-  employees.value.forEach((e) => { empMap.value[e.id] = e.full_name; });
   await load();
 });
 </script>

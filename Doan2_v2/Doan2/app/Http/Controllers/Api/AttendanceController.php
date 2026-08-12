@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\OvertimeRequest;
+use App\Services\AttendanceChangePublisher;
+use App\Services\AttendanceReadService;
 use App\Services\AttendanceSummaryService;
 use App\Services\AttendanceReconciliationService;
 use App\Services\OvertimeReconciliationService;
@@ -25,53 +27,21 @@ class AttendanceController extends Controller
     public function __construct(
         private readonly ShiftResolver $shiftResolver,
         private readonly AttendanceReconciliationService $attendanceReconciliation,
+        private readonly AttendanceReadService $attendanceRead,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
+        $this->scopeSelfServiceRequest($request);
+        $legalEntityId = $this->requestedLegalEntity($request);
+        if ($request->query('pagination') === 'cursor') {
+            return $this->ok($this->attendanceRead->cursorPage($request, $legalEntityId), 'Attendances list');
+        }
+
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
-
-        $query = Attendance::with([
-            'employee:id,full_name,employee_code',
-            'shiftType:id,shift_code,shift_name,start_time,end_time,meta',
-            'payrollReview:id,attendance_id,late_minutes,early_leave_minutes,default_percent,approved_percent,status,decision_note,decided_by,decided_at,stale_at,applied_at',
-        ])
+        $query = $this->attendanceRead->filteredQuery($request, $legalEntityId, true)
+            ->orderByDesc('work_date')
             ->orderByDesc('id');
-
-        foreach (['employee_id', 'work_date', 'status', 'shift_type_id'] as $field) {
-            if ($request->filled($field)) {
-                $query->where($field, $request->query($field));
-            }
-        }
-
-        if ($request->filled('from')) {
-            $query->whereDate('work_date', '>=', $request->query('from'));
-        }
-
-        if ($request->filled('to')) {
-            $query->whereDate('work_date', '<=', $request->query('to'));
-        }
-
-        // Lọc theo THÁNG (month + year): giới hạn work_date trong tháng đó. FE
-        // gửi month/year để chỉ lấy 1 tháng — trước đây backend bỏ qua nên FE phải
-        // tải TOÀN BỘ lịch sử (nhiều trang → chậm, tưởng lỗi khi công nhân nhiều
-        // bản ghi). year không kèm month → lọc cả năm.
-        $year = (int) $request->query('year', 0);
-        $month = (int) $request->query('month', 0);
-        if ($year >= 2000 && $year <= 2100) {
-            if ($month >= 1 && $month <= 12) {
-                $start = sprintf('%04d-%02d-01', $year, $month);
-                $end = date('Y-m-t', strtotime($start));
-                $query->whereBetween('work_date', [$start, $end]);
-            } else {
-                $query->whereBetween('work_date', ["{$year}-01-01", "{$year}-12-31"]);
-            }
-        }
-
-        // Lọc các lượt cần xem xét (xác minh chống gian lận).
-        if ($request->query('review') === 'needs_review') {
-            $query->whereRaw("meta->>'review_status' = 'needs_review'");
-        }
 
         $page = $query->paginate($perPage);
 
@@ -86,16 +56,117 @@ class AttendanceController extends Controller
         ], 'Attendances list');
     }
 
-    public function show(int $id): JsonResponse
+    public function overview(Request $request): JsonResponse
     {
-        $attendance = Attendance::with([
+        $this->scopeSelfServiceRequest($request);
+
+        return $this->ok(
+            $this->attendanceRead->overview($request, (int) TenantContext::id(), $this->requestedLegalEntity($request)),
+            'Attendance overview'
+        );
+    }
+
+    public function changes(Request $request): JsonResponse
+    {
+        $limit = min(max((int) $request->query('limit', 100), 1), 250);
+        $since = AttendanceChangePublisher::decodeCursor($request->query('since'));
+        $employeeId = (int) $request->attributes->get('auth_employee_id');
+        $access = (array) $request->attributes->get('access', []);
+        $canManage = ! empty($access['full']) || in_array('time', $access['modules'] ?? [], true);
+
+        $scope = function () use ($request, $employeeId, $canManage) {
+            $query = DB::table('attendance_change_events')
+            ->where('tenant_id', TenantContext::id())
+            ->when(
+                ! $canManage,
+                fn ($query) => $query->where('employee_id', $employeeId),
+                fn ($query) => $query->where('legal_entity_id', $this->requestedLegalEntity($request)),
+            );
+
+            return $query;
+        };
+        $changeRange = $scope()
+            ->selectRaw('MIN(id) AS min_id, MAX(id) AS max_id')
+            ->first();
+        $oldestAvailableId = (int) ($changeRange?->min_id ?? 0);
+        $latestAvailableId = (int) ($changeRange?->max_id ?? 0);
+
+        if (! $request->filled('since')) {
+            return $this->ok([
+                'items' => [],
+                'next_cursor' => AttendanceChangePublisher::encodeCursor($latestAvailableId),
+                'has_more' => false,
+                'reset_required' => false,
+            ], 'Attendance changes baseline');
+        }
+
+        // The change journal is retained for seven days. A cursor older than
+        // the first remaining event cannot be replayed safely, so callers must
+        // refresh their current view and continue from the latest watermark.
+        if ($oldestAvailableId > 0 && $since < ($oldestAvailableId - 1)) {
+            return $this->ok([
+                'items' => [],
+                'next_cursor' => AttendanceChangePublisher::encodeCursor($latestAvailableId),
+                'has_more' => false,
+                'reset_required' => true,
+            ], 'Attendance changes cursor expired');
+        }
+
+        $query = $scope()
+            ->where('id', '>', $since)
+            ->orderBy('id')
+            ->limit($limit + 1);
+
+        $rows = $query->get();
+        $hasMore = $rows->count() > $limit;
+        $changeVersion = app(AttendanceChangePublisher::class)->versionToken(
+            (int) TenantContext::id(),
+            $canManage ? $this->requestedLegalEntity($request) : TenantContext::legalEntityId(),
+        );
+        $items = $rows->take($limit)->map(fn ($row) => [
+            'cursor' => AttendanceChangePublisher::encodeCursor((int) $row->id),
+            'attendance_id' => (int) $row->attendance_id,
+            'employee_id' => (int) $row->employee_id,
+            'legal_entity_id' => $row->legal_entity_id ? (int) $row->legal_entity_id : null,
+            'work_date' => $row->work_date,
+            'change_type' => $row->change_type,
+            'version' => $changeVersion,
+            'updated_at' => $row->created_at,
+        ])->values();
+        $lastItemId = $items->isNotEmpty()
+            ? AttendanceChangePublisher::decodeCursor((string) $items->last()['cursor'])
+            : $since;
+        $nextId = $hasMore ? $lastItemId : max($lastItemId, $latestAvailableId);
+
+        return $this->ok([
+            'items' => $items,
+            'next_cursor' => AttendanceChangePublisher::encodeCursor($nextId),
+            'has_more' => $hasMore,
+            'reset_required' => false,
+        ], 'Attendance changes');
+    }
+
+    public function show(Request $request, int $id): JsonResponse
+    {
+        $detailQuery = Attendance::with([
             'employee:id,full_name,employee_code',
             'shiftType:id,shift_code,shift_name,start_time,end_time,meta',
             'payrollReview',
-        ])->find($id);
+        ]);
+        $access = (array) $request->attributes->get('access', []);
+        if (empty($access['full'])) {
+            $detailQuery->where('legal_entity_id', TenantContext::legalEntityId());
+        }
+        $attendance = $detailQuery->find($id);
 
         if (! $attendance) {
             return $this->notFound();
+        }
+
+        $actorId = (int) $request->attributes->get('auth_employee_id');
+        $canManage = ! empty($access['full']) || in_array('time', $access['modules'] ?? [], true);
+        if (! $canManage && (int) $attendance->employee_id !== $actorId) {
+            return response()->json(['status' => 403, 'message' => 'Bạn chỉ được xem chấm công của chính mình', 'data' => null], 403);
         }
 
         return $this->ok($this->decorateAttendance($attendance), 'Attendance detail');
@@ -205,6 +276,7 @@ class AttendanceController extends Controller
         // where the timesheet engine / payroll summary read it from.
         $attendance = Attendance::create([
             'employee_id' => $employeeId,
+            'legal_entity_id' => DB::table('employees')->where('id', $employeeId)->value('legal_entity_id'),
             'work_date' => $today,
             'check_in_time' => now()->toTimeString(),
             'shift_type_id' => $shiftTypeId,
@@ -340,7 +412,12 @@ class AttendanceController extends Controller
      */
     public function update(Request $request, int $id): JsonResponse
     {
-        $attendance = Attendance::find($id);
+        $attendanceQuery = Attendance::query();
+        $access = (array) $request->attributes->get('access', []);
+        if (empty($access['full'])) {
+            $attendanceQuery->where('legal_entity_id', TenantContext::legalEntityId());
+        }
+        $attendance = $attendanceQuery->find($id);
 
         if (! $attendance) {
             return $this->notFound();
@@ -673,18 +750,37 @@ class AttendanceController extends Controller
         }
 
         $tenantId = TenantContext::id();
-        $legalEntityId = (int) ($request->query('legal_entity_id') ?: TenantContext::legalEntityId());
+        $legalEntityId = (int) $this->requestedLegalEntity($request);
+
+        $access = (array) $request->attributes->get('access', []);
+        if (empty($access['full']) && ! in_array('time', $access['modules'] ?? [], true)) {
+            $request->query->set('employee_id', (int) $request->attributes->get('auth_employee_id'));
+        }
+        if (! $this->validTimesheetFilterScope($request, $legalEntityId, 'query')) {
+            return $this->validationError([
+                'filters' => ['Phòng ban hoặc nhân viên không thuộc pháp nhân được phép truy cập.'],
+            ]);
+        }
 
         $employeeIds = null;
         if ($request->filled('employee_id')) {
             $employeeIds = [(int) $request->query('employee_id')];
         }
 
-        $grid = $service->monthlyGrid($tenantId, $legalEntityId, $month, $employeeIds);
+        $grid = $service->monthlyGrid(
+            $tenantId,
+            $legalEntityId,
+            $month,
+            $employeeIds,
+            $request->filled('department_id') ? (int) $request->query('department_id') : null,
+            max((int) $request->query('page', 1), 1),
+            min(max((int) $request->query('per_page', 25), 1), 50),
+        );
 
         // Kỳ lương trùng tháng (để nút "Tổng hợp công → lương" biết period nào).
         $period = DB::table('salary_periods')
             ->where('tenant_id', $tenantId)
+            ->where('legal_entity_id', $legalEntityId)
             ->where('start_date', '<=', $grid['end'])
             ->where('end_date', '>=', $grid['start'])
             ->orderBy('start_date')
@@ -718,8 +814,13 @@ class AttendanceController extends Controller
         }
 
         $tenantId = TenantContext::id();
-        $legalEntityId = (int) ($request->input('legal_entity_id') ?: TenantContext::legalEntityId());
+        $legalEntityId = (int) $this->requestedLegalEntity($request, true);
         $employeeIds = $request->filled('employee_id') ? [(int) $request->input('employee_id')] : null;
+        if (! $this->validTimesheetFilterScope($request, $legalEntityId, 'input')) {
+            return $this->validationError([
+                'filters' => ['Nhân viên không thuộc pháp nhân được phép truy cập.'],
+            ]);
+        }
 
         $result = $service->recompute($tenantId, $legalEntityId, $start, $end, $employeeIds);
 
@@ -855,7 +956,12 @@ class AttendanceController extends Controller
      */
     public function verifyAttendance(Request $request, int $id): JsonResponse
     {
-        $attendance = Attendance::find($id);
+        $attendanceQuery = Attendance::query();
+        $access = (array) $request->attributes->get('access', []);
+        if (empty($access['full'])) {
+            $attendanceQuery->where('legal_entity_id', TenantContext::legalEntityId());
+        }
+        $attendance = $attendanceQuery->find($id);
         if (! $attendance) {
             return $this->notFound();
         }
@@ -1053,5 +1159,53 @@ class AttendanceController extends Controller
             'message' => 'Dữ liệu không hợp lệ',
             'data' => ['errors' => $errors],
         ], 422);
+    }
+
+    private function requestedLegalEntity(Request $request, bool $fromBody = false): ?int
+    {
+        $access = (array) $request->attributes->get('access', []);
+        if (empty($access['full'])) {
+            return TenantContext::legalEntityId();
+        }
+
+        $value = $fromBody ? $request->input('legal_entity_id') : $request->query('legal_entity_id');
+        if ($value === null || $value === '') {
+            return TenantContext::legalEntityId();
+        }
+
+        $legalEntityId = (int) $value;
+
+        return TenantContext::ownsRow('legal_entities', $legalEntityId)
+            ? $legalEntityId
+            : TenantContext::legalEntityId();
+    }
+
+    private function validTimesheetFilterScope(Request $request, int $legalEntityId, string $source): bool
+    {
+        $read = fn (string $key) => $source === 'input' ? $request->input($key) : $request->query($key);
+
+        foreach (['department_id' => 'departments', 'employee_id' => 'employees'] as $key => $table) {
+            $id = $read($key);
+            if ($id === null || $id === '') {
+                continue;
+            }
+            if (! DB::table($table)
+                ->where('id', (int) $id)
+                ->where('tenant_id', TenantContext::id())
+                ->where('legal_entity_id', $legalEntityId)
+                ->exists()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function scopeSelfServiceRequest(Request $request): void
+    {
+        $access = (array) $request->attributes->get('access', []);
+        if (empty($access['full']) && ! in_array('time', $access['modules'] ?? [], true)) {
+            $request->query->set('employee_id', (int) $request->attributes->get('auth_employee_id'));
+        }
     }
 }

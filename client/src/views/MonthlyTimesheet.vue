@@ -28,13 +28,17 @@
         >
           ❓ Hướng dẫn
         </button>
+        <select v-model="exportFormat" class="rounded-lg border border-border bg-card px-3 py-2 text-sm">
+          <option value="xlsx">Excel (.xlsx)</option>
+          <option value="csv">CSV (.csv)</option>
+        </select>
         <button
-          @click="exportCsv"
+          @click="exportTimesheet"
           :disabled="loading || !rows.length"
           class="px-4 py-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
           title="Xuất bảng công ra Excel/CSV"
         >
-          ⭳ Xuất Excel
+          {{ exporting ? 'Đang xuất…' : '⭳ Xuất toàn bộ' }}
         </button>
         <button
           @click="recompute"
@@ -240,6 +244,14 @@
         </table>
       </div>
     </BaseCard>
+
+    <div v-if="pagination.last_page > 1" class="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-sm">
+      <span>Trang {{ pagination.current_page }}/{{ pagination.last_page }} · {{ pagination.total }} nhân viên</span>
+      <div class="flex gap-2">
+        <button class="rounded-lg border border-border px-3 py-1.5 disabled:opacity-50" :disabled="loading || pagination.current_page <= 1" @click="changePage(-1)">Trước</button>
+        <button class="rounded-lg border border-border px-3 py-1.5 disabled:opacity-50" :disabled="loading || pagination.current_page >= pagination.last_page" @click="changePage(1)">Sau</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -298,6 +310,9 @@ const days = ref([]);
 const rows = ref([]);
 const standardDays = ref(0);
 const salaryPeriod = ref(null);
+const pagination = ref({ current_page: 1, per_page: 25, total: 0, last_page: 1 });
+const exportFormat = ref('xlsx');
+const exporting = ref(false);
 
 const monthLabel = computed(() => {
   const [y, m] = month.value.split('-');
@@ -308,6 +323,7 @@ function shiftMonth(delta) {
   const [y, m] = month.value.split('-').map(Number);
   const d = new Date(y, m - 1 + delta, 1);
   month.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  pagination.value.current_page = 1;
   loadTimesheet();
 }
 
@@ -369,11 +385,15 @@ function onCellClick(row, d) {
 async function loadTimesheet() {
   loading.value = true;
   try {
-    const data = await attendanceService.getTimesheet(month.value);
+    const data = await attendanceService.getTimesheet(month.value, {
+      page: pagination.value.current_page,
+      per_page: pagination.value.per_page,
+    });
     days.value = data.days || [];
     rows.value = data.rows || [];
     standardDays.value = data.standard_days || 0;
     salaryPeriod.value = data.salary_period || null;
+    pagination.value = data.pagination || pagination.value;
   } catch (e) {
     console.error('Lỗi tải bảng công:', e);
     days.value = [];
@@ -384,30 +404,31 @@ async function loadTimesheet() {
   }
 }
 
-// Xuất bảng công ra CSV (Excel mở được). BOM để Excel đọc đúng tiếng Việt.
-function exportCsv() {
-  const headerDays = days.value.map(d => `${d.day}/${dowLabel(d.dow)}`);
-  const header = ['Mã NV', 'Họ tên', ...headerDays, 'Công', 'Trễ(p)', 'Sớm(p)', 'Vắng', 'Nghỉ', 'OT(h)'];
-  const charOf = (cell) => (STATUS_META[cell?.status ?? ''] || STATUS_META['']).char || '';
-  const lines = [header.join(',')];
-  for (const r of rows.value) {
-    const cellChars = days.value.map(d => charOf(r.cells[d.date]));
-    const row = [
-      r.employee_code, `"${(r.full_name || '').replace(/"/g, '""')}"`,
-      ...cellChars,
-      r.totals.payable_days, r.totals.late_minutes, r.totals.early_leave_minutes,
-      r.totals.absent_days, r.totals.leave_days, r.totals.overtime_hours,
-    ];
-    lines.push(row.join(','));
+async function exportTimesheet() {
+  exporting.value = true;
+  try {
+    const job = await attendanceService.createTimesheetExport({ month: month.value, format: exportFormat.value });
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      const status = await attendanceService.getTimesheetExport(job.id);
+      if (status.status === 'COMPLETED') {
+        await attendanceService.downloadTimesheetExport(status.id, `bang-cong-${month.value}.${status.format}`);
+        toast.success('Đã xuất toàn bộ bảng công.');
+        return;
+      }
+      if (status.status === 'FAILED') throw new Error(status.error || 'Xuất bảng công thất bại');
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    throw new Error('Tác vụ xuất mất quá nhiều thời gian');
+  } catch (error) {
+    toast.error(error.response?.data?.message || error.message || 'Xuất bảng công thất bại');
+  } finally {
+    exporting.value = false;
   }
-  const csv = '﻿' + lines.join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `bang-cong-${month.value}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+}
+
+function changePage(delta) {
+  pagination.value.current_page += delta;
+  loadTimesheet();
 }
 
 // Chốt công: tổng hợp công của kỳ → feed sang tính lương.

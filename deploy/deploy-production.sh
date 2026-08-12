@@ -48,10 +48,37 @@ set_env_value AUTORECRUIT_FALLBACK_URLS "${AUTORECRUIT_FALLBACK_URLS:-http://100
 set_env_value AUTORECRUIT_CONNECT_TIMEOUT "${AUTORECRUIT_CONNECT_TIMEOUT:-5}"
 set_env_value AUTORECRUIT_TIMEOUT "${AUTORECRUIT_TIMEOUT:-120}"
 
+# Reverb credentials are generated once on the VPS and never stored in Git.
+for key in REVERB_APP_ID REVERB_APP_KEY REVERB_APP_SECRET; do
+  if ! grep -Eq "^${key}=.+$" "$BACKEND_DIR/.env"; then
+    case "$key" in
+      REVERB_APP_ID) value="hrm-production" ;;
+      *) value="$(openssl rand -hex 24)" ;;
+    esac
+    set_env_value "$key" "$value"
+  fi
+done
+set_env_value BROADCAST_CONNECTION reverb
+# Browser connects through the existing HTTPS Nginx proxy.
+set_env_value REVERB_HOST devtapcode.io.vn
+set_env_value REVERB_PORT 443
+set_env_value REVERB_SCHEME https
+set_env_value REVERB_PUBLIC_HOST devtapcode.io.vn
+set_env_value REVERB_PUBLIC_PORT 443
+set_env_value REVERB_PUBLIC_SCHEME https
+# Laravel queue workers publish directly over the private Docker network.
+set_env_value REVERB_INTERNAL_HOST reverb
+set_env_value REVERB_INTERNAL_PORT 8080
+set_env_value REVERB_INTERNAL_SCHEME http
+set_env_value REVERB_SERVER_HOST 0.0.0.0
+set_env_value REVERB_SERVER_PORT 8080
+set_env_value REVERB_ALLOWED_ORIGINS devtapcode.io.vn,www.devtapcode.io.vn
+set_env_value HRM_ATT_OVERVIEW_CACHE_STORE redis
+
 background_services_stopped=0
 restore_background_services() {
   if [ "$background_services_stopped" -eq 1 ]; then
-    docker compose up -d worker scheduler >/dev/null 2>&1 || true
+    docker compose up -d worker scheduler reverb >/dev/null 2>&1 || true
   fi
 }
 trap restore_background_services EXIT
@@ -67,9 +94,9 @@ docker compose up -d postgres redis
 docker compose run --rm --no-deps --user root php composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
 # Prevent workers from reading a new release before its migrations finish.
-docker compose stop worker scheduler >/dev/null 2>&1 || true
+docker compose stop worker scheduler reverb >/dev/null 2>&1 || true
 background_services_stopped=1
-docker compose up -d php nginx
+docker compose up -d php reverb nginx
 docker compose exec -T php php artisan migrate --force
 
 # A fresh production database needs the bundled demo organization and accounts.

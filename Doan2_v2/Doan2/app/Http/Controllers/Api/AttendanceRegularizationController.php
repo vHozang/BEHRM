@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\AttendanceAdjustmentRequest;
+use App\Services\AttendanceReconciliationService;
 use App\Support\AuditLogger;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +24,8 @@ use Illuminate\Support\Facades\Validator;
  */
 class AttendanceRegularizationController extends Controller
 {
+    public function __construct(private readonly AttendanceReconciliationService $attendanceReconciliation) {}
+
     public function index(Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
@@ -178,6 +181,9 @@ class AttendanceRegularizationController extends Controller
             if ($isNew) {
                 $attendance = new Attendance();
                 $attendance->employee_id = $adjustment->employee_id;
+                $attendance->legal_entity_id = DB::table('employees')
+                    ->where('id', $adjustment->employee_id)
+                    ->value('legal_entity_id');
                 $attendance->work_date = $adjustment->work_date;
             }
 
@@ -195,43 +201,14 @@ class AttendanceRegularizationController extends Controller
                 $attendance->shift_type_id = $this->resolveShiftTypeId($adjustment->employee_id);
             }
 
-            // Recompute late/early minutes against the employee's shift, reusing
-            // the same shift_types start_time/end_time + diffInMinutes calc that
-            // AttendanceController::checkIn/checkOut perform. When a time was
-            // adjusted but no shift is available to compare against, clear any
-            // stale minutes (do NOT keep the pre-adjustment lateness).
-            $shift = $this->resolveShift($attendance->shift_type_id);
-            $meta = $this->existingMeta($attendance->meta);
-
-            if ($adjustment->requested_check_in_time !== null) {
-                if ($shift && $shift->start_time) {
-                    $shiftStart = now()->copy()->setTimeFromTimeString((string) $shift->start_time);
-                    $checkIn = now()->copy()->setTimeFromTimeString((string) $attendance->check_in_time);
-                    $meta['late_minutes'] = max(0, (int) round($shiftStart->diffInMinutes($checkIn, false)));
-                } else {
-                    $meta['late_minutes'] = 0;
-                }
-            }
-
-            if ($adjustment->requested_check_out_time !== null) {
-                if ($shift && $shift->end_time) {
-                    $shiftEnd = now()->copy()->setTimeFromTimeString((string) $shift->end_time);
-                    $checkOut = now()->copy()->setTimeFromTimeString((string) $attendance->check_out_time);
-                    $meta['early_leave_minutes'] = max(0, (int) round($checkOut->diffInMinutes($shiftEnd, false)));
-                } else {
-                    $meta['early_leave_minutes'] = 0;
-                }
-            }
-
-            // Status: explicit request wins, otherwise derive from late minutes.
+            // Preserve explicit status requests; the central reconciliation
+            // service computes all timing metrics from the assigned shift.
             if ($adjustment->requested_status !== null) {
                 $attendance->status = $adjustment->requested_status;
-            } elseif (isset($meta['late_minutes'])) {
-                $attendance->status = $meta['late_minutes'] > 0 ? 'LATE' : 'ON_TIME';
             }
 
-            $attendance->meta = json_encode($meta);
             $attendance->save();
+            $this->attendanceReconciliation->reconcile($attendance, (int) $approverId);
 
             AuditLogger::log(
                 $isNew ? 'create' : 'update',

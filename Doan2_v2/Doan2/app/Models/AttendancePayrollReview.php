@@ -11,6 +11,8 @@ class AttendancePayrollReview extends Model
 {
     use Auditable, BelongsToTenant;
 
+    const TENANT_ENTITY_SCOPED = true;
+
     public const UNRESOLVED_STATUSES = ['PENDING', 'STALE'];
 
     protected $guarded = ['id'];

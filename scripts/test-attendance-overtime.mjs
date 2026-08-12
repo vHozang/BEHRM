@@ -10,6 +10,7 @@ assert.equal(statusVariant('DECLINED'), 'destructive');
 const service = await readFile('client/src/services/attendanceService.js', 'utf8');
 for (const binding of [
   'regular_worked_minutes',
+  'getRecordsPage',
   'getPayrollReviews',
   'decidePayrollReview',
   'createOvertimeTicket',
@@ -28,9 +29,15 @@ for (const marker of [
   'Đến sớm',
   'Ở lại sau ca',
   'submitPayrollDecision',
+  'attendance-pagination',
+  'attendanceService.getCursorPage',
+  'loadOverview(queryParams(), requestId)',
+  'deviceLoadTimer = setTimeout(loadDeviceSyncStatus, 0)',
+  'realtimeStartTimer = setTimeout',
 ]) {
   assert.ok(attendance.includes(marker), `Attendance.vue thiếu ${marker}`);
 }
+assert.ok(!attendance.includes('await loadDeviceSyncStatus()'), 'Device sync không được chặn đường tải chính');
 assert.ok(!attendance.includes('label="Giờ tăng ca"'), 'Attendance.vue không được cho nhập tay giờ OT');
 
 const overtime = await readFile('client/src/views/OvertimeRequests.vue', 'utf8');

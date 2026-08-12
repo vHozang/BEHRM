@@ -53,8 +53,8 @@ function normalizeAttendance(record) {
     after_shift_minutes: Number(record.after_shift_minutes ?? 0),
     scheduled_minutes: Number(record.scheduled_minutes ?? 0),
     assigned_shift: shift,
-    assigned_shift_code: shift?.shift_code || record.assigned_shift_code || '',
-    assigned_shift_name: shift?.shift_name || record.assigned_shift_name || '',
+    assigned_shift_code: shift?.shift_code || record.assigned_shift_code || record.shift_code || '',
+    assigned_shift_name: shift?.shift_name || record.assigned_shift_name || record.shift_name || '',
     shift_start: record.shift_start || null,
     shift_end: record.shift_end || null,
     payroll_review: payrollReview,
@@ -120,23 +120,60 @@ export const attendanceService = {
     return attendanceService.getRecords(params);
   },
 
-  getRecords: async (params = {}) => {
-    const records = [];
+  getRecordsPage: async (params = {}) => {
     const query = { ...params };
     if (query.status) query.status = toBackendAttendanceStatus[query.status] || query.status;
+    const response = await axiosClient.get('/attendances', {
+      params: { per_page: 50, ...query }
+    });
+
+    return {
+      items: normalizeAttendanceList(Array.isArray(response.data) ? response.data : []),
+      pagination: response.pagination || null,
+      summary: response.summary || null,
+    };
+  },
+
+  getCursorPage: async (params = {}, signal) => {
+    const query = { ...params };
+    if (query.status) query.status = toBackendAttendanceStatus[query.status] || query.status;
+    const response = await axiosClient.get('/attendances', {
+      params: { pagination: 'cursor', limit: 50, ...query },
+      signal,
+    });
+    const payload = response.pageData || {};
+    return { ...payload, items: normalizeAttendanceList(payload.items || []) };
+  },
+
+  getOverview: async (params = {}, signal) => {
+    const query = { ...params };
+    if (query.status) query.status = toBackendAttendanceStatus[query.status] || query.status;
+    const response = await axiosClient.get('/attendance/overview', { params: query, signal });
+    return response.data || {};
+  },
+
+  getDetail: async (id, signal) => {
+    const response = await axiosClient.get(`/attendances/${id}`, { signal });
+    return normalizeAttendance(response.data);
+  },
+
+  getRecords: async (params = {}) => {
+    const records = [];
     let page = 1;
-    let lastPage;
+    let lastPage = 1;
 
     do {
-      const response = await axiosClient.get('/attendances', {
-        params: { ...query, per_page: 100, page }
+      const result = await attendanceService.getRecordsPage({
+        ...params,
+        per_page: 100,
+        page,
       });
-      records.push(...(Array.isArray(response.data) ? response.data : []));
-      lastPage = Number(response.pagination?.last_page || 1);
+      records.push(...result.items);
+      lastPage = Number(result.pagination?.last_page || 1);
       page++;
     } while (page <= lastPage);
 
-    return normalizeAttendanceList(records);
+    return records;
   },
 
   checkIn: async (employee_id, geo = {}) => {
@@ -259,8 +296,28 @@ export const attendanceService = {
 
   // P3 — Bảng công tháng (timesheet grid nhân viên × ngày).
   getTimesheet: async (month, params = {}) => {
-    const response = await axiosClient.get('/attendance/timesheet', { params: { month, ...params } });
+    const response = await axiosClient.get('/attendance/timesheet', { params: { month, page: 1, per_page: 25, ...params } });
     return response.data; // { month, start, end, standard_days, days[], rows[] }
+  },
+
+  createTimesheetExport: async ({ month, format = 'xlsx', ...filters }) => {
+    const response = await axiosClient.post('/attendance/timesheet/exports', { month, format, ...filters });
+    return response.data;
+  },
+
+  getTimesheetExport: async (id) => {
+    const response = await axiosClient.get(`/attendance/timesheet/exports/${id}`);
+    return response.data;
+  },
+
+  downloadTimesheetExport: async (id, filename) => {
+    const response = await axiosClient.get(`/attendance/timesheet/exports/${id}/download`, { responseType: 'blob' });
+    const url = URL.createObjectURL(response.data);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
   },
 
   // Tái phân loại trạng thái chấm công theo ca + dung sai (engine).

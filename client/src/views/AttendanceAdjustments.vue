@@ -151,16 +151,13 @@
     >
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-foreground mb-2">Nhân viên <span class="text-destructive">*</span></label>
-          <select
-            ref="empSelectRef"
+          <RemoteEmployeeSelect
             v-model="form.employee_id"
-            class="w-full px-4 py-2.5 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            label="Nhân viên"
+            :initial-label="selectedEmployeeLabel"
+            @select="rememberEmployee"
             data-testid="select-employee"
-          >
-            <option value="">-- Chọn nhân viên --</option>
-            <option v-for="opt in employeeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-          </select>
+          />
           <p v-if="form.employee_id && selectedEmployeeLabel" class="text-xs text-primary mt-1">✓ Đã chọn: {{ selectedEmployeeLabel }}</p>
         </div>
 
@@ -292,6 +289,7 @@ import BaseTable from '../components/BaseTable.vue';
 import BaseModal from '../components/BaseModal.vue';
 import StatusPill from '../components/StatusPill.vue';
 import ApprovalTimeline from '../components/ApprovalTimeline.vue';
+import RemoteEmployeeSelect from '../components/RemoteEmployeeSelect.vue';
 import { buildApprovalSteps, statusVN } from '../utils/approvalSteps';
 import { regularizationService } from '../services/regularizationService';
 import { employeeService } from '../services/employeeService';
@@ -300,7 +298,6 @@ import { useToast } from '../composables/useToast';
 const toast = useToast();
 const route = useRoute();
 
-const empSelectRef = ref(null);
 const loading = ref(false);
 const saving = ref(false);
 const processing = ref(false);
@@ -371,6 +368,13 @@ const selectedEmployeeLabel = computed(() => {
   const opt = employeeOptions.value.find((o) => o.value === String(form.value.employee_id));
   return opt ? opt.label : '';
 });
+
+const rememberEmployee = (employee) => {
+  if (!employee) return;
+  const index = employees.value.findIndex(item => String(item.id) === String(employee.id));
+  if (index >= 0) employees.value[index] = employee;
+  else employees.value.push(employee);
+};
 
 const STATUS_LABELS = {
   PENDING: 'Chờ duyệt',
@@ -456,14 +460,12 @@ const loadAdjustments = async () => {
   }
 };
 
-const loadEmployees = async () => {
+const loadPrefilledEmployee = async (employeeId) => {
+  if (!employeeId || employees.value.some(item => String(item.id) === String(employeeId))) return;
   try {
-    // Lấy TẤT CẢ nhân viên (mặc định API phân trang 15 → thiếu NV id thấp,
-    // khiến điền sẵn từ ô VẮNG không khớp option).
-    const data = await employeeService.getLookup();
-    employees.value = Array.isArray(data) ? data : (data?.items || data?.data || []);
-  } catch (err) {
-    console.error('Error loading employees:', err);
+    rememberEmployee(await employeeService.getById(employeeId));
+  } catch {
+    // Keep the form usable even if the referenced profile is no longer visible.
   }
 };
 
@@ -572,23 +574,12 @@ const cancel = async (item) => {
 const applyQueryPrefill = async (q) => {
   q = q || {};
   if (!q.employee_id && !q.work_date) return;
-  // 1) Đảm bảo danh sách nhân viên đã có (để <select> có <option> khớp).
-  if (!employees.value.length) {
-    await loadEmployees();
-  }
-  // 2) Gán giá trị TRƯỚC khi mở modal → khi <select> mount sẽ tự chọn đúng option.
+  if (q.employee_id) await loadPrefilledEmployee(q.employee_id);
   resetForm();
   if (q.work_date) form.value.work_date = String(q.work_date);
   if (q.employee_id) form.value.employee_id = String(q.employee_id);
   await nextTick();
-  // 3) Mở modal sau cùng (select mount với value + options đã sẵn sàng).
   showCreateModal.value = true;
-  // 4) Ép native <select> hiển thị đúng giá trị (sau khi modal đã mount).
-  await nextTick();
-  await nextTick();
-  if (empSelectRef.value && q.employee_id) {
-    empSelectRef.value.value = String(q.employee_id);
-  }
 };
 
 // Chạy ngay khi vào trang (immediate) + khi điều hướng lại với query mới.
@@ -596,6 +587,5 @@ watch(() => route.query, (q) => applyQueryPrefill(q), { immediate: true });
 
 onMounted(() => {
   loadAdjustments();
-  loadEmployees();
 });
 </script>

@@ -97,7 +97,15 @@ class TimesheetService
      *   rows:array<int,array>
      * }
      */
-    public function monthlyGrid(int $tenantId, int $legalEntityId, string $month, ?array $employeeIds = null): array
+    public function monthlyGrid(
+        int $tenantId,
+        int $legalEntityId,
+        string $month,
+        ?array $employeeIds = null,
+        ?int $departmentId = null,
+        ?int $page = null,
+        int $perPage = 25,
+    ): array
     {
         $startDate = CarbonImmutable::parse($month . '-01')->startOfMonth();
         $endDate = $startDate->endOfMonth();
@@ -126,12 +134,28 @@ class TimesheetService
         }
 
         // Nhân viên đang làm (chính thức + thử việc), loại tài khoản hệ thống.
-        $employees = DB::table('employees')
+        $employeeQuery = DB::table('employees')
             ->where('tenant_id', $tenantId)
             ->where('legal_entity_id', $legalEntityId)
             ->whereIn('status', ['ACTIVE', 'PROBATION'])
             ->when($employeeIds, fn ($q) => $q->whereIn('id', $employeeIds))
-            ->orderBy('employee_code')
+            ->when($departmentId, fn ($q) => $q->where('department_id', $departmentId))
+            ->where(function ($query): void {
+                if (DB::getDriverName() === 'pgsql') {
+                    $query->whereNull('profile->system_account')->orWhere('profile->system_account', false);
+                } else {
+                    $query->whereNull('profile')->orWhereRaw("COALESCE(json_extract(profile, '$.system_account'), 0) = 0");
+                }
+            })
+            ->orderBy('employee_code');
+
+        $totalEmployees = (clone $employeeQuery)->count();
+        if ($page !== null) {
+            $perPage = min(max($perPage, 1), 50);
+            $employeeQuery->forPage(max($page, 1), $perPage);
+        }
+
+        $employees = $employeeQuery
             ->get(['id', 'full_name', 'employee_code', 'hire_date', 'profile'])
             ->filter(function ($employee): bool {
                 $profile = $this->decodeMeta($employee->profile ?? null);
@@ -293,6 +317,12 @@ class TimesheetService
             'standard_days' => $standardDays,
             'days' => $days,
             'rows' => $rows,
+            'pagination' => $page === null ? null : [
+                'current_page' => max($page, 1),
+                'per_page' => $perPage,
+                'total' => $totalEmployees,
+                'last_page' => max(1, (int) ceil($totalEmployees / $perPage)),
+            ],
         ];
     }
 

@@ -26,19 +26,31 @@ class ShiftCoverageController extends Controller
     /** GET /shift-coverage-requests — danh sách ca cần phủ (QL). */
     public function index(Request $request): JsonResponse
     {
-        $rows = DB::table('shift_coverage_requests')
-            ->where('tenant_id', TenantContext::id())
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->query('status')))
-            ->when($request->filled('from'), fn ($q) => $q->whereDate('work_date', '>=', $request->query('from')))
-            ->when($request->filled('to'), fn ($q) => $q->whereDate('work_date', '<=', $request->query('to')))
-            ->orderByDesc('work_date')->orderByDesc('id')
+        $rows = DB::table('shift_coverage_requests as coverage')
+            ->leftJoin('employees as absent_employee', 'absent_employee.id', '=', 'coverage.absent_employee_id')
+            ->where('coverage.tenant_id', TenantContext::id())
+            ->where('coverage.legal_entity_id', TenantContext::legalEntityId())
+            ->when($request->filled('status'), fn ($q) => $q->where('coverage.status', $request->query('status')))
+            ->when($request->filled('from'), fn ($q) => $q->whereDate('coverage.work_date', '>=', $request->query('from')))
+            ->when($request->filled('to'), fn ($q) => $q->whereDate('coverage.work_date', '<=', $request->query('to')))
+            ->orderByDesc('coverage.work_date')->orderByDesc('coverage.id')
             ->limit(300)
-            ->get();
+            ->get([
+                'coverage.*',
+                'absent_employee.employee_code as absent_employee_code',
+                'absent_employee.full_name as absent_employee_name',
+            ]);
 
-        $offers = DB::table('shift_coverage_offers')
-            ->where('tenant_id', TenantContext::id())
-            ->whereIn('coverage_request_id', $rows->pluck('id'))
-            ->get()
+        $offers = DB::table('shift_coverage_offers as offer')
+            ->leftJoin('employees as covering_employee', 'covering_employee.id', '=', 'offer.employee_id')
+            ->where('offer.tenant_id', TenantContext::id())
+            ->where('offer.legal_entity_id', TenantContext::legalEntityId())
+            ->whereIn('offer.coverage_request_id', $rows->pluck('id'))
+            ->get([
+                'offer.*',
+                'covering_employee.employee_code',
+                'covering_employee.full_name as employee_name',
+            ])
             ->groupBy('coverage_request_id');
 
         $data = $rows->map(function ($r) use ($offers) {
@@ -74,7 +86,7 @@ class ShiftCoverageController extends Controller
             return $this->validationError(['shift_type_id' => ['Ca không thuộc công ty hiện tại']]);
         }
         if ($request->filled('absent_employee_id')
-            && ! TenantContext::ownsRow('employees', $request->input('absent_employee_id'))) {
+            && ! $this->employeeBelongsToCurrentEntity((int) $request->input('absent_employee_id'))) {
             return $this->validationError(['absent_employee_id' => ['Nhân viên không thuộc công ty hiện tại']]);
         }
 
@@ -132,7 +144,7 @@ class ShiftCoverageController extends Controller
             return $this->validationError($v->errors()->toArray());
         }
         $empId = (int) $request->input('employee_id');
-        if (! TenantContext::ownsRow('employees', $empId)) {
+        if (! $this->employeeBelongsToCurrentEntity($empId)) {
             return $this->validationError(['employee_id' => ['Nhân viên không thuộc công ty hiện tại']]);
         }
         if ($req->absent_employee_id && (int) $req->absent_employee_id === $empId) {
@@ -185,7 +197,9 @@ class ShiftCoverageController extends Controller
         $empId = (int) ($request->query('employee_id') ?? $request->input('employee_id'));
         $rows = DB::table('shift_coverage_offers as o')
             ->join('shift_coverage_requests as r', 'r.id', '=', 'o.coverage_request_id')
+            ->leftJoin('employees as absent_employee', 'absent_employee.id', '=', 'r.absent_employee_id')
             ->where('o.tenant_id', TenantContext::id())
+            ->where('o.legal_entity_id', TenantContext::legalEntityId())
             ->when($empId, fn ($q) => $q->where('o.employee_id', $empId))
             ->when($request->filled('status'), fn ($q) => $q->where('o.status', $request->query('status')))
             ->orderByDesc('r.work_date')->orderByDesc('o.id')
@@ -193,6 +207,8 @@ class ShiftCoverageController extends Controller
             ->get([
                 'o.*', 'r.work_date', 'r.shift_type_id', 'r.reason as coverage_reason',
                 'r.absent_employee_id', 'r.meta as request_meta',
+                'absent_employee.employee_code as absent_employee_code',
+                'absent_employee.full_name as absent_employee_name',
             ]);
 
         return $this->ok($rows, 'Lời mời phủ ca của tôi');
@@ -347,7 +363,18 @@ class ShiftCoverageController extends Controller
     private function findRequest(int $id): ?object
     {
         return DB::table('shift_coverage_requests')->where('id', $id)
-            ->where('tenant_id', TenantContext::id())->first();
+            ->where('tenant_id', TenantContext::id())
+            ->where('legal_entity_id', TenantContext::legalEntityId())
+            ->first();
+    }
+
+    private function employeeBelongsToCurrentEntity(int $employeeId): bool
+    {
+        return DB::table('employees')
+            ->where('id', $employeeId)
+            ->where('tenant_id', TenantContext::id())
+            ->where('legal_entity_id', TenantContext::legalEntityId())
+            ->exists();
     }
 
     /** Giờ làm của 1 ca (từ meta.working_hours hoặc start→end trừ nghỉ). */

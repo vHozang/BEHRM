@@ -10,14 +10,14 @@
     <!-- Dual-lens tabs (admins only) -->
     <div v-if="isAdmin" class="flex gap-1 border-b border-border">
       <button
-        @click="lens = 'org'"
+        @click="setLens('org')"
         :class="['px-4 py-2 text-sm font-medium border-b-2 transition-colors', lens === 'org' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground']"
         data-testid="tab-attendance-org"
       >
         Toàn công ty
       </button>
       <button
-        @click="lens = 'mine'"
+        @click="setLens('mine')"
         :class="['px-4 py-2 text-sm font-medium border-b-2 transition-colors', lens === 'mine' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground']"
         data-testid="tab-attendance-mine"
       >
@@ -171,11 +171,10 @@
             type="date"
             label="Đến ngày"
           />
-          <BaseSelect
+          <RemoteEmployeeSelect
             v-model="filters.employee_id"
             label="Nhân viên"
-            :options="employeeOptions"
-            placeholder="Tất cả"
+            placeholder="Tất cả hoặc nhập mã/tên"
           />
           <BaseSelect
             v-model="filters.status"
@@ -217,7 +216,7 @@
         <div v-else class="flex flex-wrap items-center justify-end gap-2">
           <!-- Xác minh vị trí/thiết bị và review khấu trừ là hai nghiệp vụ độc lập. -->
           <button
-            @click="needsReviewOnly = !needsReviewOnly"
+            @click="toggleNeedsReview"
             :class="['px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5',
                      needsReviewOnly ? 'border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-400' : 'border-border text-muted-foreground hover:bg-muted']"
             title="Chỉ hiện các lượt chấm công ngoài phạm vi cần duyệt"
@@ -227,7 +226,7 @@
           </button>
           <button
             v-if="canReviewPayroll"
-            @click="payrollReviewOnly = !payrollReviewOnly"
+            @click="togglePayrollReview"
             :class="['px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5',
                      payrollReviewOnly ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-400' : 'border-border text-muted-foreground hover:bg-muted']"
             title="Chỉ hiện ngày đi trễ/về sớm đang chờ HR quyết định"
@@ -251,7 +250,7 @@
           <h3 class="text-base sm:text-lg font-bold text-foreground">{{ monthNames[currentMonth] }} / {{ currentYear }}</h3>
           <div class="flex gap-2">
             <button @click="prevMonth" class="px-2.5 py-1 text-sm rounded-lg hover:bg-muted border border-border transition-colors">◀</button>
-            <button @click="currentMonth = new Date().getMonth(); currentYear = new Date().getFullYear();" class="px-3 py-1 text-xs rounded-lg hover:bg-muted border border-border transition-colors">Tháng này</button>
+            <button @click="goToCurrentMonth" class="px-3 py-1 text-xs rounded-lg hover:bg-muted border border-border transition-colors">Tháng này</button>
             <button @click="nextMonth" class="px-2.5 py-1 text-sm rounded-lg hover:bg-muted border border-border transition-colors">▶</button>
           </div>
         </div>
@@ -454,6 +453,25 @@
             </div>
           </template>
         </BaseTable>
+
+        <div
+          v-if="orgLens && (cursorPage.next_cursor || cursorHistory.length)"
+          class="mt-4 flex flex-col gap-3 border-t border-border pt-4 text-sm sm:flex-row sm:items-center sm:justify-between"
+          data-testid="attendance-pagination"
+        >
+          <p class="text-muted-foreground">
+            Trang {{ cursorHistory.length + 1 }} · {{ recordsSummary.total }} bản ghi trong bộ lọc
+          </p>
+          <div class="flex gap-2">
+            <BaseButton variant="outline" :disabled="tableLoading || !cursorHistory.length" @click="previousCursorPage">Trước</BaseButton>
+            <BaseButton variant="outline" :disabled="tableLoading || !cursorPage.next_cursor" @click="nextCursorPage">Sau</BaseButton>
+          </div>
+        </div>
+        <button
+          v-if="hasNewRealtimeData"
+          class="mt-3 w-full rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary"
+          @click="refreshFromRealtime"
+        >Có dữ liệu mới · Bấm để cập nhật</button>
       </div>
     </BaseCard>
 
@@ -635,12 +653,15 @@ import BaseSelect from '../components/BaseSelect.vue';
 import BaseBadge from '../components/BaseBadge.vue';
 import BaseTable from '../components/BaseTable.vue';
 import BaseModal from '../components/BaseModal.vue';
+import RemoteEmployeeSelect from '../components/RemoteEmployeeSelect.vue';
 import { attendanceService } from '../services/attendanceService';
-import { employeeService } from '../services/employeeService';
+import { attendanceRealtimeService } from '../services/attendanceRealtimeService';
 import { authService } from '../services/authService';
 import { useToast } from '../composables/useToast';
+import { useAttendanceStore } from '../stores/attendanceStore';
 
 const toast = useToast();
+const attendanceStore = useAttendanceStore();
 
 const isAdmin = computed(() => authService.isAdmin());
 const access = computed(() => authService.getAccess());
@@ -657,7 +678,10 @@ const orgLens = computed(() => isAdmin.value && lens.value === 'org');
 const pageTitle = computed(() => orgLens.value ? 'Quản lý Chấm công' : 'Chấm công của tôi');
 const pageSubtitle = computed(() => orgLens.value ? 'Theo dõi và báo cáo chấm công nhân viên' : 'Xem và chấm công cá nhân');
 
-const loading = ref(true);
+const tableLoading = ref(true);
+const overviewLoading = ref(true);
+const deviceLoading = ref(false);
+const loading = computed(() => tableLoading.value);
 const clockProcessing = ref(false);
 const processingVerify = ref(false);
 const workMode = ref('office');
@@ -719,7 +743,15 @@ const editingRecord = ref(null);
 const router = useRouter();
 const showLogModal = ref(false);
 const logRecord = ref(null);
-const openLogModal = (record) => { logRecord.value = record; showLogModal.value = true; };
+const openLogModal = async (record) => {
+  logRecord.value = record;
+  showLogModal.value = true;
+  try {
+    logRecord.value = await attendanceService.getDetail(record.id);
+  } catch {
+    // Keep the lightweight row visible if detail loading fails.
+  }
+};
 const createAdjustment = (record) => {
   router.push({
     path: '/attendance-adjustments',
@@ -739,7 +771,11 @@ const verifyFlagLabel = (f) => ({
 }[f] || f);
 
 const records = ref([]);
-const employees = ref([]);
+const cursorPage = ref({ next_cursor: null, prev_cursor: null, has_more: false });
+const cursorHistory = ref([]);
+const currentCursor = ref(null);
+const serverSummary = ref(null);
+const hasNewRealtimeData = ref(false);
 
 const currentTime = ref('');
 const currentDate = ref('');
@@ -754,22 +790,45 @@ const monthNames = [
   'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'
 ];
 
-const nextMonth = () => {
+const setMonthFilterRange = () => {
+  const year = currentYear.value;
+  const month = currentMonth.value;
+  const pad = (value) => String(value).padStart(2, '0');
+  filters.value.startDate = `${year}-${pad(month + 1)}-01`;
+  filters.value.endDate = `${year}-${pad(month + 1)}-${pad(new Date(year, month + 1, 0).getDate())}`;
+};
+
+const reloadCalendarMonth = async () => {
+  setMonthFilterRange();
+  resetCursor();
+  await loadData();
+};
+
+const nextMonth = async () => {
   if (currentMonth.value === 11) {
     currentMonth.value = 0;
     currentYear.value++;
   } else {
     currentMonth.value++;
   }
+  await reloadCalendarMonth();
 };
 
-const prevMonth = () => {
+const prevMonth = async () => {
   if (currentMonth.value === 0) {
     currentMonth.value = 11;
     currentYear.value--;
   } else {
     currentMonth.value--;
   }
+  await reloadCalendarMonth();
+};
+
+const goToCurrentMonth = async () => {
+  const now = new Date();
+  currentMonth.value = now.getMonth();
+  currentYear.value = now.getFullYear();
+  await reloadCalendarMonth();
 };
 
 const calendarDays = computed(() => {
@@ -845,15 +904,28 @@ const scopeLabel = computed(() => {
   return 'tất cả';
 });
 
-// Summary of records in the CURRENT filter scope (defaults to current month)
-const recordsSummary = computed(() => ({
-  total: records.value.length,
-  present: records.value.filter(r => r.status === 'present').length,
-  absent:  records.value.filter(r => r.status === 'absent').length,
-  late:    records.value.filter(r => r.status === 'late').length,
-  early:   records.value.filter(r => r.status === 'early').length,
-  halfDay: records.value.filter(r => r.status === 'half_day').length,
-}));
+// Organization totals come from the same filtered server query as the page.
+// Falling back to local counts keeps the employee calendar backward-compatible.
+const recordsSummary = computed(() => {
+  if (serverSummary.value) {
+    return {
+      total: Number(serverSummary.value.total || 0),
+      present: Number(serverSummary.value.present || 0),
+      absent: Number(serverSummary.value.absent || 0),
+      late: Number(serverSummary.value.late || 0),
+      early: Number(serverSummary.value.early_leave || serverSummary.value.early || 0),
+      halfDay: Number(serverSummary.value.half_day || 0),
+    };
+  }
+  return {
+    total: records.value.length,
+    present: records.value.filter(r => r.status === 'present').length,
+    absent: records.value.filter(r => r.status === 'absent').length,
+    late: records.value.filter(r => r.status === 'late').length,
+    early: records.value.filter(r => r.status === 'early').length,
+    halfDay: records.value.filter(r => r.status === 'half_day').length,
+  };
+});
 
 // Local YYYY-MM-DD (Vietnam time) — NOT UTC, so early-morning check-ins match.
 const localToday = () => {
@@ -963,10 +1035,14 @@ const displayRecords = computed(() => {
 });
 
 // Số lượt chấm công cần admin xem xét (chống gian lận).
-const needsReviewCount = computed(() =>
-  records.value.filter(r => r.review_status === 'needs_review').length
+const needsReviewCount = computed(() => serverSummary.value
+  ? Number(serverSummary.value.needs_review || 0)
+  : records.value.filter(r => r.review_status === 'needs_review').length
 );
-const payrollReviewCount = computed(() => records.value.filter(isUnresolvedPayrollReview).length);
+const payrollReviewCount = computed(() => serverSummary.value
+  ? Number(serverSummary.value.payroll_review_pending || 0)
+  : records.value.filter(isUnresolvedPayrollReview).length
+);
 
 const statusOptions = [
   { label: 'Tất cả', value: '' },
@@ -976,13 +1052,6 @@ const statusOptions = [
   { label: 'Nửa ngày', value: 'half_day' },
 ];
 
-const employeeOptions = computed(() => {
-  const options = [{ label: 'Tất cả', value: '' }];
-  employees.value.forEach(e => {
-    options.push({ label: e.full_name, value: String(e.id) });
-  });
-  return options;
-});
 
 const getInitials = (name) => {
   if (!name) return '';
@@ -1172,6 +1241,7 @@ const formatDateTime = (value) => {
 };
 
 const loadDeviceSyncStatus = async (silent = true) => {
+  deviceLoading.value = true;
   try {
     deviceSync.value = await attendanceService.getDeviceSyncStatus();
     syncAccessAvailable.value = true;
@@ -1183,6 +1253,8 @@ const loadDeviceSyncStatus = async (silent = true) => {
     }
     if (!silent) toast.error(firstError(err, 'Không tải được trạng thái máy chấm công'));
     return false;
+  } finally {
+    deviceLoading.value = false;
   }
 };
 
@@ -1329,80 +1401,142 @@ const handleUpdate = async () => {
 };
 
 const applyFilters = async () => {
+  resetCursor();
   await loadData();
 };
 
-const loadData = async () => {
+const resetCursor = () => {
+  currentCursor.value = null;
+  cursorHistory.value = [];
+  cursorPage.value = { next_cursor: null, prev_cursor: null, has_more: false };
+};
+
+const nextCursorPage = async () => {
+  if (!cursorPage.value.next_cursor || tableLoading.value) return;
+  cursorHistory.value.push(currentCursor.value);
+  currentCursor.value = cursorPage.value.next_cursor;
+  await loadData();
+};
+
+const previousCursorPage = async () => {
+  if (!cursorHistory.value.length || tableLoading.value) return;
+  currentCursor.value = cursorHistory.value.pop() || null;
+  await loadData();
+};
+
+const setLens = async (nextLens) => {
+  if (lens.value === nextLens) return;
+  lens.value = nextLens;
+  resetCursor();
+  needsReviewOnly.value = false;
+  payrollReviewOnly.value = false;
+  await loadData();
+};
+
+const toggleNeedsReview = async () => {
+  needsReviewOnly.value = !needsReviewOnly.value;
+  resetCursor();
+  await loadData();
+};
+
+const togglePayrollReview = async () => {
+  payrollReviewOnly.value = !payrollReviewOnly.value;
+  resetCursor();
+  await loadData();
+};
+
+let tableAbortController = null;
+let overviewAbortController = null;
+let realtimeRefreshTimer = null;
+let deviceLoadTimer = null;
+let realtimeStartTimer = null;
+let loadSequence = 0;
+const queryParams = () => {
+  const params = {};
+  if (filters.value.startDate) params.from = filters.value.startDate;
+  if (filters.value.endDate) params.to = filters.value.endDate;
+  if (filters.value.employee_id) params.employee_id = filters.value.employee_id;
+  if (filters.value.status) params.status = filters.value.status;
+  if (orgLens.value && needsReviewOnly.value) params.review = 'needs_review';
+  if (orgLens.value && payrollReviewOnly.value) params.payroll_review = 'unresolved';
+  if (!orgLens.value && myEmployeeId.value) params.employee_id = myEmployeeId.value;
+  return params;
+};
+
+const hydrateRows = (rawRecords) => rawRecords.map((record) => ({
+  ...record,
+  attendance_date: record.attendance_date || record.record_date || record.work_date,
+  record_date: record.record_date || record.attendance_date || record.work_date,
+  employee_name: record.employee_name || record.full_name,
+}));
+
+const loadOverview = async (params, requestId) => {
+  const cached = attendanceStore.getCachedOverview(params);
+  if (cached) serverSummary.value = cached.value;
+  overviewAbortController?.abort();
+  overviewAbortController = new AbortController();
+  overviewLoading.value = true;
   try {
-    loading.value = true;
-
-    const params = {};
-    if (filters.value.startDate) params.from = filters.value.startDate;
-    if (filters.value.endDate) params.to = filters.value.endDate;
-    if (filters.value.employee_id) params.employee_id = filters.value.employee_id;
-    if (filters.value.status) params.status = filters.value.status;
-    // Ngoài lăng kính toàn công ty → CHỈ lấy chấm công của chính mình. NV thường gọi
-    // theo khoảng ngày mà không kèm employee_id sẽ bị 403 (RBAC) → lịch trống.
-    if (!orgLens.value && myEmployeeId.value) params.employee_id = myEmployeeId.value;
-
-    try {
-      const [attendanceData, employeesData] = await Promise.all([
-        attendanceService.getRecords(params),
-        // per_page cao — mặc định API chỉ trả trang 1 (15/21 NV) làm thiếu
-        // người trong dropdown lọc và map tên.
-        employeeService.getLookup()
-      ]);
-
-      // API returns array directly
-      const rawRecords = Array.isArray(attendanceData)
-        ? attendanceData
-        : (attendanceData?.data || []);
-
-      const rawEmployees = Array.isArray(employeesData)
-        ? employeesData
-        : (employeesData?.data || []);
-      if (rawEmployees.length > 0) {
-        employees.value = rawEmployees;
-      }
-
-      // Map employee_id → {tên, mã NV} để hiển thị CHUẨN NVxxxx (đồng bộ với
-      // các module khác), thay cho fallback "NV #12" khi API không join tên.
-      const empMap = {};
-      for (const e of employees.value) {
-        empMap[String(e.id)] = { name: e.full_name, code: e.employee_code || e.code };
-      }
-
-      if (rawRecords.length > 0) {
-        // Normalize: ensure both attendance_date and record_date exist
-        records.value = rawRecords.map(r => {
-          // Ưu tiên relation `employee` mà API đã join sẵn; fallback map từ
-          // danh sách nhân viên. Hiển thị CHUẨN: Họ tên + mã NVxxxx.
-          const rel = r.employee || {};
-          const emp = empMap[String(r.employee_id)] || {};
-          return {
-            ...r,
-            attendance_date: r.attendance_date || r.record_date,
-            record_date: r.record_date || r.attendance_date,
-            full_name: r.full_name || r.employee_name || rel.full_name || emp.name,
-            employee_name: r.employee_name || r.full_name || rel.full_name || emp.name,
-            employee_code: r.employee_code || rel.employee_code || emp.code,
-          };
-        });
-      } else {
-        records.value = [];
-      }
-    } catch (apiError) {
-      console.error('Attendance API error:', apiError.message);
-      records.value = [];
-      toast.error('Không thể tải dữ liệu chấm công');
-    }
-
-  } catch (err) {
-    console.error('Error loading attendance data:', err);
-    records.value = [];
+    const overview = await attendanceService.getOverview(params, overviewAbortController.signal);
+    if (requestId !== loadSequence) return;
+    serverSummary.value = overview;
+    attendanceStore.setCachedOverview(params, overview);
+  } catch (error) {
+    if (error.code !== 'ERR_CANCELED' && !cached) serverSummary.value = null;
   } finally {
-    loading.value = false;
+    if (requestId === loadSequence) overviewLoading.value = false;
   }
+};
+
+const loadData = async () => {
+  const requestId = ++loadSequence;
+  const params = queryParams();
+  if (currentCursor.value) params.cursor = currentCursor.value;
+  const cached = attendanceStore.getCachedPage(params);
+  if (cached) {
+    records.value = hydrateRows(cached.value.items || []);
+    cursorPage.value = cached.value;
+  }
+  tableAbortController?.abort();
+  tableAbortController = new AbortController();
+  tableLoading.value = !cached;
+  loadOverview(queryParams(), requestId);
+  try {
+    const result = await attendanceService.getCursorPage(params, tableAbortController.signal);
+    if (requestId !== loadSequence) return;
+    records.value = hydrateRows(result.items || []);
+    cursorPage.value = result;
+    attendanceStore.setCachedPage(params, result);
+  } catch (error) {
+    if (requestId !== loadSequence || error.code === 'ERR_CANCELED') return;
+    if (!cached) records.value = [];
+    toast.error('Không thể tải dữ liệu chấm công');
+  } finally {
+    if (requestId === loadSequence) tableLoading.value = false;
+  }
+};
+
+
+const handleRealtimeChange = (event) => {
+  attendanceStore.invalidateAttendanceCache();
+  if (event.reset_required) {
+    resetCursor();
+  }
+  if (showLogModal.value && Number(logRecord.value?.id) === Number(event.attendance_id)) {
+    attendanceService.getDetail(event.attendance_id).then((detail) => { logRecord.value = detail; }).catch(() => {});
+  }
+  if (currentCursor.value) {
+    hasNewRealtimeData.value = true;
+    return;
+  }
+  clearTimeout(realtimeRefreshTimer);
+  realtimeRefreshTimer = setTimeout(loadData, 500);
+};
+
+const refreshFromRealtime = async () => {
+  hasNewRealtimeData.value = false;
+  resetCursor();
+  await loadData();
 };
 
 onMounted(() => {
@@ -1410,17 +1544,25 @@ onMounted(() => {
   clockInterval = setInterval(updateClock, 1000);
   // Mặc định thống kê THEO THÁNG HIỆN TẠI — tránh cộng dồn dữ liệu cũ
   // khiến thẻ "Có mặt/Vắng" hiển thị số của tháng trước như thể là tháng này.
-  const now = new Date();
-  const y = now.getFullYear(), m = now.getMonth();
-  const pad = (n) => String(n).padStart(2, '0');
-  filters.value.startDate = `${y}-${pad(m + 1)}-01`;
-  filters.value.endDate = `${y}-${pad(m + 1)}-${pad(new Date(y, m + 1, 0).getDate())}`;
-  if (orgLens.value) loadDeviceSyncStatus();
+  setMonthFilterRange();
   loadData();
+  // Device health and WebSocket setup are secondary streams. Scheduling them
+  // in a later task keeps the critical path to exactly list + overview.
+  if (orgLens.value) deviceLoadTimer = setTimeout(loadDeviceSyncStatus, 0);
+  realtimeStartTimer = setTimeout(() => {
+    attendanceRealtimeService.connect(handleRealtimeChange)
+      .catch(() => attendanceRealtimeService.startFallback(handleRealtimeChange));
+  }, 0);
 });
 
 onUnmounted(() => {
   if (clockInterval) clearInterval(clockInterval);
   if (syncPollTimer) clearTimeout(syncPollTimer);
+  if (deviceLoadTimer) clearTimeout(deviceLoadTimer);
+  if (realtimeStartTimer) clearTimeout(realtimeStartTimer);
+  clearTimeout(realtimeRefreshTimer);
+  tableAbortController?.abort();
+  overviewAbortController?.abort();
+  attendanceRealtimeService.disconnect();
 });
 </script>

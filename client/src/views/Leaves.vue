@@ -212,11 +212,11 @@
     >
       <div class="space-y-4">
         <template v-if="orgLens">
-          <BaseSelect
+          <RemoteEmployeeSelect
             v-model="form.employee_id"
             label="Nhân viên"
-            :options="employeeOptions"
-            required
+            :initial-label="selectedEmployeeLabel"
+            @select="rememberEmployee"
           />
         </template>
         <template v-else>
@@ -396,9 +396,9 @@ import BaseBadge from '../components/BaseBadge.vue';
 import BaseTable from '../components/BaseTable.vue';
 import BaseModal from '../components/BaseModal.vue';
 import ApprovalTimeline from '../components/ApprovalTimeline.vue';
+import RemoteEmployeeSelect from '../components/RemoteEmployeeSelect.vue';
 import { buildApprovalSteps, statusVN, statusVariant } from '../utils/approvalSteps';
 import { leaveService } from '../services/leaveService';
-import { employeeService } from '../services/employeeService';
 import { authService } from '../services/authService';
 
 const isAdmin = computed(() => authService.isAdmin());
@@ -575,12 +575,17 @@ const leaveTypeOptions = computed(() => {
   return options;
 });
 
-const employeeOptions = computed(() => {
-  return employees.value.map(e => ({
-    label: e.full_name,
-    value: String(e.id)
-  }));
+const selectedEmployeeLabel = computed(() => {
+  const employee = employees.value.find(e => String(e.id) === String(form.value.employee_id));
+  return employee ? `${employee.employee_code || ''} · ${employee.full_name}`.replace(/^ · /, '') : '';
 });
+
+const rememberEmployee = (employee) => {
+  if (!employee) return;
+  const index = employees.value.findIndex(item => String(item.id) === String(employee.id));
+  if (index >= 0) employees.value[index] = employee;
+  else employees.value.push(employee);
+};
 
 const statusCounts = computed(() => {
   const data = displayRequests.value;
@@ -860,18 +865,10 @@ onMounted(async () => {
       leaveService.getTypes().catch(() => [])
     ];
     
-    if (isAdmin.value) {
-      promises.push(employeeService.getLookup().catch(() => []));
-    }
-    
     const results = await Promise.all(promises);
     
     requests.value = results[0]?.data || results[0] || [];
     leaveTypes.value = (results[1]?.data || results[1] || []).map(mapType);
-
-    if (isAdmin.value && results[2]) {
-      employees.value = results[2]?.data || results[2] || [];
-    }
 
     // Số dư phép của chính mình (cho thẻ tổng quan ở lens "Của tôi").
     if (myEmployeeId.value) {

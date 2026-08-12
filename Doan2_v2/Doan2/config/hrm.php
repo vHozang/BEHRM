@@ -22,6 +22,14 @@ return [
         'money_group_separator' => env('HRM_MONEY_GROUP_SEPARATOR', '.'),
     ],
 
+    // Public WebSocket coordinates returned to authenticated web clients.
+    // The broadcasting connection itself uses REVERB_INTERNAL_* in Docker.
+    'realtime' => [
+        'host' => env('REVERB_PUBLIC_HOST', env('REVERB_HOST')),
+        'port' => (int) env('REVERB_PUBLIC_PORT', env('REVERB_PORT', 443)),
+        'scheme' => env('REVERB_PUBLIC_SCHEME', env('REVERB_SCHEME', 'https')),
+    ],
+
     // Chuỗi cấp duyệt đơn từ (duyệt nhiều cấp). Mặc định 1 cấp (HR) = như cũ.
     // Tenant đặt nhiều cấp qua Settings, vd ['MANAGER','DEPT_HEAD','HR'].
     'approval' => [
@@ -174,6 +182,9 @@ return [
     */
 
     'attendance' => [
+        // Overview uses a versioned short-lived cache. Production should set
+        // CACHE_STORE=redis; tests keep using the configured array store.
+        'overview_cache_store' => env('HRM_ATT_OVERVIEW_CACHE_STORE', env('CACHE_STORE', 'database')),
         // Giờ làm chuẩn / ngày (Đ.105: ≤ 8h/ngày, ≤ 48h/tuần).
         'standard_hours_per_day' => 8,
         // Số ngày làm chuẩn / tuần (nhiều DN 6; khuyến khích ≤ 5.5).

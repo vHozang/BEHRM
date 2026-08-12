@@ -22,7 +22,7 @@ services:
     image: hrm-laravel-php:local
     container_name: hrm_laravel_worker
     working_dir: /var/www/html
-    command: php artisan queue:work --sleep=1 --tries=1 --timeout=600
+    command: php artisan queue:work --queue=attendance,realtime,exports,default --sleep=1 --tries=1 --timeout=600
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -46,6 +46,19 @@ services:
     networks:
       - hrm_network
 
+  reverb:
+    image: hrm-laravel-php:local
+    container_name: hrm_laravel_reverb
+    working_dir: /var/www/html
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - hrm_network
+
   nginx:
     image: nginx:alpine
     container_name: hrm_laravel_nginx
@@ -60,6 +73,7 @@ services:
       - ./docker/certbot/conf:/etc/letsencrypt:ro
     depends_on:
       - php
+      - reverb
     restart: unless-stopped
     networks:
       - hrm_network

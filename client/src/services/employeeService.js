@@ -85,6 +85,14 @@ export const employeeService = {
     }, force);
   },
 
+  searchLookup: async (search = '', options = {}, signal) => {
+    const response = await axiosClient.get('/employees/lookup', {
+      params: { search, limit: 30, ...options },
+      signal,
+    });
+    return Array.isArray(response.data) ? response.data.map(mapEmployee) : [];
+  },
+
   // Get all employees
   getAll: async (params = {}) => {
     const response = await axiosClient.get('/employees', { params: { ...params, per_page: 2000 } });

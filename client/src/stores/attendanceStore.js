@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import { attendanceService } from '../services/attendanceService';
+import { authService } from '../services/authService';
 
 export const useAttendanceStore = defineStore('attendance', () => {
   const records = ref([]);
@@ -8,6 +9,44 @@ export const useAttendanceStore = defineStore('attendance', () => {
   const todaySummary = ref(null);
   const loading = ref(false);
   const error = ref(null);
+  const pageCache = new Map();
+  const overviewCache = new Map();
+
+  const cacheKey = (params = {}) => {
+    const user = authService.getUser() || {};
+    const scopedParams = {
+      tenant_id: user.tenant_id || '',
+      legal_entity_id: params.legal_entity_id || user.legal_entity_id || '',
+      ...params,
+    };
+    return JSON.stringify(Object.keys(scopedParams).sort().reduce((result, key) => {
+      if (scopedParams[key] !== undefined && scopedParams[key] !== null && scopedParams[key] !== '') {
+        result[key] = scopedParams[key];
+      }
+      return result;
+    }, {}));
+  };
+
+  const getCachedPage = (params) => pageCache.get(cacheKey(params)) || null;
+  const setCachedPage = (params, value) => pageCache.set(cacheKey(params), { value, cachedAt: Date.now() });
+  const getCachedOverview = (params) => overviewCache.get(cacheKey(params)) || null;
+  const setCachedOverview = (params, value) => overviewCache.set(cacheKey(params), { value, cachedAt: Date.now() });
+  const prefetchFirstPage = async (params = {}) => {
+    const pageParams = { ...params };
+    delete pageParams.cursor;
+    if (getCachedPage(pageParams) && getCachedOverview(pageParams)) return;
+
+    const [page, overview] = await Promise.all([
+      attendanceService.getCursorPage(pageParams),
+      attendanceService.getOverview(pageParams),
+    ]);
+    setCachedPage(pageParams, page);
+    setCachedOverview(pageParams, overview);
+  };
+  const invalidateAttendanceCache = () => {
+    pageCache.clear();
+    overviewCache.clear();
+  };
 
   const fetchRecords = async (params) => {
     loading.value = true;
@@ -85,6 +124,12 @@ export const useAttendanceStore = defineStore('attendance', () => {
     fetchTrends,
     fetchTodaySummary,
     checkIn,
-    checkOut
+    checkOut,
+    getCachedPage,
+    setCachedPage,
+    getCachedOverview,
+    setCachedOverview,
+    prefetchFirstPage,
+    invalidateAttendanceCache,
   };
 });

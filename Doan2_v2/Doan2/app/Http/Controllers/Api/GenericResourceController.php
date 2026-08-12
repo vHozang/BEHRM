@@ -79,6 +79,19 @@ class GenericResourceController extends Controller
         $items = array_map(function ($item) use ($table) {
             return $this->unpackMeta($item, $table);
         }, $page->items());
+        if ($table === 'shift_assignments' && $items) {
+            $employeeIds = collect($items)->pluck('employee_id')->filter()->unique()->values();
+            $employees = DB::table('employees')
+                ->where('tenant_id', TenantContext::id())
+                ->whereIn('id', $employeeIds)
+                ->get(['id', 'employee_code', 'full_name'])
+                ->keyBy('id');
+            foreach ($items as $item) {
+                $employee = $employees->get((int) $item->employee_id);
+                $item->employee_code = $employee->employee_code ?? null;
+                $item->employee_name = $employee->full_name ?? null;
+            }
+        }
 
         // Policies: đính trạng thái ĐÃ KÝ của chính người xem + số lượt ký THẬT.
         // Thiếu cái này thì NV ký xong (POST acknowledge 200) list vẫn "Chưa xác
@@ -142,6 +155,15 @@ class GenericResourceController extends Controller
             && ! $this->canManageServiceTickets($request)
             && (int) $record->requester_id !== (int) $request->attributes->get('auth_employee_id')) {
             return $this->notFound();
+        }
+
+        if ($table === 'shift_assignments') {
+            $employee = DB::table('employees')
+                ->where('id', $record->employee_id)
+                ->where('tenant_id', TenantContext::id())
+                ->first(['employee_code', 'full_name']);
+            $record->employee_code = $employee->employee_code ?? null;
+            $record->employee_name = $employee->full_name ?? null;
         }
 
         return $this->ok($this->unpackMeta($record, $table), Str::headline($resource).' detail');

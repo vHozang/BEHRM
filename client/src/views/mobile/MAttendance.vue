@@ -55,6 +55,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { authService } from '../../services/authService';
 import { attendanceService } from '../../services/attendanceService';
+import { attendanceRealtimeService } from '../../services/attendanceRealtimeService';
 import { hhmm, dmy, attChip, attLabel, todayISO } from './mformat';
 
 const empId = authService.getUser()?.employee_id;
@@ -88,9 +89,13 @@ const load = async () => {
     // Chỉ tháng hiện tại (backend lọc) — màn này hiển thị "Tháng này", không cần
     // tải toàn bộ lịch sử nhiều trang.
     const _now = new Date();
-    const d = await attendanceService.getRecords({ employee_id: empId, month: _now.getMonth() + 1, year: _now.getFullYear(), per_page: 200 });
-    records.value = Array.isArray(d) ? d : (d?.items || []);
+    const d = await attendanceService.getCursorPage({ employee_id: empId, month: _now.getMonth() + 1, year: _now.getFullYear(), limit: 50 });
+    records.value = d.items || [];
   } catch { /* giữ list cũ */ }
+};
+
+const onAttendanceChanged = (event) => {
+  if (event.reset_required || Number(event.employee_id) === Number(empId)) load();
 };
 
 const punch = async () => {
@@ -115,5 +120,9 @@ const punch = async () => {
   }
 };
 
-onMounted(load);
+onMounted(() => {
+  load();
+  attendanceRealtimeService.connect(onAttendanceChanged).catch(() => attendanceRealtimeService.startFallback(onAttendanceChanged));
+});
+onUnmounted(() => attendanceRealtimeService.disconnect());
 </script>

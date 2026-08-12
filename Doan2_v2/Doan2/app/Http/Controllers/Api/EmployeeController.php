@@ -284,13 +284,38 @@ class EmployeeController extends Controller
     /** Lightweight data for selectors; never returns profile or salary fields. */
     public function lookup(Request $request): JsonResponse
     {
-        $employees = Employee::query()
+        $access = (array) $request->attributes->get('access', []);
+        $legalEntityId = (int) TenantContext::legalEntityId();
+        if (! empty($access['full']) && $request->filled('legal_entity_id')) {
+            $requested = (int) $request->query('legal_entity_id');
+            if (TenantContext::ownsRow('legal_entities', $requested)) {
+                $legalEntityId = $requested;
+            }
+        }
+
+        $query = Employee::query()
             ->with(['position:id,position_code,position_name'])
             ->select(['id', 'employee_code', 'full_name', 'status', 'legal_entity_id', 'department_id', 'position_id', 'manager_id'])
             ->where(fn ($query) => $query->whereNull('profile->system_account')->orWhere('profile->system_account', false))
-            ->when($request->filled('legal_entity_id'), fn ($query) => $query->where('legal_entity_id', (int) $request->query('legal_entity_id')))
-            ->orderBy('full_name')
-            ->get();
+            ->where('legal_entity_id', $legalEntityId)
+            ->when($request->filled('department_id'), fn ($query) => $query->where('department_id', (int) $request->query('department_id')))
+            ->when($request->filled('search'), function ($query) use ($request): void {
+                $search = trim((string) $request->query('search'));
+                $operator = DB::getDriverName() === 'pgsql' ? 'ilike' : 'like';
+                $query->where(function ($nested) use ($search, $operator): void {
+                    $nested->where('full_name', $operator, "%{$search}%")
+                        ->orWhere('employee_code', $operator, "%{$search}%");
+                });
+            })
+            ->orderBy('full_name');
+
+        // Preserve the original complete lookup when no remote-search parameter
+        // is supplied; new selectors request a bounded result set explicitly.
+        if ($request->filled('search') || $request->filled('limit') || $request->filled('department_id')) {
+            $query->limit(min(max((int) $request->query('limit', 30), 1), 100));
+        }
+
+        $employees = $query->get();
 
         $statuses = EmployeeStatus::resolveMany($employees);
         foreach ($employees as $employee) {

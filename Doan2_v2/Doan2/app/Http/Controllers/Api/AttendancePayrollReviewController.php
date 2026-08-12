@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AttendancePayrollReview;
 use App\Services\AttendancePayrollReviewService;
+use App\Services\AttendanceChangePublisher;
 use App\Support\AccessControl;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +31,15 @@ class AttendancePayrollReviewController extends Controller
             ])
             ->orderByDesc('work_date')
             ->orderByDesc('id');
+        $access = (array) $request->attributes->get('access', []);
+        if (empty($access['full'])) {
+            $query->where('legal_entity_id', TenantContext::legalEntityId());
+        } elseif ($request->filled('legal_entity_id')) {
+            $legalEntityId = (int) $request->query('legal_entity_id');
+            if (TenantContext::ownsRow('legal_entities', $legalEntityId)) {
+                $query->where('legal_entity_id', $legalEntityId);
+            }
+        }
 
         if ($request->query('status') === 'UNRESOLVED') {
             $query->whereIn('status', AttendancePayrollReview::UNRESOLVED_STATUSES);
@@ -64,6 +75,7 @@ class AttendancePayrollReviewController extends Controller
         Request $request,
         int $id,
         AttendancePayrollReviewService $service,
+        AttendanceChangePublisher $changes,
     ): JsonResponse {
         if (! $this->canReview($request)) {
             return $this->forbidden();
@@ -77,7 +89,12 @@ class AttendancePayrollReviewController extends Controller
             return $this->validationError($validator->errors()->toArray());
         }
 
-        $review = AttendancePayrollReview::find($id);
+        $reviewQuery = AttendancePayrollReview::query()->whereKey($id);
+        $access = (array) $request->attributes->get('access', []);
+        if (empty($access['full'])) {
+            $reviewQuery->where('legal_entity_id', TenantContext::legalEntityId());
+        }
+        $review = $reviewQuery->first();
         if (! $review) {
             return response()->json(['status' => 404, 'message' => 'Không tìm thấy review.', 'data' => null], 404);
         }
@@ -88,6 +105,7 @@ class AttendancePayrollReviewController extends Controller
             $request->input('note'),
             (int) $request->attributes->get('auth_employee_id'),
         );
+        $changes->publishById((int) $review->attendance_id, 'payroll_review');
 
         return $this->ok($review, 'Đã lưu quyết định khấu trừ chấm công.');
     }

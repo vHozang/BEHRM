@@ -148,13 +148,13 @@
 
     <BaseModal v-model="showCreateModal" :title="createKind === 'ticket' ? 'Giao ticket tăng ca' : 'Đăng ký tăng ca'" data-testid="modal-create-overtime">
       <div class="space-y-4">
-        <BaseSelect
+        <RemoteEmployeeSelect
           v-if="createKind === 'ticket'"
           v-model="form.employee_id"
           label="Nhân viên nhận ticket"
-          :options="employeeOptions"
-          placeholder="Chọn nhân viên"
-          required
+          placeholder="Nhập mã hoặc tên nhân viên"
+          :initial-label="selectedEmployeeLabel"
+          @select="rememberEmployee"
         />
         <div v-else class="rounded-lg bg-muted p-3">
           <p class="text-sm text-muted-foreground">Người gửi đơn</p>
@@ -231,10 +231,10 @@ import BaseInput from '../components/BaseInput.vue';
 import BaseModal from '../components/BaseModal.vue';
 import BaseSelect from '../components/BaseSelect.vue';
 import BaseTable from '../components/BaseTable.vue';
+import RemoteEmployeeSelect from '../components/RemoteEmployeeSelect.vue';
 import { useToast } from '../composables/useToast';
 import { attendanceService } from '../services/attendanceService';
 import { authService } from '../services/authService';
-import { employeeService } from '../services/employeeService';
 import { buildApprovalSteps, statusVN, statusVariant } from '../utils/approvalSteps';
 
 const toast = useToast();
@@ -269,10 +269,16 @@ const usage = ref(null);
 const form = ref({ employee_id: '', overtime_date: '', start_time: '', end_time: '', reason: '' });
 
 const empNameById = (id) => employees.value.find((employee) => String(employee.id) === String(id))?.full_name || null;
-const employeeOptions = computed(() => employees.value.map((employee) => ({
-  value: String(employee.id),
-  label: `${employee.employee_code || ''} - ${employee.full_name}`.replace(/^ - /, ''),
-})));
+const selectedEmployeeLabel = computed(() => {
+  const employee = employees.value.find(item => String(item.id) === String(form.value.employee_id));
+  return employee ? `${employee.employee_code || ''} · ${employee.full_name}`.replace(/^ · /, '') : '';
+});
+const rememberEmployee = (employee) => {
+  if (!employee) return;
+  const index = employees.value.findIndex(item => String(item.id) === String(employee.id));
+  if (index >= 0) employees.value[index] = employee;
+  else employees.value.push(employee);
+};
 
 const scopeRequests = computed(() => {
   if (orgLens.value) return requests.value;
@@ -477,9 +483,7 @@ onMounted(async () => {
   loading.value = true;
   error.value = '';
   try {
-    const jobs = [loadRequests()];
-    if (canManageTickets.value) jobs.push(employeeService.getLookup().then((data) => { employees.value = Array.isArray(data) ? data : (data?.data || []); }));
-    await Promise.all(jobs);
+    await loadRequests();
   } catch (err) {
     if (err.response?.status !== 403) error.value = firstError(err, 'Không thể kết nối đến API.');
   } finally {

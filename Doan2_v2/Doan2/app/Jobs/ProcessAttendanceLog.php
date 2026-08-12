@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\DTOs\CheckInData;
 use App\Models\Attendance;
+use App\Services\AttendanceChangePublisher;
 use App\Repositories\Contracts\AttendanceRepositoryContract;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -157,19 +158,23 @@ class ProcessAttendanceLog implements ShouldQueue
     {
         $today = now()->toDateString();
         $timeString = now()->parse($data->checkedAt)->toTimeString();
+        $employee = DB::table('employees')->where('id', $data->employeeId)->first(['tenant_id', 'legal_entity_id']);
+        if (! $employee) {
+            return;
+        }
 
         if ($data->action === 'CHECK_IN') {
             // UPSERT: tạo mới nếu chưa có, update check_in_time nếu đã tồn tại
             // ON CONFLICT là cú pháp native PostgreSQL cho upsert hiệu quả
             DB::statement("
-                INSERT INTO attendances (employee_id, work_date, check_in_time, status, created_at, updated_at)
-                VALUES (?, ?, ?, 'ON_TIME', NOW(), NOW())
+                INSERT INTO attendances (employee_id, work_date, check_in_time, status, tenant_id, legal_entity_id, created_at, updated_at)
+                VALUES (?, ?, ?, 'ON_TIME', ?, ?, NOW(), NOW())
                 ON CONFLICT (employee_id, work_date)
                 DO UPDATE SET
                     check_in_time = EXCLUDED.check_in_time,
                     updated_at    = NOW()
                 WHERE attendances.check_in_time IS NULL
-            ", [$data->employeeId, $today, $timeString]);
+            ", [$data->employeeId, $today, $timeString, $employee->tenant_id, $employee->legal_entity_id]);
 
         } elseif ($data->action === 'CHECK_OUT') {
             // Chỉ update check_out_time nếu đã có check_in_time
@@ -181,6 +186,14 @@ class ProcessAttendanceLog implements ShouldQueue
                     'check_out_time' => $timeString,
                     'updated_at' => now(),
                 ]);
+        }
+
+        $attendance = Attendance::withoutTenantScope()
+            ->where('employee_id', $data->employeeId)
+            ->where('work_date', $today)
+            ->first();
+        if ($attendance) {
+            app(AttendanceChangePublisher::class)->publish($attendance, 'legacy_log');
         }
     }
 

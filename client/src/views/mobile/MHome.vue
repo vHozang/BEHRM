@@ -88,9 +88,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { authService } from '../../services/authService';
 import { attendanceService } from '../../services/attendanceService';
+import { attendanceRealtimeService } from '../../services/attendanceRealtimeService';
 import { leaveService } from '../../services/leaveService';
 import { hhmm, dmy, statusChip, statusLabel, todayISO } from './mformat';
 
@@ -132,19 +133,29 @@ const actions = [
   { to: '/m/me', label: 'Hồ sơ', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', bg: 'bg-purple-100 dark:bg-purple-900/40', fg: 'text-purple-600' },
 ];
 
+const loadAttendance = () => {
+  if (!empId) return Promise.resolve();
+  const _now = new Date();
+  return attendanceService.getCursorPage({ employee_id: empId, month: _now.getMonth() + 1, year: _now.getFullYear(), limit: 50 })
+    .then(d => { records.value = Array.isArray(d) ? d : (d?.items || []); });
+};
+
 onMounted(async () => {
   if (!empId) return;
   // 3 nguồn độc lập — lỗi nguồn nào bỏ nguồn đó, không chặn màn hình.
   // Chỉ lấy THÁNG HIỆN TẠI (backend lọc month/year) — tránh tải toàn bộ lịch sử
   // nhiều trang khi công nhân có hàng trăm bản ghi (chậm, tưởng lỗi).
-  const _now = new Date();
-  attendanceService.getRecords({ employee_id: empId, month: _now.getMonth() + 1, year: _now.getFullYear(), per_page: 200 })
-    .then(d => { records.value = Array.isArray(d) ? d : (d?.items || []); }).catch(() => {});
+  loadAttendance().catch(() => {});
   leaveService.getRequests({ employee_id: empId })
     .then(d => { requests.value = Array.isArray(d) ? d : (d?.items || []); }).catch(() => {});
   leaveService.getBalances(empId)
     .then(d => { balances.value = Array.isArray(d) ? d : (d?.items || []); }).catch(() => {});
   leaveService.getTypes()
     .then(t => { types.value = Array.isArray(t) ? t : (t?.items || []); }).catch(() => {});
+  const onChange = (event) => {
+    if (event.reset_required || Number(event.employee_id) === Number(empId)) loadAttendance().catch(() => {});
+  };
+  attendanceRealtimeService.connect(onChange).catch(() => attendanceRealtimeService.startFallback(onChange));
 });
+onUnmounted(() => attendanceRealtimeService.disconnect());
 </script>

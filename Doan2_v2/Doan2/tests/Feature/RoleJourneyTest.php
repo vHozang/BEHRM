@@ -4,9 +4,15 @@ namespace Tests\Feature;
 
 use App\Support\AccessControl;
 use App\Support\TenantContext;
+use App\Events\AttendanceChanged;
+use App\Jobs\GenerateTimesheetExport;
+use App\Services\AttendanceChangePublisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -97,6 +103,399 @@ class RoleJourneyTest extends TestCase
             'GET',
             'unmapped-future-resource'
         ));
+    }
+
+    public function test_attendance_cursor_list_is_light_and_overview_is_separate(): void
+    {
+        $manager = $this->actor('attendance-manager', ['time']);
+        $employee = $this->actor('attendance-worker');
+        $now = now();
+        $attendanceIds = [];
+
+        foreach ([
+            ['2026-08-01', 'ON_TIME', ['review_status' => 'needs_review']],
+            ['2026-08-02', 'LATE', []],
+            ['2026-08-03', 'EARLY_LEAVE', []],
+            ['2026-08-04', 'ABSENT', []],
+        ] as [$date, $status, $meta]) {
+            $attendanceIds[] = DB::table('attendances')->insertGetId([
+                'employee_id' => $employee['id'],
+                'work_date' => $date,
+                'status' => $status,
+                'meta' => json_encode($meta),
+                'tenant_id' => 1,
+                'legal_entity_id' => 1,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        DB::table('attendance_payroll_reviews')->insert([
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
+            'attendance_id' => $attendanceIds[1],
+            'employee_id' => $employee['id'],
+            'work_date' => '2026-08-02',
+            'late_minutes' => 15,
+            'early_leave_minutes' => 0,
+            'default_percent' => 0,
+            'status' => 'PENDING',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendances?pagination=cursor&from=2026-08-01&to=2026-08-31&limit=2')
+            ->assertOk()
+            ->assertJsonCount(2, 'data.items')
+            ->assertJsonPath('data.has_more', true)
+            ->assertJsonMissingPath('data.items.0.meta')
+            ->assertJsonMissingPath('data.items.0.device_events');
+
+        $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendance/overview?from=2026-08-01&to=2026-08-31')
+            ->assertOk()
+            ->assertJsonPath('data.total', 4)
+            ->assertJsonPath('data.present', 1)
+            ->assertJsonPath('data.absent', 1)
+            ->assertJsonPath('data.late', 1)
+            ->assertJsonPath('data.early_leave', 1)
+            ->assertJsonPath('data.needs_review', 1)
+            ->assertJsonPath('data.payroll_review_pending', 1);
+
+        $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendances?pagination=cursor&from=2026-08-01&to=2026-08-31&payroll_review=unresolved&limit=50')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.id', $attendanceIds[1]);
+    }
+
+    public function test_attendance_cursor_navigation_has_no_duplicates_or_gaps(): void
+    {
+        $manager = $this->actor('cursor-manager', ['time']);
+        $employee = $this->actor('cursor-worker');
+        $ids = [];
+
+        foreach (range(1, 6) as $day) {
+            $ids[] = DB::table('attendances')->insertGetId([
+                'employee_id' => $employee['id'],
+                'work_date' => sprintf('2026-08-%02d', $day),
+                'status' => 'ON_TIME',
+                'tenant_id' => 1,
+                'legal_entity_id' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $first = $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendances?pagination=cursor&limit=2')
+            ->assertOk()
+            ->json('data');
+        $second = $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendances?pagination=cursor&limit=2&cursor='.urlencode($first['next_cursor']))
+            ->assertOk()
+            ->json('data');
+        $back = $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendances?pagination=cursor&limit=2&cursor='.urlencode($second['prev_cursor']))
+            ->assertOk()
+            ->json('data');
+
+        $firstIds = array_column($first['items'], 'id');
+        $secondIds = array_column($second['items'], 'id');
+        $this->assertSame([], array_values(array_intersect($firstIds, $secondIds)));
+        $this->assertSame($firstIds, array_column($back['items'], 'id'));
+        $this->assertSame(array_slice(array_reverse($ids), 0, 4), array_merge($firstIds, $secondIds));
+    }
+
+    public function test_attendance_detail_is_scoped_to_owner_tenant_and_entity(): void
+    {
+        $employee = $this->actor('detail-owner');
+        $otherEmployee = $this->actor('detail-other');
+        $manager = $this->actor('detail-manager', ['time']);
+        $otherEntityManager = $this->actor('detail-entity-manager', ['time']);
+        DB::table('legal_entities')->insert([
+            'id' => 2,
+            'tenant_id' => 1,
+            'name' => 'Second entity',
+            'code' => 'ROLE-SECOND',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('employees')->where('id', $otherEntityManager['id'])->update(['legal_entity_id' => 2]);
+
+        $attendanceId = DB::table('attendances')->insertGetId([
+            'employee_id' => $employee['id'],
+            'work_date' => '2026-08-10',
+            'status' => 'ON_TIME',
+            'meta' => json_encode(['device_events' => [['device_id' => 'private-device']]]),
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withToken($employee['token'])->getJson('/api/v1/attendances/'.$attendanceId)->assertOk();
+        $this->withToken($otherEmployee['token'])->getJson('/api/v1/attendances/'.$attendanceId)->assertForbidden();
+        $this->withToken($manager['token'])->getJson('/api/v1/attendances/'.$attendanceId)->assertOk();
+        $this->withToken($otherEntityManager['token'])->getJson('/api/v1/attendances/'.$attendanceId)->assertNotFound();
+
+        $foreignTenant = $this->actor('detail-foreign', null, false, 2);
+        $this->withToken($foreignTenant['token'])->getJson('/api/v1/attendances/'.$attendanceId)->assertForbidden();
+    }
+
+    public function test_attendance_changes_and_overview_cache_are_invalidated_after_commit(): void
+    {
+        Event::fake([AttendanceChanged::class]);
+        $manager = $this->actor('changes-manager', ['time']);
+        $employee = $this->actor('changes-worker');
+
+        $baseline = $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendance/changes')
+            ->assertOk()
+            ->json('data.next_cursor');
+        $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendance/overview?from=2026-08-01&to=2026-08-31')
+            ->assertOk()
+            ->assertJsonPath('data.total', 0);
+
+        TenantContext::set(1, 1);
+        $attendance = \App\Models\Attendance::create([
+            'employee_id' => $employee['id'],
+            'work_date' => '2026-08-12',
+            'status' => 'ON_TIME',
+            'legal_entity_id' => 1,
+        ]);
+        TenantContext::clear();
+
+        $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendance/overview?from=2026-08-01&to=2026-08-31')
+            ->assertOk()
+            ->assertJsonPath('data.total', 1);
+        $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendance/changes?since='.urlencode($baseline))
+            ->assertOk()
+            ->assertJsonPath('data.items.0.attendance_id', $attendance->id)
+            ->assertJsonPath('data.items.0.employee_id', $employee['id']);
+        Event::assertDispatched(AttendanceChanged::class);
+    }
+
+    public function test_attendance_changes_requests_a_reset_when_cursor_is_older_than_retention(): void
+    {
+        $manager = $this->actor('changes-reset-manager', ['time']);
+        $employee = $this->actor('changes-reset-worker');
+        $ids = [];
+        foreach (range(1, 3) as $index) {
+            $ids[] = DB::table('attendance_change_events')->insertGetId([
+                'tenant_id' => 1,
+                'legal_entity_id' => 1,
+                'attendance_id' => $index,
+                'employee_id' => $employee['id'],
+                'work_date' => '2026-08-12',
+                'change_type' => 'updated',
+                'created_at' => now(),
+            ]);
+        }
+        DB::table('attendance_change_events')->whereIn('id', array_slice($ids, 0, 2))->delete();
+
+        $staleCursor = AttendanceChangePublisher::encodeCursor(0);
+        $response = $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendance/changes?since='.urlencode($staleCursor))
+            ->assertOk()
+            ->assertJsonPath('data.reset_required', true)
+            ->assertJsonPath('data.has_more', false)
+            ->assertJsonCount(0, 'data.items');
+
+        $this->assertGreaterThan(
+            0,
+            AttendanceChangePublisher::decodeCursor((string) $response->json('data.next_cursor'))
+        );
+    }
+
+    public function test_attendance_overview_still_works_when_cache_store_is_unavailable(): void
+    {
+        $manager = $this->actor('overview-cache-manager', ['time']);
+        $employee = $this->actor('overview-cache-worker');
+        DB::table('attendances')->insert([
+            'employee_id' => $employee['id'],
+            'work_date' => '2026-08-12',
+            'status' => 'ON_TIME',
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        config([
+            'cache.stores.attendance-unavailable' => [
+                'driver' => 'redis',
+                'connection' => 'attendance-unavailable',
+            ],
+            'database.redis.attendance-unavailable' => [
+                'url' => null,
+                'host' => '127.0.0.1',
+                'username' => null,
+                'password' => null,
+                'port' => 1,
+                'database' => 0,
+                'read_timeout' => 0.05,
+                'timeout' => 0.05,
+            ],
+            'hrm.attendance.overview_cache_store' => 'attendance-unavailable',
+        ]);
+
+        $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendance/overview?from=2026-08-01&to=2026-08-31')
+            ->assertOk()
+            ->assertJsonPath('data.total', 1)
+            ->assertJsonPath('data.present', 1);
+    }
+
+    public function test_attendance_realtime_private_channel_auth_enforces_scope(): void
+    {
+        config([
+            'broadcasting.connections.reverb.key' => 'public-key',
+            'broadcasting.connections.reverb.secret' => 'private-secret',
+            'broadcasting.connections.reverb.app_id' => 'test-app',
+        ]);
+        $manager = $this->actor('realtime-manager', ['time']);
+        $employee = $this->actor('realtime-worker');
+
+        $this->withToken($employee['token'])->postJson('/api/v1/attendance/realtime/auth', [
+            'socket_id' => '123.456',
+            'channel_name' => 'private-attendance.employee.'.$employee['id'],
+        ])->assertOk()->assertJsonStructure(['auth']);
+        $this->withToken($employee['token'])->postJson('/api/v1/attendance/realtime/auth', [
+            'socket_id' => '123.456',
+            'channel_name' => 'private-attendance.employee.'.$manager['id'],
+        ])->assertForbidden();
+        $this->withToken($employee['token'])->postJson('/api/v1/attendance/realtime/auth', [
+            'socket_id' => '123.456',
+            'channel_name' => 'private-attendance.tenant.1.entity.1',
+        ])->assertForbidden();
+        $this->withToken($manager['token'])->postJson('/api/v1/attendance/realtime/auth', [
+            'socket_id' => '123.456',
+            'channel_name' => 'private-attendance.tenant.1.entity.1',
+        ])->assertOk()->assertJsonStructure(['auth']);
+    }
+
+    public function test_reverb_allowed_origins_are_normalized_to_hostnames(): void
+    {
+        $previous = getenv('REVERB_ALLOWED_ORIGINS');
+        try {
+            putenv('REVERB_ALLOWED_ORIGINS=https://devtapcode.io.vn,https://www.devtapcode.io.vn');
+            $config = require config_path('reverb.php');
+
+            $this->assertSame(
+                ['devtapcode.io.vn', 'www.devtapcode.io.vn'],
+                $config['apps']['apps'][0]['allowed_origins']
+            );
+        } finally {
+            $previous === false
+                ? putenv('REVERB_ALLOWED_ORIGINS')
+                : putenv('REVERB_ALLOWED_ORIGINS='.$previous);
+        }
+    }
+
+    public function test_timesheet_pagination_and_exports_enforce_owner_scope(): void
+    {
+        Queue::fake();
+        $manager = $this->actor('timesheet-manager', ['time']);
+        $employees = [];
+        foreach (range(1, 4) as $index) {
+            $employees[] = $this->actor('timesheet-worker-'.$index);
+        }
+
+        $this->withToken($manager['token'])
+            ->getJson('/api/v1/attendance/timesheet?month=2026-08&page=1&per_page=2')
+            ->assertOk()
+            ->assertJsonCount(2, 'data.rows')
+            ->assertJsonPath('data.pagination.current_page', 1)
+            ->assertJsonPath('data.pagination.per_page', 2)
+            ->assertJsonPath('data.pagination.total', 5)
+            ->assertJsonPath('data.pagination.last_page', 3);
+
+        $employee = $employees[0];
+        $other = $employees[1];
+        $this->withToken($employee['token'])->postJson('/api/v1/attendance/timesheet/exports', [
+            'month' => '2026-08',
+        ])->assertForbidden();
+        $this->withToken($employee['token'])->postJson('/api/v1/attendance/timesheet/exports', [
+            'month' => '2026-08',
+            'employee_id' => $other['id'],
+        ])->assertForbidden();
+        $exportId = $this->withToken($employee['token'])->postJson('/api/v1/attendance/timesheet/exports', [
+            'month' => '2026-08',
+            'format' => 'csv',
+            'employee_id' => $employee['id'],
+        ])->assertCreated()->json('data.id');
+        Queue::assertPushed(GenerateTimesheetExport::class, fn ($job) => $job->exportId === $exportId);
+        $this->withToken($employee['token'])->getJson('/api/v1/attendance/timesheet/exports/'.$exportId)->assertOk();
+        $this->withToken($other['token'])->getJson('/api/v1/attendance/timesheet/exports/'.$exportId)->assertForbidden();
+    }
+
+    public function test_timesheet_export_generates_private_xlsx_and_csv_files(): void
+    {
+        Storage::fake('local');
+        $manager = $this->actor('export-manager', ['time']);
+        $employee = $this->actor('export-worker');
+        DB::table('attendances')->insert([
+            'employee_id' => $employee['id'],
+            'work_date' => '2026-08-12',
+            'check_in_time' => '06:00:00',
+            'check_out_time' => '14:00:00',
+            'status' => 'ON_TIME',
+            'meta' => json_encode(['worked_hours' => 8]),
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        foreach (['xlsx', 'csv'] as $format) {
+            $exportId = $this->withToken($manager['token'])->postJson('/api/v1/attendance/timesheet/exports', [
+                'month' => '2026-08',
+                'format' => $format,
+                'employee_id' => $employee['id'],
+            ])->assertCreated()->json('data.id');
+
+            $export = \App\Models\AttendanceTimesheetExport::withoutTenantScope()->findOrFail($exportId);
+            $this->assertSame('COMPLETED', $export->status);
+            $this->assertNotNull($export->file_path);
+            Storage::disk('local')->assertExists($export->file_path);
+            $this->assertGreaterThan(0, (int) $export->file_size);
+            $response = $this->withToken($manager['token'])
+                ->get('/api/v1/attendance/timesheet/exports/'.$exportId.'/download')
+                ->assertOk();
+            $this->assertStringContainsString('no-store', (string) $response->headers->get('cache-control'));
+        }
+    }
+
+    public function test_expired_timesheet_export_is_not_downloadable(): void
+    {
+        Storage::fake('local');
+        $manager = $this->actor('expired-export-manager', ['time']);
+        $path = 'attendance/timesheet-exports/1/expired.csv';
+        Storage::disk('local')->put($path, "employee_code,full_name\n");
+        $exportId = (string) Str::uuid();
+        DB::table('attendance_timesheet_exports')->insert([
+            'id' => $exportId,
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
+            'requested_by' => $manager['id'],
+            'month' => '2026-08',
+            'format' => 'csv',
+            'status' => 'COMPLETED',
+            'file_path' => $path,
+            'file_size' => Storage::disk('local')->size($path),
+            'completed_at' => now()->subDays(2),
+            'expires_at' => now()->subMinute(),
+            'created_at' => now()->subDays(2),
+            'updated_at' => now()->subDays(2),
+        ]);
+
+        $this->withToken($manager['token'])
+            ->get('/api/v1/attendance/timesheet/exports/'.$exportId.'/download')
+            ->assertNotFound();
     }
 
     public function test_helpdesk_is_self_scoped_and_keeps_history(): void

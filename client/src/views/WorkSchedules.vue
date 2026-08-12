@@ -17,10 +17,11 @@
       <div class="flex flex-wrap gap-3 mb-4 items-end">
         <template v-if="isAdmin">
           <div class="flex-1 min-w-[200px]">
-            <BaseSelect
+            <RemoteEmployeeSelect
               v-model="filters.employee"
-              :options="employeeOptions"
-              placeholder="Chọn nhân viên"
+              placeholder="Nhập mã hoặc tên nhân viên"
+              :initial-label="employeeLabel(filters.employee)"
+              @select="rememberEmployee"
             />
           </div>
         </template>
@@ -79,11 +80,11 @@
 
     <BaseModal v-model="showCreateModal" title="Lên lịch làm việc">
       <div class="space-y-4">
-        <BaseSelect
+        <RemoteEmployeeSelect
           v-model="form.employee_id"
-          :options="employeeOptions"
           label="Nhân viên"
-          required
+          :initial-label="employeeLabel(form.employee_id)"
+          @select="rememberEmployee"
         />
         <BaseInput v-model="form.work_date" type="date" label="Ngày làm" required />
         <BaseSelect
@@ -108,12 +109,12 @@
           label="Ngày muốn đổi ca"
           required
         />
-        <BaseSelect
+        <RemoteEmployeeSelect
           v-model="shiftChangeForm.target_employee_id"
-          :options="colleagueOptions"
           label="Đổi ca với đồng nghiệp"
-          placeholder="Chọn đồng nghiệp"
-          required
+          placeholder="Nhập mã hoặc tên đồng nghiệp"
+          :initial-label="employeeLabel(shiftChangeForm.target_employee_id)"
+          @select="rememberEmployee"
         />
         <p class="text-xs text-muted-foreground -mt-2">
           Hệ thống sẽ hoán đổi ca của hai người trong đúng ngày đã chọn sau khi quản lý duyệt (ca cố định các ngày khác giữ nguyên).
@@ -153,8 +154,8 @@ import BaseModal from '../components/BaseModal.vue';
 import BaseInput from '../components/BaseInput.vue';
 import BaseSelect from '../components/BaseSelect.vue';
 import BaseBadge from '../components/BaseBadge.vue';
+import RemoteEmployeeSelect from '../components/RemoteEmployeeSelect.vue';
 import { workScheduleService } from '../services/workScheduleService';
-import { employeeService } from '../services/employeeService';
 import { workShiftService } from '../services/workShiftService';
 import { authService } from '../services/authService';
 
@@ -162,8 +163,8 @@ const isAdmin = computed(() => authService.isAdmin());
 const currentUser = computed(() => authService.getUser());
 
 const workSchedules = ref([]);
-const employeeOptions = ref([]);
 const employeeMap = ref({});
+const selectedEmployees = ref([]);
 const shiftOptions = ref([]);
 const shiftMap = ref({});
 const showCreateModal = ref(false);
@@ -179,7 +180,6 @@ const shiftChangeError = ref('');
 const shiftChangeSuccess = ref('');
 
 // Đồng nghiệp để chọn đổi ca (trừ chính mình) + danh sách yêu cầu đổi ca của tôi.
-const colleagueOptions = ref([]);
 const mySwaps = ref([]);
 
 const swapStatusText = (s) => ({
@@ -237,6 +237,22 @@ const formatDate = (date) => {
 const getEmployeeName = (id) => {
   return employeeMap.value[id] || `NV #${id}`;
 };
+const rememberEmployeeFromRow = (row) => {
+  const name = row.employee_name || row.full_name || row.employee?.full_name;
+  if (!name || !row.employee_id) return;
+  employeeMap.value[row.employee_id] = name;
+};
+const employeeLabel = (id) => {
+  const employee = selectedEmployees.value.find(item => String(item.id) === String(id));
+  return employee ? `${employee.employee_code || ''} · ${employee.full_name}`.replace(/^ · /, '') : '';
+};
+const rememberEmployee = (employee) => {
+  if (!employee) return;
+  const index = selectedEmployees.value.findIndex(item => String(item.id) === String(employee.id));
+  if (index >= 0) selectedEmployees.value[index] = employee;
+  else selectedEmployees.value.push(employee);
+  employeeMap.value[employee.id] = employee.full_name;
+};
 
 const getShiftName = (id) => {
   return shiftMap.value[id] || `Ca #${id}`;
@@ -290,28 +306,12 @@ const loadData = async () => {
     
     const response = await workScheduleService.getAll(params);
     workSchedules.value = response?.data || response || [];
+    workSchedules.value.forEach(rememberEmployeeFromRow);
   } catch (err) {
     console.error('Error loading work schedules:', err);
     if (err.response?.status === 403) {
       workSchedules.value = [];
     }
-  }
-};
-
-const loadEmployees = async () => {
-  try {
-    const response = await employeeService.getLookup();
-    const employees = response?.data || response || [];
-    employeeOptions.value = employees.map((emp) => ({
-      value: emp.id,
-      label: emp.full_name
-    }));
-    employees.forEach(emp => {
-      employeeMap.value[emp.id] = emp.full_name;
-    });
-  } catch (err) {
-    console.error('Error loading employees:', err);
-    employeeOptions.value = [];
   }
 };
 
@@ -357,20 +357,6 @@ const saveItem = async () => {
     await loadData();
   } catch (err) {
     console.error('Error saving work schedule:', err);
-  }
-};
-
-const loadColleagues = async () => {
-  try {
-    const response = await employeeService.getLookup();
-    const employees = response?.data || response || [];
-    const myId = currentUser.value?.employee_id;
-    colleagueOptions.value = employees
-      .filter((e) => String(e.id) !== String(myId))
-      .map((e) => ({ value: e.id, label: e.full_name }));
-    employees.forEach((e) => { employeeMap.value[e.id] = e.full_name; });
-  } catch (err) {
-    console.error('Error loading colleagues:', err);
   }
 };
 
@@ -427,11 +413,7 @@ const applyFilters = async () => {
 
 onMounted(async () => {
   const promises = [loadData(), loadShifts()];
-  if (isAdmin.value) {
-    promises.push(loadEmployees());
-  } else {
-    promises.push(loadColleagues(), loadMySwaps());
-  }
+  if (!isAdmin.value) promises.push(loadMySwaps());
   await Promise.all(promises);
 });
 </script>

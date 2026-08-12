@@ -127,11 +127,11 @@
     >
       <div class="space-y-4">
         <template v-if="orgLens">
-          <BaseSelect
+          <RemoteEmployeeSelect
             v-model="form.requester_id"
             label="Nhân viên yêu cầu"
-            :options="employeeOptions"
-            required
+            :initial-label="employeeLabel(form.requester_id)"
+            @select="rememberEmployee"
           />
         </template>
         <template v-else>
@@ -140,10 +140,11 @@
             <p class="font-medium">{{ currentUser?.full_name || currentUser?.email || 'Bạn' }}</p>
           </div>
         </template>
-        <BaseSelect
+        <RemoteEmployeeSelect
           v-model="form.target_employee_id"
           label="Đổi ca với nhân viên"
-          :options="employeeOptions"
+          :initial-label="employeeLabel(form.target_employee_id)"
+          @select="rememberEmployee"
         />
         <div class="grid grid-cols-2 gap-4">
           <BaseInput
@@ -214,8 +215,8 @@ import BaseTable from '../components/BaseTable.vue';
 import ApprovalTimeline from '../components/ApprovalTimeline.vue';
 import { buildApprovalSteps, statusVN, statusVariant } from '../utils/approvalSteps';
 import BaseModal from '../components/BaseModal.vue';
+import RemoteEmployeeSelect from '../components/RemoteEmployeeSelect.vue';
 import { workScheduleService } from '../services/workScheduleService';
-import { employeeService } from '../services/employeeService';
 import { authService } from '../services/authService';
 
 const isAdmin = computed(() => authService.isAdmin());
@@ -285,13 +286,16 @@ const displayRequests = computed(() => {
   );
 });
 
-const employeeOptions = computed(() => {
-  const options = [{ label: 'Chọn nhân viên', value: '' }];
-  employees.value.forEach(e => {
-    options.push({ label: e.full_name, value: String(e.id) });
-  });
-  return options;
-});
+const employeeLabel = (id) => {
+  const employee = employees.value.find(item => String(item.id) === String(id));
+  return employee ? `${employee.employee_code || ''} · ${employee.full_name}`.replace(/^ · /, '') : '';
+};
+const rememberEmployee = (employee) => {
+  if (!employee) return;
+  const index = employees.value.findIndex(item => String(item.id) === String(employee.id));
+  if (index >= 0) employees.value[index] = employee;
+  else employees.value.push(employee);
+};
 
 const statusCounts = computed(() => ({
   pending: displayRequests.value.filter(r => r.status === 'pending').length,
@@ -406,18 +410,11 @@ onMounted(async () => {
     loading.value = true;
     error.value = '';
 
-    const promises = [
-      workScheduleService.getSwaps(!isAdmin.value && currentUser.value?.employee_id ? { requester_id: currentUser.value.employee_id } : {}).catch((err) => {
-        if (err.response?.status === 403) return [];
-        throw err;
-      }),
-      employeeService.getLookup().catch(() => [])
-    ];
-
-    const results = await Promise.all(promises);
-
-    requests.value = results[0]?.data || results[0] || [];
-    employees.value = results[1]?.data || results[1] || [];
+    const result = await workScheduleService.getSwaps(!isAdmin.value && currentUser.value?.employee_id ? { requester_id: currentUser.value.employee_id } : {}).catch((err) => {
+      if (err.response?.status === 403) return [];
+      throw err;
+    });
+    requests.value = result?.data || result || [];
   } catch (err) {
     console.error('Shift swap API Error:', err);
     if (err.response?.status !== 403) {
