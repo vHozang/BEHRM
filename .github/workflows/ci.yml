@@ -79,7 +79,7 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Audit frontend/backend endpoint contracts
-        run: node ../../../scripts/audit-endpoints.mjs
+        run: node ../../scripts/audit-endpoints.mjs
 
       - name: Run Laravel tests
         env:
