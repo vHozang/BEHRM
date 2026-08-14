@@ -5,17 +5,20 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Jobs\GenerateTimesheetExport;
 use App\Models\AttendanceTimesheetExport;
+use App\Services\AttendanceAccess;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class AttendanceTimesheetExportController extends Controller
 {
+    public function __construct(private readonly AttendanceAccess $attendanceAccess) {}
+
     public function store(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -29,9 +32,7 @@ class AttendanceTimesheetExportController extends Controller
             return $this->validationError($validator->errors()->toArray());
         }
 
-        $access = (array) $request->attributes->get('access', []);
-        $canManage = ! empty($access['full']) || in_array('time', $access['modules'] ?? [], true);
-        if (! $canManage) {
+        if (! $this->attendanceAccess->canReadOrganization($request) && ! $this->attendanceAccess->isAccountant($request)) {
             $employeeId = (int) $request->attributes->get('auth_employee_id');
             if ((int) $request->input('employee_id') !== $employeeId || $request->filled('department_id')) {
                 return response()->json([
@@ -42,15 +43,39 @@ class AttendanceTimesheetExportController extends Controller
             }
         }
 
-        $legalEntityId = $this->requestedLegalEntity($request);
+        $legalEntityId = (int) $this->attendanceAccess->requestedLegalEntity($request, true, true);
         if (! TenantContext::ownsRow('legal_entities', $legalEntityId)) {
             return $this->validationError(['legal_entity_id' => ['Pháp nhân không thuộc công ty hiện tại.']]);
         }
-        if ($request->filled('department_id') && ! $this->ownsEntityRow('departments', (int) $request->input('department_id'), $legalEntityId)) {
+        if ($request->filled('department_id')
+            && (! $this->attendanceAccess->assertDepartmentFilter($request, (int) $request->input('department_id'))
+                || ! $this->ownsEntityRow('departments', (int) $request->input('department_id'), $legalEntityId))) {
             return $this->validationError(['department_id' => ['Phòng ban không thuộc pháp nhân được chọn.']]);
         }
-        if ($request->filled('employee_id') && ! $this->ownsEntityRow('employees', (int) $request->input('employee_id'), $legalEntityId)) {
+        if ($request->filled('employee_id')
+            && (! $this->attendanceAccess->canFilterTimesheetEmployee(
+                $request,
+                (int) $request->input('employee_id'),
+                $legalEntityId,
+            )
+                || ! $this->ownsEntityRow('employees', (int) $request->input('employee_id'), $legalEntityId))) {
             return $this->validationError(['employee_id' => ['Nhân viên không thuộc pháp nhân được chọn.']]);
+        }
+
+        $employeeIds = $request->filled('employee_id')
+            ? [(int) $request->input('employee_id')]
+            : $this->attendanceAccess->timesheetEmployeeIds($request, $legalEntityId);
+        if ($this->attendanceAccess->isDepartmentManager($request) && $request->filled('department_id')) {
+            $employeeIds = DB::table('employees')
+                ->where('tenant_id', TenantContext::id())
+                ->where('legal_entity_id', $legalEntityId)
+                ->where('department_id', (int) $request->input('department_id'))
+                ->whereIn('id', $employeeIds ?? [])
+                ->pluck('id')->map(fn ($id): int => (int) $id)->all();
+        }
+        $filters = $request->only(['department_id', 'employee_id']);
+        if ($employeeIds !== null) {
+            $filters['employee_ids'] = $employeeIds;
         }
 
         $export = AttendanceTimesheetExport::create([
@@ -60,7 +85,7 @@ class AttendanceTimesheetExportController extends Controller
             'requested_by' => (int) $request->attributes->get('auth_employee_id'),
             'month' => (string) $request->input('month'),
             'format' => (string) $request->input('format', 'xlsx'),
-            'filters' => $request->only(['department_id', 'employee_id']),
+            'filters' => $filters,
             'status' => 'PENDING',
             'expires_at' => now()->addDay(),
         ]);
@@ -99,34 +124,21 @@ class AttendanceTimesheetExportController extends Controller
 
     private function owned(Request $request, string $id): ?AttendanceTimesheetExport
     {
-        $query = AttendanceTimesheetExport::query()->whereKey($id);
-        $access = (array) $request->attributes->get('access', []);
-        if (empty($access['full'])) {
-            $query->where('legal_entity_id', TenantContext::legalEntityId());
+        $export = AttendanceTimesheetExport::query()->whereKey($id)->first();
+        if (! $export) {
+            return null;
         }
-        $canManage = ! empty($access['full']) || in_array('time', $access['modules'] ?? [], true);
-        if (! $canManage) {
-            $query->where('requested_by', (int) $request->attributes->get('auth_employee_id'));
-        }
-
-        $export = $query->first();
-        if (! $export || $canManage) {
+        if ($this->attendanceAccess->isAdmin($request)) {
             return $export;
         }
-
-        $filters = is_array($export->filters) ? $export->filters : [];
-        $employeeId = (int) ($filters['employee_id'] ?? 0);
-        if ($employeeId !== (int) $request->attributes->get('auth_employee_id')) {
+        if ((int) $export->legal_entity_id !== (int) TenantContext::legalEntityId()) {
+            return null;
+        }
+        if ((int) $export->requested_by !== $this->attendanceAccess->actorId($request)) {
             return null;
         }
 
-        return DB::table('employees')
-            ->where('id', $employeeId)
-            ->where('tenant_id', TenantContext::id())
-            ->where('legal_entity_id', $export->legal_entity_id)
-            ->exists()
-                ? $export
-                : null;
+        return $export;
     }
 
     /** @return array<string, mixed> */
@@ -150,19 +162,9 @@ class AttendanceTimesheetExportController extends Controller
         return response()->json(['status' => 422, 'message' => 'Dữ liệu không hợp lệ', 'data' => ['errors' => $errors]], 422);
     }
 
-    private function requestedLegalEntity(Request $request): int
-    {
-        $access = (array) $request->attributes->get('access', []);
-        if (empty($access['full'])) {
-            return (int) TenantContext::legalEntityId();
-        }
-
-        return (int) ($request->input('legal_entity_id') ?: TenantContext::legalEntityId());
-    }
-
     private function ownsEntityRow(string $table, int $id, int $legalEntityId): bool
     {
-        return \Illuminate\Support\Facades\DB::table($table)
+        return DB::table($table)
             ->where('id', $id)
             ->where('tenant_id', TenantContext::id())
             ->where('legal_entity_id', $legalEntityId)

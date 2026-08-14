@@ -3,18 +3,22 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ReconcileOvertimeDay;
 use App\Models\OvertimeRequest;
+use App\Services\AttendanceAccess;
 use App\Support\AccessControl;
 use App\Support\Notifier;
 use App\Support\TenantContext;
 use App\Support\TimePolicy;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class OvertimeTicketController extends Controller
 {
+    public function __construct(private readonly AttendanceAccess $attendanceAccess) {}
+
     public function store(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -33,7 +37,7 @@ class OvertimeTicketController extends Controller
         if (! TenantContext::ownsRow('employees', $employeeId)) {
             return $this->validationError(['employee_id' => ['Nhân viên không thuộc công ty hiện tại.']]);
         }
-        if (! $this->canManageTarget($actorId, $employeeId)) {
+        if (! $this->attendanceAccess->canAccessEmployee($request, $employeeId, true)) {
             return $this->forbidden('Trưởng phòng chỉ được giao ticket OT cho nhân viên thuộc phòng mình.');
         }
 
@@ -45,7 +49,14 @@ class OvertimeTicketController extends Controller
         if ($classification['total_hours'] * 60 < 15) {
             return $this->validationError(['start_time' => ['Khung tăng ca phải tối thiểu 15 phút.']]);
         }
-        $caps = TimePolicy::overtimeCaps($employeeId, $request->input('work_date'), $classification['total_hours']);
+        $caps = TimePolicy::overtimeCaps(
+            $employeeId,
+            $request->input('work_date'),
+            $classification['total_hours'],
+            null,
+            false,
+            (int) TenantContext::id(),
+        );
         if ($caps['violations'] !== []) {
             return $this->validationError(['end_time' => $caps['violations']]);
         }
@@ -73,7 +84,7 @@ class OvertimeTicketController extends Controller
         Notifier::notify(
             $employeeId,
             'Ticket tăng ca mới',
-            'Bạn được giao tăng ca ngày '.\Carbon\Carbon::parse($ticket->work_date)->format('d/m/Y')
+            'Bạn được giao tăng ca ngày '.Carbon::parse($ticket->work_date)->format('d/m/Y')
                 .' từ '.substr((string) $ticket->start_time, 0, 5).' đến '.substr((string) $ticket->end_time, 0, 5).'.',
             'overtime_ticket',
             $ticket->id,
@@ -123,11 +134,17 @@ class OvertimeTicketController extends Controller
                 (float) $ticket->total_hours,
                 $ticket->id,
                 true,
+                (int) $ticket->tenant_id,
             );
             if ($caps['violations'] !== []) {
                 return $this->validationError(['status' => $caps['violations']]);
             }
             $ticket->update(['status' => 'APPROVED', 'meta' => $meta]);
+            ReconcileOvertimeDay::dispatch(
+                (int) $ticket->tenant_id,
+                (int) $ticket->employee_id,
+                $ticket->work_date->toDateString(),
+            )->afterCommit();
         } else {
             $ticket->update(['status' => 'DECLINED', 'meta' => $meta]);
         }
@@ -136,7 +153,7 @@ class OvertimeTicketController extends Controller
         Notifier::notify(
             $creatorId,
             $decision === 'accept' ? 'Nhân viên đã nhận ticket OT' : 'Nhân viên từ chối ticket OT',
-            'Ticket tăng ca ngày '.\Carbon\Carbon::parse($ticket->work_date)->format('d/m/Y').' đã được phản hồi.',
+            'Ticket tăng ca ngày '.Carbon::parse($ticket->work_date)->format('d/m/Y').' đã được phản hồi.',
             'overtime_ticket',
             $ticket->id,
             ['priority' => 'normal'],
@@ -149,7 +166,11 @@ class OvertimeTicketController extends Controller
 
     public function cancel(Request $request, int $id): JsonResponse
     {
-        $ticket = OvertimeRequest::find($id);
+        $ticket = $this->attendanceAccess->scopeEmployeeResource(
+            OvertimeRequest::query(),
+            $request,
+            'overtime_requests',
+        )->find($id);
         if (! $ticket || ($ticket->meta['kind'] ?? null) !== 'MANAGER_TICKET') {
             return $this->notFound();
         }
@@ -169,11 +190,16 @@ class OvertimeTicketController extends Controller
         $meta['cancelled_at'] = now()->toIso8601String();
         $meta['cancel_reason'] = $request->input('reason');
         $ticket->update(['status' => 'CANCELLED', 'meta' => $meta]);
+        ReconcileOvertimeDay::dispatch(
+            (int) $ticket->tenant_id,
+            (int) $ticket->employee_id,
+            $ticket->work_date->toDateString(),
+        )->afterCommit();
 
         Notifier::notify(
             (int) $ticket->employee_id,
             'Ticket tăng ca đã hủy',
-            'Ticket tăng ca ngày '.\Carbon\Carbon::parse($ticket->work_date)->format('d/m/Y').' đã được hủy.',
+            'Ticket tăng ca ngày '.Carbon::parse($ticket->work_date)->format('d/m/Y').' đã được hủy.',
             'overtime_ticket',
             $ticket->id,
             ['priority' => 'normal'],
@@ -181,31 +207,6 @@ class OvertimeTicketController extends Controller
         );
 
         return $this->ok($ticket->fresh(), 'Đã hủy ticket tăng ca.');
-    }
-
-    private function canManageTarget(int $actorId, int $employeeId): bool
-    {
-        if (AccessControl::hasAnyRole($actorId, ['ADMIN', 'TENANT_ADMIN', 'HR'])) {
-            return true;
-        }
-        if (! AccessControl::hasAnyRole($actorId, ['MANAGER', 'DEPT_HEAD'])) {
-            return false;
-        }
-
-        $employee = DB::table('employees')->where('id', $employeeId)->first(['id', 'department_id', 'manager_id']);
-        if (! $employee) {
-            return false;
-        }
-        if ((int) ($employee->manager_id ?? 0) === $actorId) {
-            return true;
-        }
-
-        $departmentMeta = $employee->department_id
-            ? DB::table('departments')->where('id', $employee->department_id)->value('meta')
-            : null;
-        $meta = is_string($departmentMeta) ? (json_decode($departmentMeta, true) ?: []) : (array) ($departmentMeta ?? []);
-
-        return (int) ($meta['manager_id'] ?? 0) === $actorId;
     }
 
     private function ok(mixed $data, string $message): JsonResponse

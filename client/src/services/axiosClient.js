@@ -33,7 +33,10 @@ axiosClient.interceptors.request.use(
 axiosClient.interceptors.response.use(
   (response) => {
     // Automatically unwrap Doan2 response format to make it compatible with Doan1 Vue components
-    if (response.data && (response.data.status === 200 || response.data.status === 201) && response.data.data !== undefined) {
+    if (response.data
+      && Number(response.data.status) >= 200
+      && Number(response.data.status) < 300
+      && response.data.data !== undefined) {
       const payload = response.data.data;
       // Giữ lại message gốc để FE hiển thị (vd "Đã duyệt cấp X/Y").
       response.apiMessage = response.data.message;

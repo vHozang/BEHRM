@@ -28,6 +28,7 @@ class AttendanceChangePublisher
         $payload = [
             'tenant_id' => (int) $attendance->tenant_id,
             'legal_entity_id' => $attendance->legal_entity_id ? (int) $attendance->legal_entity_id : null,
+            'department_id' => $this->departmentId((int) $attendance->tenant_id, (int) $attendance->employee_id),
             'attendance_id' => (int) $attendance->id,
             'employee_id' => (int) $attendance->employee_id,
             'work_date' => $attendance->work_date?->format('Y-m-d') ?? (string) $attendance->work_date,
@@ -51,6 +52,33 @@ class AttendanceChangePublisher
         if ($attendance) {
             $this->publish($attendance, $changeType);
         }
+    }
+
+    /**
+     * Publish one lightweight invalidation marker for a batch operation. It has
+     * no employee/attendance payload and therefore cannot leak row-level data.
+     */
+    public function publishScope(
+        int $tenantId,
+        ?int $legalEntityId,
+        string $changeType,
+        array $departmentIds = [],
+        array $employeeIds = [],
+    ): void {
+        $payload = [
+            'tenant_id' => $tenantId,
+            'legal_entity_id' => $legalEntityId,
+            'department_id' => null,
+            'attendance_id' => null,
+            'employee_id' => null,
+            'work_date' => null,
+            'change_type' => $changeType,
+            'updated_at' => now()->toIso8601String(),
+            'department_ids' => array_values(array_unique(array_map('intval', $departmentIds))),
+            'employee_ids' => array_values(array_unique(array_map('intval', $employeeIds))),
+        ];
+
+        DB::afterCommit(fn () => $this->commit($payload));
     }
 
     public function versionToken(int $tenantId, ?int $legalEntityId = null): string
@@ -90,8 +118,11 @@ class AttendanceChangePublisher
             $id = DB::table('attendance_change_events')->insertGetId([
                 'tenant_id' => $payload['tenant_id'],
                 'legal_entity_id' => $payload['legal_entity_id'],
-                'attendance_id' => $payload['attendance_id'],
-                'employee_id' => $payload['employee_id'],
+                'department_id' => $payload['department_id'],
+                'audience_department_ids' => empty($payload['department_ids']) ? null : json_encode($payload['department_ids']),
+                'audience_employee_ids' => empty($payload['employee_ids']) ? null : json_encode($payload['employee_ids']),
+                'attendance_id' => $payload['attendance_id'] ?: null,
+                'employee_id' => $payload['employee_id'] ?: null,
                 'work_date' => $payload['work_date'] ?: null,
                 'change_type' => $payload['change_type'],
                 'created_at' => now(),
@@ -126,6 +157,16 @@ class AttendanceChangePublisher
     private function versionKey(int $tenantId, ?int $legalEntityId): string
     {
         return 'attendance:version:t'.$tenantId.':e'.($legalEntityId ?: 'all');
+    }
+
+    private function departmentId(int $tenantId, int $employeeId): ?int
+    {
+        $value = DB::table('employees')
+            ->where('tenant_id', $tenantId)
+            ->where('id', $employeeId)
+            ->value('department_id');
+
+        return $value ? (int) $value : null;
     }
 
     public static function encodeCursor(int $id): string

@@ -26,6 +26,7 @@ class TimePolicy
             return 'holiday';
         }
         $rest = (int) HrmConfig::get('attendance.weekly_rest_weekday', 0); // 0=CN
+
         return $d->dayOfWeek === $rest ? 'weekend' : 'weekday';
     }
 
@@ -124,12 +125,14 @@ class TimePolicy
                 $mins++;
             }
         }
+
         return round($mins / 60, 2);
     }
 
     private static function toMin(string $t): int
     {
         $p = explode(':', $t);
+
         return ((int) ($p[0] ?? 0)) * 60 + ((int) ($p[1] ?? 0));
     }
 
@@ -199,7 +202,7 @@ class TimePolicy
     /** Công chuẩn của một tháng "YYYY-MM". */
     public static function standardWorkingDaysOfMonth(string $month): int
     {
-        $start = Carbon::parse($month . '-01')->startOfMonth();
+        $start = Carbon::parse($month.'-01')->startOfMonth();
 
         return self::standardWorkingDays($start->toDateString(), $start->copy()->endOfMonth()->toDateString());
     }
@@ -209,11 +212,11 @@ class TimePolicy
      *
      * @param  object|array|null  $shift  bản ghi shift_types (start_time/end_time/meta)
      * @return array{status:string, late_minutes:int, early_leave_minutes:int, worked_hours:float}
-     *         status ∈ ON_TIME | LATE | EARLY_LEAVE | ABSENT
+     *                                                                                             status ∈ ON_TIME | LATE | EARLY_LEAVE | ABSENT
      */
     public static function classifyAttendance($shift, ?string $checkIn, ?string $checkOut): array
     {
-        return (new AttendanceTimeCalculator())->calculate(
+        return (new AttendanceTimeCalculator)->calculate(
             $shift,
             '2000-01-01',
             $checkIn,
@@ -253,7 +256,7 @@ class TimePolicy
 
         $payFactor = $total > 0 ? round(($day * $mult + $night * $nightFactor) / $total, 3) : $mult;
 
-        $label = self::otDayLabel($date) . ' · ' . (int) round($mult * 100) . '%';
+        $label = self::otDayLabel($date).' · '.(int) round($mult * 100).'%';
         if ($night > 0) {
             $label .= ' (+đêm)';
         }
@@ -274,8 +277,14 @@ class TimePolicy
      * Kiểm tra giới hạn OT (ngày/tháng/năm) cho nhân viên. Cộng dồn các đơn
      * APPROVED (+ PENDING) trừ đơn hiện tại ($excludeId).
      */
-    public static function overtimeCaps(int $employeeId, $date, float $hours, ?int $excludeId = null, bool $approvedOnly = false): array
-    {
+    public static function overtimeCaps(
+        int $employeeId,
+        $date,
+        float $hours,
+        ?int $excludeId = null,
+        bool $approvedOnly = false,
+        ?int $tenantId = null,
+    ): array {
         $d = $date instanceof Carbon ? $date : Carbon::parse($date);
         $statuses = $approvedOnly
             ? ['APPROVED', 'ĐÃ_DUYỆT']
@@ -283,6 +292,7 @@ class TimePolicy
 
         $base = DB::table('overtime_requests')
             ->where('employee_id', $employeeId)
+            ->where('tenant_id', $tenantId ?: TenantContext::id())
             ->whereIn('status', $statuses)
             ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId));
 

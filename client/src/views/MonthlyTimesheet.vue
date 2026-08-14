@@ -16,7 +16,7 @@
             type="month"
             v-model="month"
             class="px-3 py-2 bg-card text-foreground text-sm border-x border-border focus:outline-none"
-            @change="loadTimesheet"
+            @change="handleMonthChange"
             data-testid="timesheet-month"
           />
           <button @click="shiftMonth(1)" :disabled="loading" class="px-3 py-2 hover:bg-muted text-foreground disabled:opacity-50" title="Tháng sau">›</button>
@@ -41,6 +41,7 @@
           {{ exporting ? 'Đang xuất…' : '⭳ Xuất toàn bộ' }}
         </button>
         <button
+          v-if="canRecompute"
           @click="recompute"
           :disabled="loading || recomputing"
           class="px-4 py-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
@@ -50,7 +51,7 @@
           {{ recomputing ? 'Đang xử lý…' : 'Tái phân loại' }}
         </button>
         <button
-          v-if="salaryPeriod && salaryPeriod.status !== 'CLOSED'"
+          v-if="canSummarize && salaryPeriod && salaryPeriod.status !== 'CLOSED'"
           @click="summarizeToPayroll"
           :disabled="loading || summarizing"
           class="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50"
@@ -59,7 +60,7 @@
           {{ summarizing ? 'Đang chốt…' : 'Chốt công → Lương' }}
         </button>
         <button
-          v-if="salaryPeriod && salaryPeriod.status !== 'CLOSED'"
+          v-if="canSummarize && salaryPeriod && salaryPeriod.status !== 'CLOSED'"
           @click="lockPeriod"
           :disabled="loading || locking"
           class="px-4 py-2 rounded-lg border border-red-500/40 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-500/10 disabled:opacity-50"
@@ -78,6 +79,11 @@
         Kỳ lương {{ salaryPeriod.period_code }} · {{ salaryPeriod.status === 'CLOSED' ? 'Đã chốt' : 'Đang mở' }}
       </span>
       <span v-else class="text-xs text-muted-foreground">Chưa có kỳ lương cho tháng này</span>
+      <span v-if="refreshing" class="text-xs text-muted-foreground">Đang đồng bộ dữ liệu mới…</span>
+      <span v-if="operation" class="text-xs text-muted-foreground">
+        {{ operation.type === 'SUMMARY' ? 'Tổng hợp công' : 'Tái phân loại' }}:
+        {{ operation.status }} · {{ operation.progress_percent || 0 }}%
+      </span>
     </div>
 
     <!-- Hướng dẫn sử dụng -->
@@ -256,14 +262,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import BaseCard from '../components/BaseCard.vue';
 import { attendanceService } from '../services/attendanceService';
+import { authService } from '../services/authService';
 import { useToast } from '../composables/useToast';
+import { useAttendanceStore } from '../stores/attendanceStore';
 
 const router = useRouter();
 const toast = useToast();
+const attendanceStore = useAttendanceStore();
 
 const DOW = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
@@ -302,6 +311,7 @@ function currentMonth() {
 
 const month = ref(currentMonth());
 const loading = ref(false);
+const refreshing = ref(false);
 const recomputing = ref(false);
 const summarizing = ref(false);
 const locking = ref(false);
@@ -310,9 +320,19 @@ const days = ref([]);
 const rows = ref([]);
 const standardDays = ref(0);
 const salaryPeriod = ref(null);
+const overview = ref(null);
+const operation = ref(null);
 const pagination = ref({ current_page: 1, per_page: 25, total: 0, last_page: 1 });
 const exportFormat = ref('xlsx');
 const exporting = ref(false);
+const access = authService.getAccess();
+const roleCodes = Array.isArray(access.roles)
+  ? access.roles.map((role) => String(role.role_code || '').toUpperCase())
+  : [];
+const canRecompute = access.full || roleCodes.some((role) => ['ADMIN', 'TENANT_ADMIN', 'HR'].includes(role));
+const canSummarize = access.full || roleCodes.some((role) => ['ADMIN', 'TENANT_ADMIN', 'ACCOUNTANT'].includes(role));
+let loadSequence = 0;
+let prefetchHandle = null;
 
 const monthLabel = computed(() => {
   const [y, m] = month.value.split('-');
@@ -327,7 +347,13 @@ function shiftMonth(delta) {
   loadTimesheet();
 }
 
+function handleMonthChange() {
+  pagination.value.current_page = 1;
+  loadTimesheet();
+}
+
 const totals = computed(() => {
+  if (overview.value) return overview.value;
   const t = { on_time_days: 0, late_days: 0, early_leave_days: 0, absent_days: 0 };
   for (const r of rows.value) {
     t.on_time_days += r.totals.on_time_days || 0;
@@ -382,26 +408,100 @@ function onCellClick(row, d) {
   }
 }
 
-async function loadTimesheet() {
-  loading.value = true;
-  try {
-    const data = await attendanceService.getTimesheet(month.value, {
-      page: pagination.value.current_page,
-      per_page: pagination.value.per_page,
-    });
-    days.value = data.days || [];
-    rows.value = data.rows || [];
-    standardDays.value = data.standard_days || 0;
-    salaryPeriod.value = data.salary_period || null;
-    pagination.value = data.pagination || pagination.value;
-  } catch (e) {
-    console.error('Lỗi tải bảng công:', e);
-    days.value = [];
-    rows.value = [];
-    salaryPeriod.value = null;
-  } finally {
+function timesheetParams(page = pagination.value.current_page) {
+  return {
+    month: month.value,
+    page,
+    per_page: pagination.value.per_page,
+  };
+}
+
+function applyTimesheet(data) {
+  days.value = data.days || [];
+  rows.value = data.rows || [];
+  standardDays.value = data.standard_days || 0;
+  salaryPeriod.value = data.salary_period || null;
+  pagination.value = data.pagination || pagination.value;
+}
+
+function cancelScheduledPrefetch() {
+  if (prefetchHandle === null) return;
+  if ('cancelIdleCallback' in window) window.cancelIdleCallback(prefetchHandle);
+  else window.clearTimeout(prefetchHandle);
+  prefetchHandle = null;
+}
+
+function prefetchAdjacentPages(params, data) {
+  cancelScheduledPrefetch();
+  const currentPage = Number(data.pagination?.current_page || params.page || 1);
+  const lastPage = Number(data.pagination?.last_page || 1);
+  const run = () => {
+    prefetchHandle = null;
+    for (const page of [currentPage - 1, currentPage + 1]) {
+      if (page < 1 || page > lastPage) continue;
+      attendanceStore.prefetchTimesheetPage({ ...params, page });
+    }
+  };
+  prefetchHandle = 'requestIdleCallback' in window
+    ? window.requestIdleCallback(run, { timeout: 800 })
+    : window.setTimeout(run, 0);
+}
+
+async function loadTimesheet({ force = false } = {}) {
+  const requestId = ++loadSequence;
+  const params = timesheetParams();
+  const cached = force ? null : attendanceStore.getCachedTimesheetPage(params);
+  if (cached) {
+    applyTimesheet(cached.value);
     loading.value = false;
+    if (cached.fresh) {
+      refreshing.value = false;
+      prefetchAdjacentPages(params, cached.value);
+      return;
+    }
+  } else {
+    rows.value = [];
+    days.value = [];
+    salaryPeriod.value = null;
   }
+
+  loading.value = !cached;
+  refreshing.value = !!cached;
+  try {
+    const [data, overviewData] = await Promise.all([
+      attendanceStore.fetchTimesheetPage(params, { force }),
+      attendanceStore.fetchTimesheetOverview({ month: month.value }, { force }),
+    ]);
+    if (requestId !== loadSequence) return;
+    applyTimesheet(data);
+    overview.value = overviewData;
+    prefetchAdjacentPages(params, data);
+  } catch (e) {
+    if (requestId !== loadSequence) return;
+    console.error('Lỗi tải bảng công:', e);
+    if (!cached) {
+      days.value = [];
+      rows.value = [];
+      salaryPeriod.value = null;
+    }
+  } finally {
+    if (requestId === loadSequence) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+
+async function waitForOperation(run) {
+  operation.value = run;
+  for (let attempt = 0; attempt < 900; attempt += 1) {
+    const current = await attendanceService.getAttendanceOperation(run.run_id);
+    operation.value = current;
+    if (current.status === 'COMPLETED') return current;
+    if (current.status === 'FAILED') throw new Error(current.error || 'Tác vụ Attendance thất bại');
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  throw new Error('Tác vụ Attendance quá thời gian chờ');
 }
 
 async function exportTimesheet() {
@@ -427,7 +527,9 @@ async function exportTimesheet() {
 }
 
 function changePage(delta) {
-  pagination.value.current_page += delta;
+  const target = pagination.value.current_page + delta;
+  if (target < 1 || target > pagination.value.last_page) return;
+  pagination.value.current_page = target;
   loadTimesheet();
 }
 
@@ -437,13 +539,15 @@ async function summarizeToPayroll() {
   if (!confirm(`Chốt tổng hợp công kỳ ${salaryPeriod.value.period_code} để tính lương?`)) return;
   summarizing.value = true;
   try {
-    await attendanceService.runSummary(salaryPeriod.value.id);
+    const run = await attendanceService.runSummary(salaryPeriod.value.id);
+    await waitForOperation(run);
     toast.success('Đã tổng hợp công kỳ lương. Sang trang Lương để tính/duyệt.');
     router.push('/salaries');
   } catch (e) {
     toast.error(e.response?.data?.message || 'Lỗi tổng hợp công');
   } finally {
     summarizing.value = false;
+    operation.value = null;
   }
 }
 
@@ -455,7 +559,8 @@ async function lockPeriod() {
   try {
     await attendanceService.closePeriod(salaryPeriod.value.id);
     toast.success('Đã khoá kỳ lương');
-    await loadTimesheet();
+    attendanceStore.invalidateTimesheetCache();
+    await loadTimesheet({ force: true });
   } catch (e) {
     toast.error(e.response?.data?.message || 'Lỗi khoá kỳ');
   } finally {
@@ -466,14 +571,21 @@ async function lockPeriod() {
 async function recompute() {
   recomputing.value = true;
   try {
-    await attendanceService.recomputeTimesheet(month.value);
-    await loadTimesheet();
+    const run = await attendanceService.recomputeTimesheet(month.value);
+    await waitForOperation(run);
+    attendanceStore.invalidateTimesheetCache();
+    await loadTimesheet({ force: true });
   } catch (e) {
-    console.error('Lỗi tái phân loại:', e);
+    toast.error(e.response?.data?.message || e.message || 'Lỗi tái phân loại');
   } finally {
     recomputing.value = false;
+    operation.value = null;
   }
 }
 
 onMounted(loadTimesheet);
+onUnmounted(() => {
+  loadSequence += 1;
+  cancelScheduledPrefetch();
+});
 </script>

@@ -40,7 +40,9 @@ class GenerateTimesheetExport implements ShouldQueue
 
         try {
             $filters = is_array($export->filters) ? $export->filters : [];
-            $employeeIds = ! empty($filters['employee_id']) ? [(int) $filters['employee_id']] : null;
+            $employeeIds = array_key_exists('employee_ids', $filters)
+                ? array_values(array_unique(array_map('intval', (array) $filters['employee_ids'])))
+                : (! empty($filters['employee_id']) ? [(int) $filters['employee_id']] : null);
             $grid = $timesheets->monthlyGrid(
                 (int) $export->tenant_id,
                 (int) $export->legal_entity_id,
@@ -88,7 +90,7 @@ class GenerateTimesheetExport implements ShouldQueue
     /** @param array<string, mixed> $grid */
     private function spreadsheet(array $grid): Spreadsheet
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Bang cong');
 

@@ -2,11 +2,15 @@
 
 namespace App\Services;
 
+use App\Jobs\ReconcileOvertimeDay;
 use App\Models\Attendance;
+use App\Models\AttendancePayrollReview;
 use App\Support\HrmConfig;
 use App\Support\TimePolicy;
 use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * P3 — Chấm công: dựng "Bảng công tháng" (timesheet grid nhân viên × ngày) và
@@ -22,7 +26,7 @@ class TimesheetService
     public function __construct(
         private readonly ShiftResolver $shiftResolver,
         private readonly AttendanceReconciliationService $attendanceReconciliation,
-        private readonly OvertimeReconciliationService $overtimeReconciliation,
+        private readonly AttendanceChangePublisher $attendanceChanges,
     ) {}
 
     /** Trạng thái coi là "có mặt" (NV đã đến làm). */
@@ -33,59 +37,324 @@ class TimesheetService
     private const PENDING_STATUSES = ['PENDING', 'CHỜ_DUYỆT'];
 
     /**
+     * Cache each employee page independently. The attendance version makes a
+     * new punch visible immediately, while the short TTL bounds staleness for
+     * leave, shift and employee changes that do not publish attendance events.
+     */
+    public function cachedMonthlyGrid(
+        int $tenantId,
+        int $legalEntityId,
+        string $month,
+        ?array $employeeIds = null,
+        ?int $departmentId = null,
+        ?int $page = null,
+        int $perPage = 25,
+        bool $refresh = false,
+    ): array {
+        $employeeIds = $employeeIds === null
+            ? null
+            : array_values(array_unique(array_map('intval', $employeeIds)));
+        if ($employeeIds !== null) {
+            sort($employeeIds);
+        }
+        $version = $this->attendanceChanges->versionToken($tenantId, $legalEntityId);
+        $scope = [
+            'tenant_id' => $tenantId,
+            'legal_entity_id' => $legalEntityId,
+            'month' => $month,
+            'employee_ids' => $employeeIds,
+            'department_id' => $departmentId,
+            'page' => $page,
+            'per_page' => $perPage,
+        ];
+        $key = 'attendance:timesheet:'.$version.':'.hash('sha256', json_encode($scope, JSON_THROW_ON_ERROR));
+        $cache = null;
+
+        try {
+            $cache = $this->attendanceChanges->cache();
+            if (! $refresh) {
+                $cached = $cache->get($key);
+                if (is_array($cached)) {
+                    return $cached;
+                }
+            }
+        } catch (\Throwable $exception) {
+            Log::debug('Attendance timesheet cache read skipped', ['error' => $exception->getMessage()]);
+        }
+
+        $grid = $this->monthlyGrid(
+            $tenantId,
+            $legalEntityId,
+            $month,
+            $employeeIds,
+            $departmentId,
+            $page,
+            $perPage,
+        );
+        if ($cache) {
+            try {
+                $cache->put(
+                    $key,
+                    $grid,
+                    now()->addSeconds(max((int) config('hrm.attendance.timesheet_cache_seconds', 60), 1)),
+                );
+            } catch (\Throwable $exception) {
+                Log::debug('Attendance timesheet cache write skipped', ['error' => $exception->getMessage()]);
+            }
+        }
+
+        return $grid;
+    }
+
+    /**
      * Tái phân loại các bản ghi attendances trong [start,end] theo engine.
      * Idempotent — chạy lại cập nhật cùng các dòng. Dùng shift của chính bản ghi
      * (shift_type_id), fallback ca đang gán cho nhân viên.
      *
      * @return array{scanned:int, updated:int}
      */
-    public function recompute(int $tenantId, int $legalEntityId, string $start, string $end, ?array $employeeIds = null): array
-    {
+    public function recompute(
+        int $tenantId,
+        int $legalEntityId,
+        string $start,
+        string $end,
+        ?array $employeeIds = null,
+        ?Closure $onProgress = null,
+        ?string $operationId = null,
+    ): array {
         $shifts = $this->shiftMap($tenantId);
-        $rows = Attendance::query()
+        $query = Attendance::query()
             ->where('tenant_id', $tenantId)
             ->where('legal_entity_id', $legalEntityId)
             ->whereBetween('work_date', [$start, $end])
-            ->when($employeeIds, fn ($q) => $q->whereIn('employee_id', $employeeIds))
-            ->get();
+            ->when($employeeIds !== null, fn ($q) => $q->whereIn('employee_id', $employeeIds));
+        $closedRanges = DB::table('salary_periods')
+            ->where('tenant_id', $tenantId)
+            ->where('legal_entity_id', $legalEntityId)
+            ->where('start_date', '<=', $end)
+            ->where('end_date', '>=', $start)
+            ->whereIn('status', ['CLOSED', 'LOCKED', 'PAID', 'ĐÃ_ĐÓNG', 'DA_DONG', 'ĐÃ_TRẢ', 'DA_TRA'])
+            ->get(['start_date', 'end_date']);
 
-        $assignmentRows = $this->shiftResolver->rowsForRange(
-            $rows->pluck('employee_id')->map(fn ($id) => (int) $id)->unique()->values()->all(),
-            $start,
-            $end,
-            $tenantId,
-        );
-
+        $scanned = 0;
         $updated = 0;
         $skippedLocked = 0;
-
-        foreach ($rows as $row) {
-            $resolved = $this->shiftResolver->resolveFromRows(
-                $assignmentRows[(int) $row->employee_id] ?? [],
-                (string) $row->work_date,
+        $createdReviews = 0;
+        $staleReviews = 0;
+        $query->orderBy('id')->chunkById(500, function ($rows) use (
+            $tenantId, $start, $end, $shifts, $closedRanges, $onProgress,
+            &$scanned, &$updated, &$skippedLocked, &$createdReviews, &$staleReviews
+        ): void {
+            $assignmentRows = $this->shiftResolver->rowsForRange(
+                $rows->pluck('employee_id')->map(fn ($id) => (int) $id)->unique()->values()->all(),
+                $start,
+                $end,
+                $tenantId,
             );
-            $shiftId = $row->shift_type_id ?: ($resolved->shift_type_id ?? null);
-            $isWorkday = ! $resolved || $this->shiftResolver->isAssignmentWorkday($resolved, (string) $row->work_date->toDateString());
-            $shift = $isWorkday && $shiftId ? ($shifts[$shiftId] ?? null) : null;
+            $reviewMap = AttendancePayrollReview::query()
+                ->where('tenant_id', $tenantId)
+                ->whereIn('attendance_id', $rows->pluck('id'))
+                ->get()
+                ->keyBy('attendance_id');
+            Attendance::withoutEvents(function () use (
+                $rows, $assignmentRows, $shifts, $closedRanges, $reviewMap,
+                &$updated, &$skippedLocked, &$createdReviews, &$staleReviews
+            ): void {
+                $preparedRows = [];
+                $reviewRows = [];
+                foreach ($rows as $row) {
+                    $resolved = $this->shiftResolver->resolveFromRows(
+                        $assignmentRows[(int) $row->employee_id] ?? [],
+                        $row->work_date->toDateString(),
+                    );
+                    $shiftId = $row->shift_type_id ?: ($resolved->shift_type_id ?? null);
+                    $isWorkday = ! $resolved || $this->shiftResolver->isAssignmentWorkday($resolved, $row->work_date->toDateString());
+                    $shift = $isWorkday && $shiftId ? ($shifts[$shiftId] ?? null) : null;
+                    if (in_array($row->status, self::APPROVED_STATUSES, true)) {
+                        continue;
+                    }
+                    $workDate = $row->work_date->toDateString();
+                    if ($closedRanges->contains(fn (object $range): bool => $workDate >= (string) $range->start_date && $workDate <= (string) $range->end_date
+                    )) {
+                        $skippedLocked++;
 
-            // Giữ nguyên các đơn đã duyệt theo nhãn VN (ĐÃ_DUYỆT) — không đụng.
-            if (in_array($row->status, self::APPROVED_STATUSES, true)) {
-                continue;
-            }
+                        continue;
+                    }
+                    try {
+                        $prepared = $this->attendanceReconciliation->prepareWithShift($row, $shift, false);
+                        if ($prepared['changes'] !== []) {
+                            $attributes = $row->getAttributes();
+                            foreach ($prepared['changes'] as $key => $value) {
+                                $attributes[$key] = $key === 'meta' && is_array($value)
+                                    ? json_encode($value, JSON_THROW_ON_ERROR)
+                                    : $value;
+                            }
+                            $attributes['updated_at'] = now();
+                            $preparedRows[] = $attributes;
+                        }
+                        $row->forceFill($prepared['changes']);
+                        $reviewRows[] = [
+                            $row,
+                            $prepared['calculation'],
+                            $prepared['changes'] !== [],
+                            $reviewMap->get($row->id),
+                        ];
+                    } catch (\RuntimeException $e) {
+                        if ($e->getCode() === 409) {
+                            $skippedLocked++;
 
-            try {
-                $this->attendanceReconciliation->reconcileWithShift($row, $shift);
-                $updated++;
-            } catch (\RuntimeException $e) {
-                if ($e->getCode() === 409) {
-                    $skippedLocked++;
-                    continue;
+                            continue;
+                        }
+                        throw $e;
+                    }
                 }
-                throw $e;
+                DB::transaction(function () use (
+                    $preparedRows, $reviewRows, &$updated, &$createdReviews, &$staleReviews
+                ): void {
+                    if ($preparedRows !== []) {
+                        DB::table('attendances')->upsert(
+                            $preparedRows,
+                            ['id'],
+                            ['shift_type_id', 'status', 'meta', 'updated_at'],
+                        );
+                    }
+                    foreach ($reviewRows as [$row, $calculation, $attendanceChanged, $review]) {
+                        $outcome = $this->attendanceReconciliation
+                            ->syncPreparedKnownReviewWithOutcome($row, $calculation, $review, null, false);
+                        $createdReviews += $outcome['notification'] === 'created' ? 1 : 0;
+                        $staleReviews += $outcome['notification'] === 'stale' ? 1 : 0;
+                        $updated += ($attendanceChanged || $outcome['changed']) ? 1 : 0;
+                    }
+                });
+            });
+            $scanned += $rows->count();
+            if ($onProgress) {
+                $onProgress($scanned, $updated, $skippedLocked);
+            }
+        });
+
+        DB::afterCommit(function () use ($tenantId, $start, $end, $employeeIds): void {
+            DB::table('overtime_requests')
+                ->where('tenant_id', $tenantId)
+                ->whereIn('status', self::APPROVED_STATUSES)
+                ->whereBetween('work_date', [$start, $end])
+                ->when($employeeIds !== null, fn ($query) => $query->whereIn('employee_id', $employeeIds))
+                ->select(['employee_id', 'work_date'])
+                ->distinct()
+                ->orderBy('employee_id')
+                ->orderBy('work_date')
+                ->chunk(500, function ($dates) use ($tenantId): void {
+                    foreach ($dates as $row) {
+                        ReconcileOvertimeDay::dispatch(
+                            $tenantId,
+                            (int) $row->employee_id,
+                            CarbonImmutable::parse($row->work_date)->toDateString(),
+                        );
+                    }
+                });
+        });
+
+        if ($updated > 0) {
+            $audience = DB::table('attendances as a')
+                ->join('employees as e', function ($join): void {
+                    $join->on('e.id', '=', 'a.employee_id')->on('e.tenant_id', '=', 'a.tenant_id');
+                })
+                ->where('a.tenant_id', $tenantId)
+                ->where('a.legal_entity_id', $legalEntityId)
+                ->whereBetween('a.work_date', [$start, $end])
+                ->when($employeeIds !== null, fn ($query) => $query->whereIn('a.employee_id', $employeeIds))
+                ->select(['a.employee_id', 'e.department_id'])
+                ->distinct()
+                ->get();
+            $this->attendanceChanges->publishScope(
+                $tenantId,
+                $legalEntityId,
+                'recompute_refresh',
+                $audience->pluck('department_id')->filter()->map(fn ($id): int => (int) $id)->unique()->values()->all(),
+                $audience->pluck('employee_id')->filter()->map(fn ($id): int => (int) $id)->unique()->values()->all(),
+            );
+        }
+
+        app(AttendancePayrollReviewService::class)->notifyHrBatch(
+            $tenantId,
+            $legalEntityId,
+            $createdReviews,
+            $staleReviews,
+            $start,
+            $end,
+            $operationId,
+        );
+
+        return [
+            'scanned' => $scanned,
+            'updated' => $updated,
+            'skipped_locked' => $skippedLocked,
+            'created_reviews' => $createdReviews,
+            'stale_reviews' => $staleReviews,
+        ];
+    }
+
+    /** @return array<string, int|string> */
+    public function monthlyOverview(
+        int $tenantId,
+        int $legalEntityId,
+        string $month,
+        ?array $employeeIds = null,
+        ?int $departmentId = null,
+    ): array {
+        $employeeIds = $employeeIds === null
+            ? null
+            : array_values(array_unique(array_map('intval', $employeeIds)));
+        $version = $this->attendanceChanges->versionToken($tenantId, $legalEntityId);
+        $scope = compact('tenantId', 'legalEntityId', 'month', 'employeeIds', 'departmentId');
+        $key = 'attendance:timesheet-overview:'.$version.':'.hash('sha256', json_encode($scope, JSON_THROW_ON_ERROR));
+        $cache = null;
+        try {
+            $cache = $this->attendanceChanges->cache();
+            $cached = $cache->get($key);
+            if (is_array($cached)) {
+                return $cached;
+            }
+        } catch (\Throwable) {
+        }
+
+        $totals = [
+            'employees' => 0, 'on_time_days' => 0, 'late_days' => 0,
+            'early_leave_days' => 0, 'absent_days' => 0, 'payable_days' => 0.0,
+            'overtime_hours' => 0.0,
+        ];
+        $employeeQuery = DB::table('employees')
+            ->where('tenant_id', $tenantId)
+            ->where('legal_entity_id', $legalEntityId)
+            ->whereIn('status', ['ACTIVE', 'PROBATION'])
+            ->when($employeeIds !== null, fn ($query) => $query->whereIn('id', $employeeIds))
+            ->when($departmentId, fn ($query) => $query->where('department_id', $departmentId))
+            ->orderBy('id');
+        $employeeQuery->chunkById(100, function ($employees) use (
+            $tenantId, $legalEntityId, $month, $departmentId, &$totals
+        ): void {
+            $ids = $employees->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $grid = $this->monthlyGrid($tenantId, $legalEntityId, $month, $ids, $departmentId);
+            foreach ($grid['rows'] as $row) {
+                $totals['employees']++;
+                foreach (['on_time_days', 'late_days', 'early_leave_days', 'absent_days'] as $key) {
+                    $totals[$key] += (int) ($row['totals'][$key] ?? 0);
+                }
+                $totals['payable_days'] += (float) ($row['totals']['payable_days'] ?? 0);
+                $totals['overtime_hours'] += (float) ($row['totals']['overtime_hours'] ?? 0);
+            }
+        }, 'id');
+        $totals['payable_days'] = round($totals['payable_days'], 1);
+        $totals['overtime_hours'] = round($totals['overtime_hours'], 2);
+        $totals['generated_at'] = now()->toIso8601String();
+        if ($cache) {
+            try {
+                $cache->put($key, $totals, now()->addSeconds(30));
+            } catch (\Throwable) {
             }
         }
 
-        return ['scanned' => $rows->count(), 'updated' => $updated, 'skipped_locked' => $skippedLocked];
+        return $totals;
     }
 
     /**
@@ -105,9 +374,8 @@ class TimesheetService
         ?int $departmentId = null,
         ?int $page = null,
         int $perPage = 25,
-    ): array
-    {
-        $startDate = CarbonImmutable::parse($month . '-01')->startOfMonth();
+    ): array {
+        $startDate = CarbonImmutable::parse($month.'-01')->startOfMonth();
         $endDate = $startDate->endOfMonth();
         $start = $startDate->toDateString();
         $end = $endDate->toDateString();
@@ -138,7 +406,7 @@ class TimesheetService
             ->where('tenant_id', $tenantId)
             ->where('legal_entity_id', $legalEntityId)
             ->whereIn('status', ['ACTIVE', 'PROBATION'])
-            ->when($employeeIds, fn ($q) => $q->whereIn('id', $employeeIds))
+            ->when($employeeIds !== null, fn ($q) => $q->whereIn('id', $employeeIds))
             ->when($departmentId, fn ($q) => $q->where('department_id', $departmentId))
             ->where(function ($query): void {
                 if (DB::getDriverName() === 'pgsql') {
@@ -407,12 +675,12 @@ class TimesheetService
             ->whereIn('employee_id', $empIds)
             ->whereIn('status', self::APPROVED_STATUSES)
             ->whereBetween('work_date', [$start, $end])
-            ->get(['employee_id', 'work_date'])
-            ->unique(fn ($row) => $row->employee_id.'|'.$row->work_date)
-            ->each(function ($r) use (&$map, $tenantId) {
+            ->get(['employee_id', 'work_date', 'meta'])
+            ->each(function ($r) use (&$map) {
                 $date = CarbonImmutable::parse($r->work_date)->toDateString();
-                $result = $this->overtimeReconciliation->reconcileDate($tenantId, (int) $r->employee_id, $date);
-                $map[$r->employee_id][$date] = $result['payable_overtime_hours'];
+                $meta = $this->decodeMeta($r->meta);
+                $minutes = max(0, (int) ($meta['payable_overtime_minutes'] ?? 0));
+                $map[$r->employee_id][$date] = round((($map[$r->employee_id][$date] ?? 0) * 60 + $minutes) / 60, 2);
             });
 
         return $map;

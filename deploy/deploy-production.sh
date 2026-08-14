@@ -74,6 +74,9 @@ set_env_value REVERB_SERVER_HOST 0.0.0.0
 set_env_value REVERB_SERVER_PORT 8080
 set_env_value REVERB_ALLOWED_ORIGINS devtapcode.io.vn,www.devtapcode.io.vn
 set_env_value HRM_ATT_OVERVIEW_CACHE_STORE redis
+set_env_value HRM_ATT_TIMESHEET_CACHE_SECONDS 60
+# Legacy x-internal-token ingestion is accepted only inside this tenant.
+set_env_value INTERNAL_ATTENDANCE_TENANT_ID "${INTERNAL_ATTENDANCE_TENANT_ID:-1}"
 
 background_services_stopped=0
 restore_background_services() {
@@ -97,6 +100,7 @@ docker compose run --rm --no-deps --user root php composer install --no-dev --no
 docker compose stop worker scheduler reverb >/dev/null 2>&1 || true
 background_services_stopped=1
 docker compose up -d php reverb nginx
+docker compose exec -T php php artisan attendance:preflight-unique
 docker compose exec -T php php artisan migrate --force
 
 # A fresh production database needs the bundled demo organization and accounts.

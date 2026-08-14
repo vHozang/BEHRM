@@ -15,6 +15,7 @@ class AttendancePayrollReviewTest extends TestCase
     use RefreshDatabase;
 
     private int $employeeId;
+
     private int $shiftId;
 
     protected function setUp(): void
@@ -70,7 +71,7 @@ class AttendancePayrollReviewTest extends TestCase
 
         app(AttendanceReconciliationService::class)->reconcile($attendance, null, false);
 
-        $meta = json_decode((string) $attendance->fresh()->meta, true);
+        $meta = (array) $attendance->fresh()->meta;
         $this->assertSame(450, $meta['regular_worked_minutes']);
         $this->assertSame(15, $meta['late_minutes']);
         $this->assertSame(15, $meta['early_leave_minutes']);
@@ -90,7 +91,7 @@ class AttendancePayrollReviewTest extends TestCase
 
         app(AttendanceReconciliationService::class)->reconcile($attendance, null, false);
 
-        $meta = json_decode((string) $attendance->fresh()->meta, true);
+        $meta = (array) $attendance->fresh()->meta;
         $this->assertSame(14, $meta['late_minutes']);
         $this->assertDatabaseCount('attendance_payroll_reviews', 0);
     }

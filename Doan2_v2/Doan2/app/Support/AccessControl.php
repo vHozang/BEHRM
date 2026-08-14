@@ -163,6 +163,7 @@ class AccessControl
         $roles = DB::table('employee_roles')
             ->join('roles', 'roles.id', '=', 'employee_roles.role_id')
             ->where('employee_roles.employee_id', $employeeId)
+            ->whereColumn('roles.tenant_id', 'employee_roles.tenant_id')
             ->whereRaw('employee_roles.is_active IS TRUE')
             ->where(function ($q) {
                 $q->whereNull('employee_roles.effective_date')->orWhere('employee_roles.effective_date', '<=', now());
@@ -278,6 +279,7 @@ class AccessControl
         $roles = DB::table('employee_roles as er')
             ->join('roles as r', 'r.id', '=', 'er.role_id')
             ->where('er.employee_id', $employeeId)
+            ->whereColumn('r.tenant_id', 'er.tenant_id')
             // `IS TRUE` works on PostgreSQL and SQLite; bound booleans become
             // integer `1` on PostgreSQL and cause `boolean = integer` errors.
             ->whereRaw('er.is_active IS TRUE')
@@ -329,6 +331,30 @@ class AccessControl
 
         if ($segment === 'organization-chart') {
             return in_array('org_chart.view', $access['capabilities'] ?? [], true);
+        }
+
+        if (strtolower(trim($path, '/')) === 'attendance/summary/run'
+            && strtoupper($method) === 'POST') {
+            $roleCodes = array_map(
+                fn (array $role): string => strtoupper((string) ($role['role_code'] ?? '')),
+                array_filter($access['roles'] ?? [], 'is_array'),
+            );
+
+            return count(array_intersect(['ACCOUNTANT', 'ADMIN', 'TENANT_ADMIN'], $roleCodes)) > 0;
+        }
+
+        // Payroll-only accountants need the monthly timesheet and its private
+        // exports, but must not gain access to the Attendance CRUD endpoints.
+        $normalizedPath = strtolower(trim($path, '/'));
+        if (str_starts_with($normalizedPath, 'attendance/timesheet')) {
+            $roleCodes = array_map(
+                fn (array $role): string => strtoupper((string) ($role['role_code'] ?? '')),
+                array_filter($access['roles'] ?? [], 'is_array'),
+            );
+            if (in_array('ACCOUNTANT', $roleCodes, true)) {
+                return strtoupper($method) === 'GET'
+                    || ($normalizedPath === 'attendance/timesheet/exports' && strtoupper($method) === 'POST');
+            }
         }
 
         // The management dashboard contains tenant-wide aggregates. It is for

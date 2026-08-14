@@ -3,26 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Support\TenantContext;
+use App\Services\AttendanceAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Pusher\Pusher;
 
 class AttendanceRealtimeController extends Controller
 {
+    public function __construct(private readonly AttendanceAccess $attendanceAccess) {}
+
     public function config(Request $request): JsonResponse
     {
-        $access = (array) $request->attributes->get('access', []);
-        $employeeId = (int) $request->attributes->get('auth_employee_id');
-        $canManage = ! empty($access['full']) || in_array('time', $access['modules'] ?? [], true);
-        $legalEntityId = (int) TenantContext::legalEntityId();
-        if (! empty($access['full']) && $request->filled('legal_entity_id')) {
-            $requested = (int) $request->query('legal_entity_id');
-            if (TenantContext::ownsRow('legal_entities', $requested)) {
-                $legalEntityId = $requested;
-            }
-        }
-
         return response()->json([
             'status' => 200,
             'message' => 'Attendance realtime configuration',
@@ -32,9 +23,7 @@ class AttendanceRealtimeController extends Controller
                 'host' => config('hrm.realtime.host'),
                 'port' => (int) config('hrm.realtime.port', 443),
                 'scheme' => config('hrm.realtime.scheme', 'https'),
-                'channel' => $canManage
-                    ? 'attendance.tenant.'.TenantContext::id().'.entity.'.$legalEntityId
-                    : 'attendance.employee.'.$employeeId,
+                'channels' => $this->attendanceAccess->realtimeChannels($request),
             ],
         ]);
     }
@@ -62,31 +51,8 @@ class AttendanceRealtimeController extends Controller
 
     private function canSubscribe(Request $request, string $channel): bool
     {
-        $channel = preg_replace('/^private-/', '', $channel);
-        $employeeId = (int) $request->attributes->get('auth_employee_id');
-        if ($channel === 'attendance.employee.'.$employeeId) {
-            return true;
-        }
+        $channel = (string) preg_replace('/^private-/', '', $channel);
 
-        $access = (array) $request->attributes->get('access', []);
-        $canManage = ! empty($access['full']) || in_array('time', $access['modules'] ?? [], true);
-        if (! $canManage) {
-            return false;
-        }
-
-        $tenantPrefix = 'attendance.tenant.'.TenantContext::id();
-        if ($channel === $tenantPrefix.'.all') {
-            return true;
-        }
-
-        if (preg_match('/^'.preg_quote($tenantPrefix, '/').'\.entity\.(\d+)$/', $channel, $matches)) {
-            if ((int) $matches[1] === (int) TenantContext::legalEntityId()) {
-                return true;
-            }
-
-            return ! empty($access['full']) && TenantContext::ownsRow('legal_entities', (int) $matches[1]);
-        }
-
-        return false;
+        return in_array($channel, $this->attendanceAccess->realtimeChannels($request), true);
     }
 }

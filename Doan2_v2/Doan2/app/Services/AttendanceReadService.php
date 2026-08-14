@@ -11,11 +11,14 @@ use Illuminate\Support\Facades\Log;
 
 class AttendanceReadService
 {
-    public function __construct(private readonly AttendanceChangePublisher $changes) {}
+    public function __construct(
+        private readonly AttendanceChangePublisher $changes,
+        private readonly AttendanceAccess $access,
+    ) {}
 
     public function filteredQuery(Request $request, ?int $legalEntityId, bool $withRelations = false): Builder
     {
-        $query = Attendance::query();
+        $query = $this->access->scopeAttendances(Attendance::query(), $request);
         if ($legalEntityId !== null && $legalEntityId > 0) {
             $query->where('attendances.legal_entity_id', $legalEntityId);
         }
@@ -23,7 +26,7 @@ class AttendanceReadService
             $query->with([
                 'employee:id,full_name,employee_code,department_id,legal_entity_id',
                 'shiftType:id,shift_code,shift_name,start_time,end_time',
-                'payrollReview:id,attendance_id,approved_percent,status',
+                'payrollReview:id,attendance_id,default_percent,approved_percent,status',
             ]);
         }
 
@@ -92,7 +95,9 @@ class AttendanceReadService
                 'attendance_employee.department_id',
                 'attendance_shift.shift_code', 'attendance_shift.shift_name',
                 'attendance_shift.start_time as shift_start_time', 'attendance_shift.end_time as shift_end_time',
+                'attendance_review.id as payroll_review_id',
                 'attendance_review.status as payroll_review_status',
+                'attendance_review.default_percent as payroll_review_default_percent',
                 'attendance_review.approved_percent as payroll_review_percent',
             ]);
 
@@ -187,13 +192,21 @@ class AttendanceReadService
         $query = $this->filteredQuery($request, $legalEntityId);
         $lateMetric = $this->integerMetaExpression('late_minutes');
         $earlyLeaveMetric = $this->integerMetaExpression('early_leave_minutes');
-        $row = (clone $query)->withoutEagerLoads()->reorder()->selectRaw(<<<SQL
+        $reviewMetric = $this->textMetaExpression('review_status');
+        $row = (clone $query)->withoutEagerLoads()->reorder()
+            ->leftJoin('attendance_payroll_reviews as overview_review', function ($join): void {
+                $join->on('overview_review.attendance_id', '=', 'attendances.id')
+                    ->on('overview_review.tenant_id', '=', 'attendances.tenant_id');
+            })
+            ->selectRaw(<<<SQL
             COUNT(*) AS total,
             SUM(CASE WHEN attendances.status IN ('ON_TIME', 'PRESENT', 'CHECKED_IN', 'CHECKED_OUT', 'ĐÃ_DUYỆT', 'ĐÃ DUYỆT') THEN 1 ELSE 0 END) AS present,
             SUM(CASE WHEN attendances.status IN ('ABSENT', 'VẮNG', 'NGHỈ') THEN 1 ELSE 0 END) AS absent,
             SUM(CASE WHEN attendances.status IN ('LATE', 'ĐI_MUỘN', 'ĐI MUỘN', 'MUỘN') OR {$lateMetric} > 0 THEN 1 ELSE 0 END) AS late,
             SUM(CASE WHEN attendances.status IN ('EARLY_LEAVE', 'VỀ_SỚM', 'VỀ SỚM') OR {$earlyLeaveMetric} > 0 THEN 1 ELSE 0 END) AS early_leave,
-            SUM(CASE WHEN attendances.status = 'HALF_DAY' THEN 1 ELSE 0 END) AS half_day
+            SUM(CASE WHEN attendances.status = 'HALF_DAY' THEN 1 ELSE 0 END) AS half_day,
+            SUM(CASE WHEN {$reviewMetric} = 'needs_review' THEN 1 ELSE 0 END) AS needs_review,
+            SUM(CASE WHEN overview_review.status IN ('PENDING', 'STALE') THEN 1 ELSE 0 END) AS payroll_review_pending
         SQL)->first();
 
         return [
@@ -203,11 +216,8 @@ class AttendanceReadService
             'late' => (int) ($row?->late ?? 0),
             'early_leave' => (int) ($row?->early_leave ?? 0),
             'half_day' => (int) ($row?->half_day ?? 0),
-            'needs_review' => $this->whereMetaValue(clone $query, 'review_status', 'needs_review')->count(),
-            'payroll_review_pending' => (clone $query)->whereHas(
-                'payrollReview',
-                fn (Builder $review) => $review->whereIn('status', ['PENDING', 'STALE'])
-            )->count(),
+            'needs_review' => (int) ($row?->needs_review ?? 0),
+            'payroll_review_pending' => (int) ($row?->payroll_review_pending ?? 0),
             'generated_at' => now()->toIso8601String(),
         ];
     }
@@ -241,6 +251,16 @@ class AttendanceReadService
             'verification_status' => $row->verification_status,
             'review_status' => $row->verification_status,
             'payroll_review_status' => $row->payroll_review_status,
+            'payroll_review' => $row->payroll_review_id ? [
+                'id' => (int) $row->payroll_review_id,
+                'status' => $row->payroll_review_status,
+                'default_percent' => $row->payroll_review_default_percent !== null
+                    ? (int) $row->payroll_review_default_percent
+                    : null,
+                'approved_percent' => $row->payroll_review_percent !== null
+                    ? (int) $row->payroll_review_percent
+                    : null,
+            ] : null,
             'payroll_review_percent' => $row->payroll_review_percent !== null ? (int) $row->payroll_review_percent : null,
             'updated_at' => $row->updated_at instanceof \DateTimeInterface ? $row->updated_at->format(DATE_ATOM) : (string) $row->updated_at,
         ];
@@ -252,7 +272,7 @@ class AttendanceReadService
             return $query->whereRaw("attendances.meta->>'{$key}' = ?", [$value]);
         }
 
-        return $query->whereRaw("json_extract(attendances.meta, ?) = ?", ['$.'.$key, $value]);
+        return $query->whereRaw('json_extract(attendances.meta, ?) = ?', ['$.'.$key, $value]);
     }
 
     private function integerMetaExpression(string $key): string
@@ -262,6 +282,15 @@ class AttendanceReadService
         }
 
         return "COALESCE(CAST(json_extract(attendances.meta, '$.{$key}') AS INTEGER), 0)";
+    }
+
+    private function textMetaExpression(string $key): string
+    {
+        if (DB::getDriverName() === 'pgsql') {
+            return "attendances.meta->>'{$key}'";
+        }
+
+        return "json_extract(attendances.meta, '$.{$key}')";
     }
 
     private function attendanceCursor(object $row, bool $next): string

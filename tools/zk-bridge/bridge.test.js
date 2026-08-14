@@ -3,12 +3,15 @@ const assert = require('node:assert/strict');
 process.env.DEVICE_TOKEN = 'dev_test';
 const {
   enrichRecordData40,
+  chunkPunches,
   installNodeZkLibRecordDecoder,
   isEligibleForAutomaticUpload,
   mapPunchState,
   mapVerify,
   normalizeUploadDelay,
 } = require('./bridge');
+
+assert.deepEqual(chunkPunches(Array.from({ length: 401 }, (_, index) => index)).map((chunk) => chunk.length), [200, 200, 1]);
 
 const now = Date.UTC(2026, 7, 2, 5, 0, 0);
 

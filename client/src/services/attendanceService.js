@@ -242,8 +242,11 @@ export const attendanceService = {
 
   getOvertime: async (params) => {
     const response = await axiosClient.get('/overtime-requests', { params });
-    const data = response.data?.items || response.data || [];
-    return Array.isArray(data) ? data.map(mapOvertime) : data;
+    return {
+      items: (Array.isArray(response.data) ? response.data : []).map(mapOvertime),
+      pagination: response.pagination || null,
+      summary: response.summary || {},
+    };
   },
 
   getOvertimeUsage: async (employeeId, date) => {
@@ -300,6 +303,11 @@ export const attendanceService = {
     return response.data; // { month, start, end, standard_days, days[], rows[] }
   },
 
+  getTimesheetOverview: async (month, params = {}) => {
+    const response = await axiosClient.get('/attendance/timesheet/overview', { params: { month, ...params } });
+    return response.data;
+  },
+
   createTimesheetExport: async ({ month, format = 'xlsx', ...filters }) => {
     const response = await axiosClient.post('/attendance/timesheet/exports', { month, format, ...filters });
     return response.data;
@@ -323,7 +331,12 @@ export const attendanceService = {
   // Tái phân loại trạng thái chấm công theo ca + dung sai (engine).
   recomputeTimesheet: async (month, params = {}) => {
     const response = await axiosClient.post('/attendance/recompute', { month, ...params });
-    return response.data; // { scanned, updated }
+    return response.data; // { run_id, status, progress_percent }
+  },
+
+  getAttendanceOperation: async (runId) => {
+    const response = await axiosClient.get(`/attendance/operations/${runId}`);
+    return response.data;
   },
 
   // HR/Admin theo dõi bridge và yêu cầu lấy dữ liệu máy chấm công ngay lập tức.

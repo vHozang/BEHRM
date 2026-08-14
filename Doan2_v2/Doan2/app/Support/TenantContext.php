@@ -2,6 +2,9 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
 /**
  * Request-scoped holder for the current tenant / legal entity.
  *
@@ -20,6 +23,9 @@ class TenantContext
 
     public static function set(int $tenantId, ?int $legalEntityId = null): void
     {
+        if (self::$resolved && (self::$tenantId !== $tenantId || self::$legalEntityId !== $legalEntityId)) {
+            HrmConfig::flushMemoized();
+        }
         self::$tenantId = $tenantId;
         self::$legalEntityId = $legalEntityId;
         self::$resolved = true;
@@ -30,6 +36,7 @@ class TenantContext
      */
     public static function clear(): void
     {
+        HrmConfig::flushMemoized();
         self::$tenantId = null;
         self::$legalEntityId = null;
         self::$resolved = false;
@@ -102,9 +109,9 @@ class TenantContext
             return true; // nothing to validate (nullable FK)
         }
 
-        $query = \Illuminate\Support\Facades\DB::table($table)->where('id', $id);
+        $query = DB::table($table)->where('id', $id);
 
-        if (self::hasTenant() && \Illuminate\Support\Facades\Schema::hasColumn($table, 'tenant_id')) {
+        if (self::hasTenant() && Schema::hasColumn($table, 'tenant_id')) {
             $query->where('tenant_id', self::id());
         }
 

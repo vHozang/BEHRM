@@ -42,6 +42,9 @@ return [
     // để hoạt động cả khi đã config:cache (env() trả null khi cache).
     'internal_service_token' => env('INTERNAL_SERVICE_TOKEN'),
 
+    // Shared internal-token bridges are accepted only when pinned to a tenant.
+    'internal_attendance_tenant_id' => env('INTERNAL_ATTENDANCE_TENANT_ID'),
+
     /*
     |--------------------------------------------------------------------------
     | Payroll engine (Vietnam ruleset, tunable / international-ready)
@@ -185,6 +188,9 @@ return [
         // Overview uses a versioned short-lived cache. Production should set
         // CACHE_STORE=redis; tests keep using the configured array store.
         'overview_cache_store' => env('HRM_ATT_OVERVIEW_CACHE_STORE', env('CACHE_STORE', 'database')),
+        // Employee-page grid cache. Attendance writes invalidate by version;
+        // the TTL covers other inputs such as approved leave and shift changes.
+        'timesheet_cache_seconds' => (int) env('HRM_ATT_TIMESHEET_CACHE_SECONDS', 60),
         // Giờ làm chuẩn / ngày (Đ.105: ≤ 8h/ngày, ≤ 48h/tuần).
         'standard_hours_per_day' => 8,
         // Số ngày làm chuẩn / tuần (nhiều DN 6; khuyến khích ≤ 5.5).

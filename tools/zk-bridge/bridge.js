@@ -24,6 +24,8 @@ const CONTROL_POLL_MS = Math.max(2000, Number(process.env.CONTROL_POLL_MS || 500
 const DEVICE_ID = process.env.DEVICE_ID || 'wiseeye-3';
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, '.zk-bridge-state.json');
 const INITIAL_SYNC_MODE = String(process.env.INITIAL_SYNC_MODE || 'all').toLowerCase();
+const MAX_PUNCHES_PER_REQUEST = 200;
+const CHUNK_RETRIES = Math.max(1, Number(process.env.CHUNK_RETRIES || 3));
 
 const savedState = loadState();
 let lastSent = savedState.lastSent;
@@ -123,30 +125,17 @@ async function readAndForward({ force = false } = {}) {
       return { ok: true, processed: 0 };
     }
 
-    const payloadPunches = punches.map(({ cursor, recorded_at_ms, ...punch }) => punch);
-    const response = await fetch(`${API_BASE}/internal/attendance/device-punch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeader },
-      body: JSON.stringify({ punches: payloadPunches }),
-    });
-    const body = await responseJson(response);
-    const errors = Array.isArray(body?.data?.errors) ? body.data.errors : [];
-    console.log(new Date().toISOString(), `gửi ${payloadPunches.length} punch →`, response.status, JSON.stringify(body.data || body));
-
-    if (!response.ok) {
-      throw new Error(body?.message || `HRM API trả HTTP ${response.status}`);
-    }
-    if (errors.length > 0) {
-      // Không tăng cursor khi còn lỗi; lần sau gửi lại cả batch, backend tự bỏ
-      // punch trùng và giữ cơ hội xử lý punch chưa ánh xạ được nhân viên.
-      throw new Error(`${errors.length} punch chưa được xử lý`);
+    let processed = 0;
+    for (const chunk of chunkPunches(punches)) {
+      const payloadPunches = chunk.map(({ cursor, recorded_at_ms, ...punch }) => punch);
+      await sendPunchChunk(payloadPunches);
+      processed += payloadPunches.length;
+      lastSent = chunk.reduce((max, punch) => (punch.cursor > max ? punch.cursor : max), lastSent || '');
+      initialized = true;
+      saveState(lastSent);
     }
 
-    lastSent = punches.reduce((max, punch) => (punch.cursor > max ? punch.cursor : max), lastSent || '');
-    initialized = true;
-    saveState(lastSent);
-
-    return { ok: true, processed: payloadPunches.length };
+    return { ok: true, processed };
   } catch (error) {
     const message = errorMessage(error);
     console.error('Lỗi đọc/gửi:', message);
@@ -155,6 +144,35 @@ async function readAndForward({ force = false } = {}) {
     try { await zk?.disconnect(); } catch (_) {}
     isRunning = false;
   }
+}
+
+async function sendPunchChunk(payloadPunches) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= CHUNK_RETRIES; attempt += 1) {
+    try {
+      const response = await fetch(`${API_BASE}/internal/attendance/device-punch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader },
+        body: JSON.stringify({ punches: payloadPunches }),
+      });
+      const body = await responseJson(response);
+      const errors = Array.isArray(body?.data?.errors) ? body.data.errors : [];
+      console.log(new Date().toISOString(), `gửi chunk ${payloadPunches.length} punch →`, response.status, JSON.stringify(body.data || body));
+      if (!response.ok) throw new Error(body?.message || `HRM API trả HTTP ${response.status}`);
+      if (errors.length > 0) throw new Error(`${errors.length} punch chưa được xử lý`);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < CHUNK_RETRIES) await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+    }
+  }
+  throw lastError;
+}
+
+function chunkPunches(items, size = MAX_PUNCHES_PER_REQUEST) {
+  const chunks = [];
+  for (let offset = 0; offset < items.length; offset += size) chunks.push(items.slice(offset, offset + size));
+  return chunks;
 }
 
 async function pollControl() {
@@ -329,6 +347,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  chunkPunches,
   enrichRecordData40,
   formatLocalDateTime,
   installNodeZkLibRecordDecoder,

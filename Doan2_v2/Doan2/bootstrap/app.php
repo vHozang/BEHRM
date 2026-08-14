@@ -1,5 +1,6 @@
 <?php
 
+use App\Console\Commands\AttendanceDuplicatePreflightCommand;
 use App\Console\Commands\ImportLegacyAttendanceLeave;
 use App\Console\Commands\ImportLegacyCommunications;
 use App\Console\Commands\ImportLegacyContracts;
@@ -12,6 +13,7 @@ use App\Console\Commands\VerifyLegacyImport;
 use App\Http\Middleware\HrmAuth;
 use App\Http\Middleware\ModuleAccess;
 use App\Http\Middleware\PlatformAdmin;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -24,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withCommands([
+        AttendanceDuplicatePreflightCommand::class,
         ImportLegacyMasterData::class,
         ImportLegacyEmployees::class,
         ImportLegacyContracts::class,
@@ -50,7 +53,7 @@ return Application::configure(basePath: dirname(__DIR__))
         //   22xxx = data exception (sai kiểu/quá dài/chia 0) → 422
         //   23xxx = integrity constraint (trùng/FK/not-null) → 409
         // Lỗi thật của server (08 mất kết nối, 42 sai cú pháp = bug ta) → giữ 500 + log.
-        $exceptions->render(function (\Illuminate\Database\QueryException $e, $request) {
+        $exceptions->render(function (QueryException $e, $request) {
             if (! ($request->is('api/*') || $request->expectsJson())) {
                 return null;
             }

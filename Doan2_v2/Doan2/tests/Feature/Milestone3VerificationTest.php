@@ -12,8 +12,11 @@ class Milestone3VerificationTest extends TestCase
     use RefreshDatabase;
 
     private string $token;
+
     private int $employeeId;
+
     private int $shiftTypeId;
+
     private int $periodId;
 
     protected function setUp(): void
@@ -69,9 +72,7 @@ class Milestone3VerificationTest extends TestCase
         ]);
     }
 
-    /**
-     * PATCH /attendances/{id} with standard columns updates correctly.
-     */
+    /** PATCH only allows editable timing fields; status remains calculated. */
     public function test_patch_attendance_standard_fields(): void
     {
         $attendanceId = DB::table('attendances')->insertGetId([
@@ -89,19 +90,16 @@ class Milestone3VerificationTest extends TestCase
 
         $response = $this->withToken($this->token)
             ->patchJson("/api/v1/attendances/{$attendanceId}", [
-                'status' => 'LATE',
                 'check_in_time' => '08:15:00',
                 'check_out_time' => '17:00:00',
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('data.status', 'LATE')
             ->assertJsonPath('data.check_in_time', '08:15:00')
             ->assertJsonPath('data.check_out_time', '17:00:00');
 
         $this->assertDatabaseHas('attendances', [
             'id' => $attendanceId,
-            'status' => 'LATE',
             'check_in_time' => '08:15:00',
             'check_out_time' => '17:00:00',
         ]);
@@ -126,13 +124,15 @@ class Milestone3VerificationTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $response = $this->withToken($this->token)
+        $this->withToken($this->token)
             ->patchJson("/api/v1/attendances/{$attendanceId}", [
                 'late_minutes' => 15,
                 'notes' => 'traffic jam',
-            ]);
+            ])->assertStatus(422);
 
-        $response->assertOk();
+        $response = $this->withToken($this->token)
+            ->patchJson("/api/v1/attendances/{$attendanceId}", ['notes' => 'traffic jam'])
+            ->assertOk();
 
         $updated = DB::table('attendances')->find($attendanceId);
         $meta = json_decode($updated->meta, true);
@@ -242,7 +242,7 @@ class Milestone3VerificationTest extends TestCase
         $response->assertOk();
 
         $updated = DB::table('salary_details')->find($detailId);
-        $this->assertEquals(5500, (float)$updated->gross_salary);
+        $this->assertEquals(5500, (float) $updated->gross_salary);
 
         $meta = json_decode($updated->meta, true);
         $this->assertEquals('old_val', $meta['old_key'] ?? null);

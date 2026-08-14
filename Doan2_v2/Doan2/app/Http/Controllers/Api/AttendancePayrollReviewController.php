@@ -4,17 +4,18 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AttendancePayrollReview;
-use App\Services\AttendancePayrollReviewService;
+use App\Services\AttendanceAccess;
 use App\Services\AttendanceChangePublisher;
-use App\Support\AccessControl;
+use App\Services\AttendancePayrollReviewService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class AttendancePayrollReviewController extends Controller
 {
+    public function __construct(private readonly AttendanceAccess $attendanceAccess) {}
+
     public function index(Request $request): JsonResponse
     {
         if (! $this->canReview($request)) {
@@ -31,8 +32,7 @@ class AttendancePayrollReviewController extends Controller
             ])
             ->orderByDesc('work_date')
             ->orderByDesc('id');
-        $access = (array) $request->attributes->get('access', []);
-        if (empty($access['full'])) {
+        if (! $this->attendanceAccess->isAdmin($request)) {
             $query->where('legal_entity_id', TenantContext::legalEntityId());
         } elseif ($request->filled('legal_entity_id')) {
             $legalEntityId = (int) $request->query('legal_entity_id');
@@ -90,8 +90,7 @@ class AttendancePayrollReviewController extends Controller
         }
 
         $reviewQuery = AttendancePayrollReview::query()->whereKey($id);
-        $access = (array) $request->attributes->get('access', []);
-        if (empty($access['full'])) {
+        if (! $this->attendanceAccess->isAdmin($request)) {
             $reviewQuery->where('legal_entity_id', TenantContext::legalEntityId());
         }
         $review = $reviewQuery->first();
@@ -112,9 +111,7 @@ class AttendancePayrollReviewController extends Controller
 
     private function canReview(Request $request): bool
     {
-        $employeeId = (int) $request->attributes->get('auth_employee_id');
-
-        return AccessControl::hasAnyRole($employeeId, ['ADMIN', 'TENANT_ADMIN', 'HR']);
+        return $this->attendanceAccess->canModifyAttendance($request);
     }
 
     private function ok(mixed $data, string $message): JsonResponse

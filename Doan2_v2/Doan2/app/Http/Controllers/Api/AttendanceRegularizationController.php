@@ -5,8 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
 use App\Models\AttendanceAdjustmentRequest;
+use App\Services\AttendanceAccess;
+use App\Services\AttendanceDayLock;
 use App\Services\AttendanceReconciliationService;
+use App\Support\ApprovalFlow;
 use App\Support\AuditLogger;
+use App\Support\Notifier;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,13 +28,21 @@ use Illuminate\Support\Facades\Validator;
  */
 class AttendanceRegularizationController extends Controller
 {
-    public function __construct(private readonly AttendanceReconciliationService $attendanceReconciliation) {}
+    public function __construct(
+        private readonly AttendanceReconciliationService $attendanceReconciliation,
+        private readonly AttendanceAccess $attendanceAccess,
+        private readonly AttendanceDayLock $attendanceDayLock,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
 
-        $query = AttendanceAdjustmentRequest::with(['employee:id,full_name'])
+        $query = $this->attendanceAccess->scopeEmployeeResource(
+            AttendanceAdjustmentRequest::query(),
+            $request,
+            'attendance_adjustment_requests',
+        )->with(['employee:id,employee_code,full_name,department_id,legal_entity_id'])
             ->orderByDesc('id');
 
         foreach (['employee_id', 'status', 'work_date'] as $field) {
@@ -77,6 +89,13 @@ class AttendanceRegularizationController extends Controller
         if (! TenantContext::ownsRow('employees', $employeeId)) {
             return $this->validationError(['employee_id' => ['Nhân viên không thuộc công ty hiện tại']]);
         }
+        if ($employeeId !== $this->attendanceAccess->actorId($request)) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Nhân viên chỉ được tạo đơn điều chỉnh công của chính mình.',
+                'data' => null,
+            ], 403);
+        }
 
         // Must request at least one concrete change.
         if (! $request->filled('requested_check_in_time') && ! $request->filled('requested_check_out_time')) {
@@ -86,6 +105,13 @@ class AttendanceRegularizationController extends Controller
         }
 
         $workDate = Carbon::parse($request->input('work_date'))->toDateString();
+        $employeeEntityId = (int) DB::table('employees')
+            ->where('tenant_id', TenantContext::id())
+            ->where('id', $employeeId)
+            ->value('legal_entity_id');
+        if ($this->attendanceReconciliation->isClosedWorkDate((int) TenantContext::id(), $employeeEntityId, $workDate)) {
+            return response()->json(['status' => 409, 'message' => 'Kỳ lương chứa ngày công này đã chốt.', 'data' => null], 409);
+        }
 
         // Resolve target attendance row for (tenant, employee, work_date) if any.
         // Model global scope already filters by tenant.
@@ -94,11 +120,9 @@ class AttendanceRegularizationController extends Controller
             ->value('id');
 
         // Bằng chứng (link ảnh/tài liệu hoặc ghi chú) → lưu trong meta.
-        $meta = null;
+        $meta = [];
         if ($request->filled('evidence') || $request->filled('evidence_url')) {
-            $meta = json_encode([
-                'evidence' => $request->input('evidence') ?? $request->input('evidence_url'),
-            ], JSON_UNESCAPED_UNICODE);
+            $meta['evidence'] = $request->input('evidence') ?? $request->input('evidence_url');
         }
 
         $adjustment = AttendanceAdjustmentRequest::create([
@@ -110,7 +134,7 @@ class AttendanceRegularizationController extends Controller
             'requested_status' => $request->input('requested_status'),
             'reason' => $request->input('reason'),
             'status' => 'PENDING',
-            'meta' => $meta,
+            'meta' => $meta ?: null,
         ]);
 
         return response()->json([
@@ -120,9 +144,13 @@ class AttendanceRegularizationController extends Controller
         ], 201);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
-        $adjustment = AttendanceAdjustmentRequest::with(['employee:id,full_name'])->find($id);
+        $adjustment = $this->attendanceAccess->scopeEmployeeResource(
+            AttendanceAdjustmentRequest::query(),
+            $request,
+            'attendance_adjustment_requests',
+        )->with(['employee:id,employee_code,full_name,department_id,legal_entity_id'])->find($id);
 
         if (! $adjustment) {
             return $this->notFound();
@@ -133,7 +161,14 @@ class AttendanceRegularizationController extends Controller
 
     public function approve(Request $request, int $id): JsonResponse
     {
-        $adjustment = AttendanceAdjustmentRequest::find($id);
+        if (! $this->attendanceAccess->canReadOrganization($request)) {
+            return response()->json(['status' => 403, 'message' => 'Bạn không có quyền duyệt điều chỉnh công.', 'data' => null], 403);
+        }
+        $adjustment = $this->attendanceAccess->scopeEmployeeResource(
+            AttendanceAdjustmentRequest::query(),
+            $request,
+            'attendance_adjustment_requests',
+        )->find($id);
 
         if (! $adjustment) {
             return $this->notFound();
@@ -141,6 +176,17 @@ class AttendanceRegularizationController extends Controller
 
         if (! in_array($adjustment->status, ['PENDING', 'CHỜ_DUYỆT'], true)) {
             return $this->validationError(['status' => ['Đơn không ở trạng thái chờ duyệt']]);
+        }
+        $employeeEntityId = (int) DB::table('employees')
+            ->where('tenant_id', TenantContext::id())
+            ->where('id', $adjustment->employee_id)
+            ->value('legal_entity_id');
+        if ($this->attendanceReconciliation->isClosedWorkDate(
+            (int) TenantContext::id(),
+            $employeeEntityId,
+            Carbon::parse($adjustment->work_date)->toDateString(),
+        )) {
+            return response()->json(['status' => 409, 'message' => 'Kỳ lương chứa ngày công này đã chốt.', 'data' => null], 409);
         }
 
         $approverId = $request->attributes->get('auth_employee_id');
@@ -154,86 +200,91 @@ class AttendanceRegularizationController extends Controller
 
         // Duyệt nhiều cấp (approval.adjustment_chain) — chỉ áp dụng khi qua hết cấp.
         $flowMeta = is_string($adjustment->meta) ? (json_decode($adjustment->meta, true) ?: []) : (array) ($adjustment->meta ?? []);
-        $flowMeta = \App\Support\ApprovalFlow::ensure($flowMeta, 'adjustment');
-        if ($err = \App\Support\ApprovalFlow::cannotApprove($flowMeta, $approverId)) {
+        $flowMeta = ApprovalFlow::ensure($flowMeta, 'adjustment');
+        if ($err = ApprovalFlow::cannotApprove($flowMeta, $approverId)) {
             return $this->validationError(['approver_id' => [$err]]);
         }
-        [$flowMeta, $flowFinal] = \App\Support\ApprovalFlow::approveStep($flowMeta, $approverId, $request->input('comment'));
+        [$flowMeta, $flowFinal] = ApprovalFlow::approveStep($flowMeta, $approverId, $request->input('comment'));
         if (! $flowFinal) {
-            $adjustment->update(['meta' => json_encode($flowMeta, JSON_UNESCAPED_UNICODE)]);
-            $pr = \App\Support\ApprovalFlow::progress($flowMeta);
-            $next = \App\Support\ApprovalFlow::currentRole($flowMeta);
+            $adjustment->update(['meta' => $flowMeta]);
+            $pr = ApprovalFlow::progress($flowMeta);
+            $next = ApprovalFlow::currentRole($flowMeta);
 
             return $this->ok($adjustment->fresh()->load('employee:id,full_name'),
-                "Đã duyệt cấp {$pr['done']}/{$pr['total']}. Chờ cấp tiếp theo" . ($next ? " ({$next})" : '') . '.');
+                "Đã duyệt cấp {$pr['done']}/{$pr['total']}. Chờ cấp tiếp theo".($next ? " ({$next})" : '').'.');
         }
 
-        $attendance = DB::transaction(function () use ($adjustment, $approverId, $request, $flowMeta) {
-            // Find-or-create the target attendances row (tenant/entity stamped by trait).
-            $attendance = Attendance::where('employee_id', $adjustment->employee_id)
-                ->where('work_date', $adjustment->work_date)
-                ->first();
+        $attendance = $this->attendanceDayLock->run(
+            (int) TenantContext::id(),
+            (int) $adjustment->employee_id,
+            Carbon::parse($adjustment->work_date)->toDateString(),
+            function () use ($adjustment, $approverId, $request, $flowMeta) {
+                // Find-or-create the target attendances row (tenant/entity stamped by trait).
+                $attendance = Attendance::where('employee_id', $adjustment->employee_id)
+                    ->where('work_date', $adjustment->work_date)
+                    ->first();
 
-            $isNew = $attendance === null;
+                $isNew = $attendance === null;
 
-            $before = $isNew ? null : $attendance->getOriginal();
+                $before = $isNew ? null : $attendance->getOriginal();
 
-            if ($isNew) {
-                $attendance = new Attendance();
-                $attendance->employee_id = $adjustment->employee_id;
-                $attendance->legal_entity_id = DB::table('employees')
-                    ->where('id', $adjustment->employee_id)
-                    ->value('legal_entity_id');
-                $attendance->work_date = $adjustment->work_date;
-            }
+                if ($isNew) {
+                    $attendance = new Attendance;
+                    $attendance->employee_id = $adjustment->employee_id;
+                    $attendance->legal_entity_id = DB::table('employees')
+                        ->where('id', $adjustment->employee_id)
+                        ->value('legal_entity_id');
+                    $attendance->work_date = $adjustment->work_date;
+                }
 
-            // Apply only the fields the request actually provided.
-            if ($adjustment->requested_check_in_time !== null) {
-                $attendance->check_in_time = $adjustment->requested_check_in_time;
-            }
-            if ($adjustment->requested_check_out_time !== null) {
-                $attendance->check_out_time = $adjustment->requested_check_out_time;
-            }
+                // Apply only the fields the request actually provided.
+                if ($adjustment->requested_check_in_time !== null) {
+                    $attendance->check_in_time = $adjustment->requested_check_in_time;
+                }
+                if ($adjustment->requested_check_out_time !== null) {
+                    $attendance->check_out_time = $adjustment->requested_check_out_time;
+                }
 
-            // Ensure the row has a shift for late/early calc — an existing row may
-            // lack one. Resolve from the employee's active shift assignment.
-            if (! $attendance->shift_type_id) {
-                $attendance->shift_type_id = $this->resolveShiftTypeId($adjustment->employee_id);
-            }
+                // Ensure the row has a shift for late/early calc — an existing row may
+                // lack one. Resolve from the employee's active shift assignment.
+                if (! $attendance->shift_type_id) {
+                    $attendance->shift_type_id = $this->resolveShiftTypeId($adjustment->employee_id);
+                }
 
-            // Preserve explicit status requests; the central reconciliation
-            // service computes all timing metrics from the assigned shift.
-            if ($adjustment->requested_status !== null) {
-                $attendance->status = $adjustment->requested_status;
-            }
+                // Preserve explicit status requests; the central reconciliation
+                // service computes all timing metrics from the assigned shift.
+                if ($adjustment->requested_status !== null) {
+                    $attendance->status = $adjustment->requested_status;
+                }
 
-            $attendance->save();
-            $this->attendanceReconciliation->reconcile($attendance, (int) $approverId);
+                $attendance->save();
+                $this->attendanceReconciliation->reconcile($attendance, (int) $approverId);
 
-            AuditLogger::log(
-                $isNew ? 'create' : 'update',
-                'attendances',
-                (int) $attendance->id,
-                $before,
-                $attendance->getAttributes()
-            );
+                AuditLogger::log(
+                    $isNew ? 'create' : 'update',
+                    'attendances',
+                    (int) $attendance->id,
+                    $before,
+                    $attendance->getAttributes()
+                );
 
-            $adjustment->update([
-                'attendance_id' => $attendance->id,
-                'status' => 'APPROVED',
-                'approver_id' => $approverId,
-                'decided_at' => now(),
-                'decision_comment' => $request->input('decision_comment') ?? $request->input('comment'),
-                'meta' => json_encode($flowMeta, JSON_UNESCAPED_UNICODE),
-            ]);
+                $adjustment->update([
+                    'attendance_id' => $attendance->id,
+                    'status' => 'APPROVED',
+                    'approver_id' => $approverId,
+                    'decided_at' => now(),
+                    'decision_comment' => $request->input('decision_comment') ?? $request->input('comment'),
+                    'meta' => $flowMeta,
+                ]);
 
-            return $attendance;
-        });
+                return $attendance;
+            },
+        );
 
-        \App\Support\Notifier::notify(
+        Notifier::notify(
             (int) $adjustment->employee_id,
             'Điều chỉnh công được duyệt',
-            'Đơn điều chỉnh công ngày ' . \Carbon\Carbon::parse($adjustment->work_date)->format('d/m/Y') . ' đã được duyệt.',
+            'Đơn điều chỉnh công ngày '.\Carbon\Carbon::parse($adjustment->work_date)->format('d/m/Y').' đã được duyệt.',
             'attendance_adjustment', $adjustment->id, ['priority' => 'normal'], $approverId
         );
 
@@ -245,7 +296,14 @@ class AttendanceRegularizationController extends Controller
 
     public function reject(Request $request, int $id): JsonResponse
     {
-        $adjustment = AttendanceAdjustmentRequest::find($id);
+        if (! $this->attendanceAccess->canReadOrganization($request)) {
+            return response()->json(['status' => 403, 'message' => 'Bạn không có quyền từ chối điều chỉnh công.', 'data' => null], 403);
+        }
+        $adjustment = $this->attendanceAccess->scopeEmployeeResource(
+            AttendanceAdjustmentRequest::query(),
+            $request,
+            'attendance_adjustment_requests',
+        )->find($id);
 
         if (! $adjustment) {
             return $this->notFound();
@@ -275,7 +333,9 @@ class AttendanceRegularizationController extends Controller
 
     public function cancel(Request $request, int $id): JsonResponse
     {
-        $adjustment = AttendanceAdjustmentRequest::find($id);
+        $adjustment = AttendanceAdjustmentRequest::query()
+            ->where('employee_id', $this->attendanceAccess->actorId($request))
+            ->find($id);
 
         if (! $adjustment) {
             return $this->notFound();
@@ -315,34 +375,6 @@ class AttendanceRegularizationController extends Controller
             ->first();
 
         return $assignment->shift_type_id ?? null;
-    }
-
-    /**
-     * Resolve a shift_types row (tenant-scoped) for late/early calc.
-     */
-    private function resolveShift($shiftTypeId): ?object
-    {
-        if (! $shiftTypeId) {
-            return null;
-        }
-
-        return DB::table('shift_types')->where('id', $shiftTypeId)
-            ->when(TenantContext::hasTenant(), fn ($q) => $q->where('shift_types.tenant_id', TenantContext::id()))
-            ->first();
-    }
-
-    /**
-     * Decode the attendances.meta jsonb into an array (safe for null/string).
-     */
-    private function existingMeta($meta): array
-    {
-        if (! $meta) {
-            return [];
-        }
-
-        $decoded = is_string($meta) ? json_decode($meta, true) : (array) $meta;
-
-        return is_array($decoded) ? $decoded : [];
     }
 
     // ── Response Helpers ─────────────────────────────────

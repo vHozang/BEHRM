@@ -8,7 +8,10 @@ export const regularizationService = {
   // params: { employee_id?, status?, work_date?, page?, per_page? }
   getAll: async (params) => {
     const response = await axiosClient.get('/attendance-adjustments', { params });
-    return response.data;
+    return {
+      items: Array.isArray(response.data) ? response.data : [],
+      pagination: response.pagination || null,
+    };
   },
 
   // GET /attendance-adjustments/{id}

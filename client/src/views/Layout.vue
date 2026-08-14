@@ -855,7 +855,9 @@ const filteredGroups = computed(() => {
         && authService.hasCapability('payslip_issues.view');
       const hasOrganizationAccess = group.id === 'hr'
         && authService.hasCapability('org_chart.view');
-      return group.id === 'communications' || !m || authService.canAccessModule(m) || hasPayslipIssueAccess || hasOrganizationAccess;
+      const hasPayrollTimesheetAccess = group.id === 'time' && authService.canAccessModule('payroll');
+      return group.id === 'communications' || !m || authService.canAccessModule(m)
+        || hasPayslipIssueAccess || hasOrganizationAccess || hasPayrollTimesheetAccess;
     })
     .map(group => {
       const issuesOnly = group.id === 'payroll'
@@ -864,10 +866,14 @@ const filteredGroups = computed(() => {
       const organizationOnly = group.id === 'hr'
         && !authService.canAccessModule('hr')
         && authService.hasCapability('org_chart.view');
+      const timesheetOnly = group.id === 'time'
+        && !authService.canAccessModule('time')
+        && authService.canAccessModule('payroll');
       const items = group.items
         .filter(item => isAdmin.value || !item.adminOnly)
         .filter(item => !issuesOnly || item.path === '/salaries')
         .filter(item => !organizationOnly || item.path === '/organization-chart')
+        .filter(item => !timesheetOnly || item.path === '/timesheet')
         .map(item => issuesOnly ? { ...item, label: 'Phiếu chưa phát hành' } : item);
 
       return { ...group, items };

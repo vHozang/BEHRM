@@ -398,7 +398,7 @@ router.beforeEach((to, from, next) => {
       ['/employment-history', 'hr'], ['/profile-change-requests', 'hr'], ['/dependents', 'hr'], ['/departments', 'hr'],
       ['/personnel-decisions', 'hr'],
       ['/assets', 'hr'], ['/asset-assignments', 'hr'],
-      ['/attendance', 'time'], ['/timesheet', 'time'], ['/shifts', 'time'], ['/shift-roster', 'time'], ['/work-schedules', 'time'],
+      ['/attendance', 'time'], ['/timesheet', 'time|payroll'], ['/shifts', 'time'], ['/shift-roster', 'time'], ['/work-schedules', 'time'],
       ['/attendance-adjustments', 'time'], ['/leaves', 'time'],
       ['/overtime-requests', 'time'], ['/shift-swaps', 'time'], ['/shift-coverage', 'time'], ['/requests', 'time'], ['/holidays', 'time'],
       ['/salaries', 'payroll'], ['/salary-components', 'payroll'], ['/report-builder', 'payroll'], ['/piece-rate', 'payroll'],
@@ -430,8 +430,10 @@ router.beforeEach((to, from, next) => {
           && access.capabilities.includes('payslip_issues.view');
         const organizationOnly = to.path === '/organization-chart'
           && access.capabilities.includes('org_chart.view');
-        const roleAllows = access.full || access.modules.includes(mod) || issuesOnlySalary || organizationOnly;
-        const enabledOk = issuesOnlySalary || organizationOnly || mod === 'settings' || access.enabled === null || access.enabled.includes(mod);
+        const acceptedModules = mod.split('|');
+        const roleAllows = access.full || acceptedModules.some(module => access.modules.includes(module)) || issuesOnlySalary || organizationOnly;
+        const enabledOk = issuesOnlySalary || organizationOnly || acceptedModules.includes('settings') || access.enabled === null
+          || acceptedModules.some(module => access.enabled.includes(module));
         if (!roleAllows || !enabledOk) {
           next('/');
           return;

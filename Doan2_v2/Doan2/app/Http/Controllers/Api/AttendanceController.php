@@ -3,24 +3,33 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ReconcileOvertimeDay;
+use App\Jobs\RunAttendanceRecomputeOperation;
+use App\Jobs\RunAttendanceSummaryOperation;
 use App\Models\Attendance;
+use App\Models\AttendanceOperation;
 use App\Models\OvertimeRequest;
+use App\Services\AttendanceAccess;
 use App\Services\AttendanceChangePublisher;
+use App\Services\AttendanceDayLock;
 use App\Services\AttendanceReadService;
-use App\Services\AttendanceSummaryService;
 use App\Services\AttendanceReconciliationService;
-use App\Services\OvertimeReconciliationService;
-use App\Services\TimesheetService;
 use App\Services\ShiftResolver;
+use App\Services\TimesheetService;
+use App\Support\ApprovalFlow;
 use App\Support\AttendanceVerification;
 use App\Support\HrmConfig;
+use App\Support\Notifier;
+use App\Support\OvertimeSuggester;
 use App\Support\TenantContext;
 use App\Support\TimePolicy;
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class AttendanceController extends Controller
 {
@@ -28,12 +37,13 @@ class AttendanceController extends Controller
         private readonly ShiftResolver $shiftResolver,
         private readonly AttendanceReconciliationService $attendanceReconciliation,
         private readonly AttendanceReadService $attendanceRead,
+        private readonly AttendanceAccess $attendanceAccess,
+        private readonly AttendanceDayLock $attendanceDayLock,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
-        $this->scopeSelfServiceRequest($request);
-        $legalEntityId = $this->requestedLegalEntity($request);
+        $legalEntityId = $this->attendanceAccess->requestedLegalEntity($request);
         if ($request->query('pagination') === 'cursor') {
             return $this->ok($this->attendanceRead->cursorPage($request, $legalEntityId), 'Attendances list');
         }
@@ -58,10 +68,8 @@ class AttendanceController extends Controller
 
     public function overview(Request $request): JsonResponse
     {
-        $this->scopeSelfServiceRequest($request);
-
         return $this->ok(
-            $this->attendanceRead->overview($request, (int) TenantContext::id(), $this->requestedLegalEntity($request)),
+            $this->attendanceRead->overview($request, (int) TenantContext::id(), $this->attendanceAccess->requestedLegalEntity($request)),
             'Attendance overview'
         );
     }
@@ -70,21 +78,10 @@ class AttendanceController extends Controller
     {
         $limit = min(max((int) $request->query('limit', 100), 1), 250);
         $since = AttendanceChangePublisher::decodeCursor($request->query('since'));
-        $employeeId = (int) $request->attributes->get('auth_employee_id');
-        $access = (array) $request->attributes->get('access', []);
-        $canManage = ! empty($access['full']) || in_array('time', $access['modules'] ?? [], true);
-
-        $scope = function () use ($request, $employeeId, $canManage) {
-            $query = DB::table('attendance_change_events')
-            ->where('tenant_id', TenantContext::id())
-            ->when(
-                ! $canManage,
-                fn ($query) => $query->where('employee_id', $employeeId),
-                fn ($query) => $query->where('legal_entity_id', $this->requestedLegalEntity($request)),
-            );
-
-            return $query;
-        };
+        $scope = fn () => $this->attendanceAccess->scopeChangeEvents(
+            DB::table('attendance_change_events'),
+            $request,
+        );
         $changeRange = $scope()
             ->selectRaw('MIN(id) AS min_id, MAX(id) AS max_id')
             ->first();
@@ -121,13 +118,16 @@ class AttendanceController extends Controller
         $hasMore = $rows->count() > $limit;
         $changeVersion = app(AttendanceChangePublisher::class)->versionToken(
             (int) TenantContext::id(),
-            $canManage ? $this->requestedLegalEntity($request) : TenantContext::legalEntityId(),
+            $this->attendanceAccess->isAdmin($request)
+                ? null
+                : (int) TenantContext::legalEntityId(),
         );
         $items = $rows->take($limit)->map(fn ($row) => [
             'cursor' => AttendanceChangePublisher::encodeCursor((int) $row->id),
-            'attendance_id' => (int) $row->attendance_id,
-            'employee_id' => (int) $row->employee_id,
+            'attendance_id' => $row->attendance_id ? (int) $row->attendance_id : null,
+            'employee_id' => $row->employee_id ? (int) $row->employee_id : null,
             'legal_entity_id' => $row->legal_entity_id ? (int) $row->legal_entity_id : null,
+            'department_id' => $row->department_id ? (int) $row->department_id : null,
             'work_date' => $row->work_date,
             'change_type' => $row->change_type,
             'version' => $changeVersion,
@@ -148,25 +148,15 @@ class AttendanceController extends Controller
 
     public function show(Request $request, int $id): JsonResponse
     {
-        $detailQuery = Attendance::with([
+        $detailQuery = $this->attendanceAccess->scopeAttendances(Attendance::query(), $request)->with([
             'employee:id,full_name,employee_code',
             'shiftType:id,shift_code,shift_name,start_time,end_time,meta',
             'payrollReview',
         ]);
-        $access = (array) $request->attributes->get('access', []);
-        if (empty($access['full'])) {
-            $detailQuery->where('legal_entity_id', TenantContext::legalEntityId());
-        }
         $attendance = $detailQuery->find($id);
 
         if (! $attendance) {
             return $this->notFound();
-        }
-
-        $actorId = (int) $request->attributes->get('auth_employee_id');
-        $canManage = ! empty($access['full']) || in_array('time', $access['modules'] ?? [], true);
-        if (! $canManage && (int) $attendance->employee_id !== $actorId) {
-            return response()->json(['status' => 403, 'message' => 'Bạn chỉ được xem chấm công của chính mình', 'data' => null], 403);
         }
 
         return $this->ok($this->decorateAttendance($attendance), 'Attendance detail');
@@ -178,9 +168,8 @@ class AttendanceController extends Controller
     public function checkIn(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'employee_id' => 'required|exists:employees,id',
+            'employee_id' => 'nullable|integer|exists:employees,id',
         ], [
-            'employee_id.required' => 'Mã nhân viên là bắt buộc',
             'employee_id.exists' => 'Nhân viên không tồn tại',
         ]);
 
@@ -188,11 +177,17 @@ class AttendanceController extends Controller
             return $this->validationError($validator->errors()->toArray());
         }
 
-        $employeeId = $request->input('employee_id');
+        $employeeId = $this->attendanceAccess->actorId($request);
+        if ($request->filled('employee_id') && (int) $request->input('employee_id') !== $employeeId) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Bạn chỉ được check-in cho chính mình.',
+                'data' => null,
+            ], 403);
+        }
 
-        // Reject employees belonging to another tenant (bare `exists` is unscoped).
         if (! TenantContext::ownsRow('employees', $employeeId)) {
-            return $this->validationError(['employee_id' => ['Nhân viên không thuộc công ty hiện tại']]);
+            return response()->json(['status' => 403, 'message' => 'Tài khoản không thuộc công ty hiện tại.', 'data' => null], 403);
         }
 
         // Tài khoản hệ thống (vd System Administrator) không phải nhân sự thật → không chấm công.
@@ -201,36 +196,6 @@ class AttendanceController extends Controller
         }
 
         $today = now()->toDateString();
-
-        // Check if already checked in today
-        $existing = Attendance::where('employee_id', $employeeId)
-            ->where('work_date', $today)
-            ->first();
-
-        if ($existing && $existing->check_in_time) {
-            if ($this->attendanceReconciliation->isClosedDate($existing)) {
-                return response()->json([
-                    'status' => 409,
-                    'message' => 'Kỳ lương chứa ngày chấm công này đã chốt, không thể sửa trực tiếp.',
-                    'data' => null,
-                ], 409);
-            }
-            // Second check-in (support 2 sessions/day)
-            if ($existing->check_in_time_2) {
-                return $this->validationError([
-                    'employee_id' => ['Nhân viên đã check-in đủ 2 lần hôm nay'],
-                ]);
-            }
-            $existing->update(['check_in_time_2' => now()->toTimeString()]);
-
-            $this->attendanceReconciliation->reconcile(
-                $existing->fresh(),
-                (int) $request->attributes->get('auth_employee_id'),
-            );
-            $fresh = $existing->fresh(['employee:id,full_name,employee_code', 'shiftType', 'payrollReview']);
-
-            return $this->ok($this->decorateAttendance($fresh), 'Check-in buổi 2 thành công');
-        }
 
         // Determine current shift and calculate late minutes
         $shiftAssignment = $this->shiftResolver->resolve((int) $employeeId, $today, TenantContext::id());
@@ -274,33 +239,94 @@ class AttendanceController extends Controller
 
         // `attendances` has no late_minutes column — persist it in meta, which is
         // where the timesheet engine / payroll summary read it from.
-        $attendance = Attendance::create([
-            'employee_id' => $employeeId,
-            'legal_entity_id' => DB::table('employees')->where('id', $employeeId)->value('legal_entity_id'),
-            'work_date' => $today,
-            'check_in_time' => now()->toTimeString(),
-            'shift_type_id' => $shiftTypeId,
-            'status' => $cls['status'],
-            'meta' => json_encode([
-                'late_minutes' => $cls['late_minutes'],
-                'verification' => $verify,
-                'review_status' => $reviewStatus,
-            ], JSON_UNESCAPED_UNICODE),
-        ]);
+        $result = $this->attendanceDayLock->run(
+            (int) TenantContext::id(),
+            $employeeId,
+            $today,
+            function () use ($employeeId, $today, $shiftTypeId, $cls, $verify, $reviewStatus): array {
+                $attendance = Attendance::where('employee_id', $employeeId)
+                    ->where('work_date', $today)
+                    ->lockForUpdate()
+                    ->first();
+                $message = 'Check-in thành công';
+                $status = 201;
 
-        $this->attendanceReconciliation->reconcile(
-            $attendance,
-            (int) $request->attributes->get('auth_employee_id'),
+                if ($attendance) {
+                    if ($this->attendanceReconciliation->isClosedDate($attendance)) {
+                        return ['error' => response()->json([
+                            'status' => 409,
+                            'message' => 'Kỳ lương chứa ngày chấm công này đã chốt, không thể sửa trực tiếp.',
+                            'data' => null,
+                        ], 409)];
+                    }
+                    if ($attendance->check_in_time && ! $attendance->check_out_time) {
+                        return ['error' => $this->validationError([
+                            'employee_id' => ['Bạn phải checkout phiên hiện tại trước khi check-in lần tiếp theo.'],
+                        ])];
+                    }
+                    if ($attendance->check_in_time_2 && ! $attendance->check_out_time_2) {
+                        return ['error' => $this->validationError([
+                            'employee_id' => ['Phiên làm việc thứ hai đang mở, không thể check-in thêm.'],
+                        ])];
+                    }
+                    if ($attendance->check_in_time_2 && $attendance->check_out_time_2) {
+                        return ['error' => $this->validationError([
+                            'employee_id' => ['Bạn đã hoàn tất đủ hai phiên làm việc hôm nay.'],
+                        ])];
+                    }
+                    if (! $attendance->check_in_time) {
+                        $meta = is_string($attendance->meta)
+                            ? (json_decode($attendance->meta, true) ?: [])
+                            : (array) ($attendance->meta ?? []);
+                        $meta['verification'] = $verify;
+                        $meta['review_status'] = $reviewStatus;
+                        $attendance->update([
+                            'check_in_time' => now()->toTimeString(),
+                            'shift_type_id' => $attendance->shift_type_id ?: $shiftTypeId,
+                            'meta' => $meta,
+                        ]);
+                    } else {
+                        $attendance->update(['check_in_time_2' => now()->toTimeString()]);
+                        $message = 'Check-in phiên 2 thành công';
+                    }
+                    $status = 200;
+                } else {
+                    $attendance = Attendance::create([
+                        'employee_id' => $employeeId,
+                        'legal_entity_id' => DB::table('employees')->where('id', $employeeId)->value('legal_entity_id'),
+                        'work_date' => $today,
+                        'check_in_time' => now()->toTimeString(),
+                        'shift_type_id' => $shiftTypeId,
+                        'status' => $cls['status'],
+                        'meta' => [
+                            'late_minutes' => $cls['late_minutes'],
+                            'verification' => $verify,
+                            'review_status' => $reviewStatus,
+                        ],
+                    ]);
+                }
+
+                $this->attendanceReconciliation->reconcile($attendance->fresh(), $employeeId);
+
+                return [
+                    'attendance' => $attendance->fresh(['employee:id,full_name,employee_code', 'shiftType', 'payrollReview']),
+                    'message' => $message,
+                    'status' => $status,
+                ];
+            },
         );
-        $fresh = $attendance->fresh(['employee:id,full_name,employee_code', 'shiftType', 'payrollReview']);
+        if (isset($result['error'])) {
+            return $result['error'];
+        }
+        $fresh = $result['attendance'];
 
         return response()->json([
-            'status' => 201,
-            'message' => $reviewStatus === 'needs_review'
+            'status' => $result['status'],
+            'message' => $reviewStatus === 'needs_review' && $result['status'] === 201
                 ? 'Đã ghi nhận chấm công — cần quản trị xem xét (ngoài phạm vi).'
-                : 'Check-in thành công',
+                : $result['message'],
             'data' => $this->decorateAttendance($fresh),
-        ], 201);
+        ], $result['status']);
     }
 
     /**
@@ -309,14 +335,21 @@ class AttendanceController extends Controller
     public function checkOut(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'employee_id' => 'required|exists:employees,id',
+            'employee_id' => 'nullable|integer|exists:employees,id',
         ]);
 
         if ($validator->fails()) {
             return $this->validationError($validator->errors()->toArray());
         }
 
-        $employeeId = $request->input('employee_id');
+        $employeeId = $this->attendanceAccess->actorId($request);
+        if ($request->filled('employee_id') && (int) $request->input('employee_id') !== $employeeId) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Bạn chỉ được check-out cho chính mình.',
+                'data' => null,
+            ], 403);
+        }
 
         if (! TenantContext::ownsRow('employees', $employeeId)) {
             return $this->validationError(['employee_id' => ['Nhân viên không thuộc công ty hiện tại']]);
@@ -324,7 +357,7 @@ class AttendanceController extends Controller
 
         $today = now()->toDateString();
 
-        $attendance = $this->attendanceForCheckout((int) $employeeId, $today);
+        $attendance = $this->attendanceForCheckout($employeeId, $today);
 
         if (! $attendance) {
             return $this->validationError([
@@ -332,66 +365,79 @@ class AttendanceController extends Controller
             ]);
         }
 
-        if ($this->attendanceReconciliation->isClosedDate($attendance)) {
-            return response()->json([
-                'status' => 409,
-                'message' => 'Kỳ lương chứa ngày chấm công này đã chốt, không thể sửa trực tiếp.',
-                'data' => null,
-            ], 409);
-        }
+        $workDate = $attendance->work_date->toDateString();
+        $result = $this->attendanceDayLock->run(
+            (int) TenantContext::id(),
+            $employeeId,
+            $workDate,
+            function () use ($request, $employeeId, $workDate): array {
+                $attendance = Attendance::where('employee_id', $employeeId)
+                    ->where('work_date', $workDate)
+                    ->lockForUpdate()
+                    ->first();
+                if (! $attendance) {
+                    return ['error' => $this->validationError(['employee_id' => ['Không còn phiên check-in đang mở.']])];
+                }
+                if ($this->attendanceReconciliation->isClosedDate($attendance)) {
+                    return ['error' => response()->json([
+                        'status' => 409,
+                        'message' => 'Kỳ lương chứa ngày chấm công này đã chốt, không thể sửa trực tiếp.',
+                        'data' => null,
+                    ], 409)];
+                }
 
-        $shift = null;
-        if ($attendance->shift_type_id) {
-            $shift = DB::table('shift_types')->where('id', $attendance->shift_type_id)
-                ->when(TenantContext::hasTenant(), fn ($q) => $q->where('shift_types.tenant_id', TenantContext::id()))
-                ->first();
-        }
+                $shift = $attendance->shift_type_id
+                    ? DB::table('shift_types')->where('tenant_id', TenantContext::id())->where('id', $attendance->shift_type_id)->first()
+                    : null;
+                $meta = is_string($attendance->meta)
+                    ? (json_decode($attendance->meta, true) ?: [])
+                    : (array) ($attendance->meta ?? []);
+                if ($request->filled('latitude') || $request->filled('longitude') || $request->ip()) {
+                    $verification = AttendanceVerification::evaluate(
+                        $request->ip(),
+                        $request->input('latitude'),
+                        $request->input('longitude'),
+                        $shift,
+                        $request->userAgent(),
+                        $request->input('source'),
+                    );
+                    $verification['at'] = now()->toIso8601String();
+                    $meta['verification_out'] = $verification;
+                }
 
-        $checkOutTime = now()->toTimeString();
+                $checkOutTime = now()->toTimeString();
+                if ($attendance->check_in_time_2 && ! $attendance->check_out_time_2) {
+                    $attendance->update([
+                        'check_out_time_2' => $checkOutTime,
+                        'meta' => $meta,
+                    ]);
+                } elseif ($attendance->check_in_time && ! $attendance->check_out_time) {
+                    $attendance->update([
+                        'check_out_time' => $checkOutTime,
+                        'meta' => $meta,
+                    ]);
+                } else {
+                    return ['error' => $this->validationError(['employee_id' => ['Không có phiên check-in nào đang mở để checkout.']])];
+                }
 
-        // Merge các chỉ số công vào meta (không có cột vật lý trên attendances).
-        $existingMeta = [];
-        if ($attendance->meta) {
-            $existingMeta = is_string($attendance->meta) ? json_decode($attendance->meta, true) : (array) $attendance->meta;
-            if (! is_array($existingMeta)) {
-                $existingMeta = [];
-            }
-        }
-        // Ghi nhận xác minh lượt check-out (IP/vị trí/thiết bị) để đối chiếu.
-        if ($request->filled('latitude') || $request->filled('longitude') || $request->ip()) {
-            $vOut = AttendanceVerification::evaluate(
-                $request->ip(),
-                $request->input('latitude'),
-                $request->input('longitude'),
-                $shift,
-                $request->userAgent(),
-                $request->input('source')
-            );
-            $vOut['at'] = now()->toIso8601String();
-            $existingMeta['verification_out'] = $vOut;
-        }
-        $metaJson = json_encode($existingMeta, JSON_UNESCAPED_UNICODE);
+                $this->attendanceReconciliation->reconcile($attendance->fresh(), $employeeId);
 
-        // Update correct check-out field
-        if ($attendance->check_in_time_2 && ! $attendance->check_out_time_2) {
-            $attendance->update([
-                'check_out_time_2' => now()->toTimeString(),
-                'meta' => $metaJson,
-            ]);
-        } else {
-            $attendance->update([
-                'check_out_time' => $checkOutTime,
-                'meta' => $metaJson,
-            ]);
-        }
-
-        $this->attendanceReconciliation->reconcile(
-            $attendance->fresh(),
-            (int) $request->attributes->get('auth_employee_id'),
+                return [
+                    'attendance' => $attendance->fresh(['employee:id,full_name,employee_code', 'shiftType', 'payrollReview']),
+                    'shift' => $shift,
+                    'check_out_time' => $checkOutTime,
+                ];
+            },
         );
+        if (isset($result['error'])) {
+            return $result['error'];
+        }
+        $attendance = $result['attendance'];
+        $shift = $result['shift'];
+        $checkOutTime = $result['check_out_time'];
 
         // Đi làm ngày nghỉ/lễ → tự đề xuất đơn tăng ca chờ duyệt.
-        $otSuggested = \App\Support\OvertimeSuggester::suggest([
+        $otSuggested = OvertimeSuggester::suggest([
             'employee_id' => (int) $employeeId,
             'tenant_id' => TenantContext::id(),
             'work_date' => $today,
@@ -400,9 +446,7 @@ class AttendanceController extends Controller
             'shift' => $shift,
         ]);
 
-        $fresh = $attendance->fresh(['employee:id,full_name,employee_code', 'shiftType', 'payrollReview']);
-
-        return $this->ok($this->decorateAttendance($fresh), $otSuggested
+        return $this->ok($this->decorateAttendance($attendance), $otSuggested
             ? 'Check-out thành công. Đã tạo đơn tăng ca (làm ngày nghỉ/lễ) chờ duyệt.'
             : 'Check-out thành công');
     }
@@ -412,12 +456,17 @@ class AttendanceController extends Controller
      */
     public function update(Request $request, int $id): JsonResponse
     {
-        $attendanceQuery = Attendance::query();
-        $access = (array) $request->attributes->get('access', []);
-        if (empty($access['full'])) {
-            $attendanceQuery->where('legal_entity_id', TenantContext::legalEntityId());
+        if (! $this->attendanceAccess->canModifyAttendance($request)) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Chỉ HR hoặc Admin được sửa bản ghi chấm công.',
+                'data' => null,
+            ], 403);
         }
-        $attendance = $attendanceQuery->find($id);
+
+        $attendance = $this->attendanceAccess
+            ->scopeAttendances(Attendance::query(), $request)
+            ->find($id);
 
         if (! $attendance) {
             return $this->notFound();
@@ -431,52 +480,75 @@ class AttendanceController extends Controller
             ], 409);
         }
 
+        $allowed = [
+            'work_date', 'check_in_time', 'check_out_time',
+            'check_in_time_2', 'check_out_time_2', 'shift_type_id', 'notes',
+        ];
+        $unexpected = array_values(array_diff(array_keys($request->all()), $allowed));
+        if ($unexpected !== []) {
+            return $this->validationError([
+                'fields' => ['Không được sửa các trường: '.implode(', ', $unexpected).'.'],
+            ]);
+        }
+
+        $timeRule = ['nullable', 'regex:/^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$/'];
         $validator = Validator::make($request->all(), [
-            'employee_id' => 'sometimes|exists:employees,id',
             'work_date' => 'sometimes|date',
-            'check_in_time' => 'nullable|string',
-            'check_out_time' => 'nullable|string',
-            'check_in_time_2' => 'nullable|string',
-            'check_out_time_2' => 'nullable|string',
-            'status' => 'sometimes|string',
-            'shift_type_id' => 'nullable|exists:shift_types,id',
+            'check_in_time' => $timeRule,
+            'check_out_time' => $timeRule,
+            'check_in_time_2' => $timeRule,
+            'check_out_time_2' => $timeRule,
+            'shift_type_id' => 'nullable|integer|exists:shift_types,id',
+            'notes' => 'nullable|string|max:2000',
         ]);
 
         if ($validator->fails()) {
             return $this->validationError($validator->errors()->toArray());
         }
 
-        $columns = Schema::getColumnListing('attendances');
-        $payload = [];
-        $meta = [];
-
-        foreach ($request->except(['id', 'created_at', 'updated_at']) as $key => $value) {
-            if (in_array($key, $columns, true)) {
-                $payload[$key] = $value;
-            } else {
-                $meta[$key] = $value;
-            }
+        if ($request->filled('shift_type_id') && ! DB::table('shift_types')
+            ->where('tenant_id', TenantContext::id())
+            ->where('id', (int) $request->input('shift_type_id'))
+            ->exists()) {
+            return $this->validationError(['shift_type_id' => ['Ca làm không thuộc công ty hiện tại.']]);
         }
 
-        if (! empty($meta)) {
-            $existingMeta = [];
-            if ($attendance->meta) {
-                $existingMeta = is_string($attendance->meta) ? json_decode($attendance->meta, true) : (array) $attendance->meta;
-                if (! is_array($existingMeta)) {
-                    $existingMeta = [];
-                }
-            }
-            $mergedMeta = array_merge($existingMeta, $meta);
-            $payload['meta'] = json_encode($mergedMeta);
+        $targetDate = $request->filled('work_date')
+            ? Carbon::parse($request->input('work_date'))->toDateString()
+            : $attendance->work_date->toDateString();
+        if ($targetDate !== $attendance->work_date->toDateString()
+            && $this->attendanceReconciliation->isClosedWorkDate(
+                (int) $attendance->tenant_id,
+                (int) $attendance->legal_entity_id,
+                $targetDate,
+            )) {
+            return response()->json([
+                'status' => 409,
+                'message' => 'Ngày công mới thuộc kỳ lương đã chốt, không thể chuyển bản ghi.',
+                'data' => null,
+            ], 409);
         }
-
-        $attendance->update($payload);
 
         try {
-            $this->attendanceReconciliation->reconcile(
-                $attendance->fresh(),
-                (int) $request->attributes->get('auth_employee_id'),
-            );
+            DB::transaction(function () use ($request, $attendance): void {
+                $locked = Attendance::whereKey($attendance->id)->lockForUpdate()->firstOrFail();
+                $payload = $request->only([
+                    'work_date', 'check_in_time', 'check_out_time',
+                    'check_in_time_2', 'check_out_time_2', 'shift_type_id',
+                ]);
+                if ($request->has('notes')) {
+                    $meta = is_string($locked->meta)
+                        ? (json_decode($locked->meta, true) ?: [])
+                        : (array) ($locked->meta ?? []);
+                    $meta['notes'] = $request->input('notes');
+                    $payload['meta'] = $meta;
+                }
+                $locked->update($payload);
+                $this->attendanceReconciliation->reconcile(
+                    $locked->fresh(),
+                    $this->attendanceAccess->actorId($request),
+                );
+            });
         } catch (\RuntimeException $e) {
             if ($e->getCode() === 409) {
                 return response()->json(['status' => 409, 'message' => $e->getMessage(), 'data' => null], 409);
@@ -489,16 +561,19 @@ class AttendanceController extends Controller
         return $this->ok($this->decorateAttendance($fresh), 'Cập nhật thành công');
     }
 
-
     // ═══════════════════════════════════════════════════════
     // OVERTIME REQUESTS
     // ═══════════════════════════════════════════════════════
 
-    public function overtimeIndex(Request $request, OvertimeReconciliationService $reconciliation): JsonResponse
+    public function overtimeIndex(Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
 
-        $query = OvertimeRequest::with(['employee:id,full_name'])
+        $query = $this->attendanceAccess->scopeEmployeeResource(
+            OvertimeRequest::query(),
+            $request,
+            'overtime_requests',
+        )->with(['employee:id,full_name,employee_code,department_id,legal_entity_id'])
             ->orderByDesc('id');
 
         foreach (['employee_id', 'status', 'work_date'] as $field) {
@@ -506,30 +581,41 @@ class AttendanceController extends Controller
                 $query->where($field, $request->query($field));
             }
         }
-
-        $page = $query->paginate($perPage);
-        $cache = [];
-        foreach ($page->items() as $item) {
-            if (! in_array($item->status, ['APPROVED', 'ĐÃ_DUYỆT'], true)) {
-                continue;
+        if ($request->filled('kind')) {
+            $kind = strtoupper((string) $request->query('kind'));
+            if (DB::getDriverName() === 'pgsql') {
+                $kind === 'EMPLOYEE_REQUEST'
+                    ? $query->whereRaw("(overtime_requests.meta->>'kind' = ? OR overtime_requests.meta->>'kind' IS NULL)", [$kind])
+                    : $query->whereRaw("overtime_requests.meta->>'kind' = ?", [$kind]);
+            } else {
+                $kind === 'EMPLOYEE_REQUEST'
+                    ? $query->whereRaw("(json_extract(overtime_requests.meta, '$.kind') = ? OR json_extract(overtime_requests.meta, '$.kind') IS NULL)", [$kind])
+                    : $query->whereRaw("json_extract(overtime_requests.meta, '$.kind') = ?", [$kind]);
             }
-            $date = $item->work_date->toDateString();
-            $key = $item->employee_id.'|'.$date;
-            $cache[$key] ??= $reconciliation->reconcileDate((int) $item->tenant_id, (int) $item->employee_id, $date);
         }
-        $items = OvertimeRequest::with(['employee:id,full_name,employee_code,department_id'])
-            ->whereIn('id', collect($page->items())->pluck('id'))
-            ->orderByDesc('id')
-            ->get();
+
+        $summaryQuery = clone $query;
+        $summary = [
+            'total' => (clone $summaryQuery)->withoutEagerLoads()->reorder()->count(),
+            'pending' => (clone $summaryQuery)->withoutEagerLoads()->reorder()
+                ->whereIn('status', ['PENDING', 'CHỜ_DUYỆT', 'OFFERED'])->count(),
+            'approved' => (clone $summaryQuery)->withoutEagerLoads()->reorder()
+                ->whereIn('status', ['APPROVED', 'ĐÃ_DUYỆT'])->count(),
+            'rejected' => (clone $summaryQuery)->withoutEagerLoads()->reorder()
+                ->whereIn('status', ['REJECTED', 'DECLINED', 'CANCELLED'])->count(),
+            'payable_minutes' => $this->sumOvertimeMeta($summaryQuery, 'payable_overtime_minutes'),
+        ];
+        $page = $query->paginate($perPage);
 
         return $this->ok([
-            'items' => $items,
+            'items' => $page->items(),
             'pagination' => [
                 'current_page' => $page->currentPage(),
                 'per_page' => $page->perPage(),
                 'total' => $page->total(),
                 'last_page' => $page->lastPage(),
             ],
+            'summary' => $summary,
         ], 'Overtime requests list');
     }
 
@@ -573,7 +659,7 @@ class AttendanceController extends Controller
         }
 
         // Chặn vượt giới hạn OT theo luật (ngày/tháng/năm).
-        $caps = TimePolicy::overtimeCaps($employeeId, $request->input('work_date'), $cls['total_hours']);
+        $caps = TimePolicy::overtimeCaps($employeeId, $request->input('work_date'), $cls['total_hours'], null, false, (int) TenantContext::id());
         if (! empty($caps['violations'])) {
             return $this->validationError(['total_hours' => $caps['violations']]);
         }
@@ -600,7 +686,7 @@ class AttendanceController extends Controller
 
         return response()->json([
             'status' => 201,
-            'message' => 'Đơn tăng ca đã được tạo (' . $cls['label'] . ')',
+            'message' => 'Đơn tăng ca đã được tạo ('.$cls['label'].')',
             'data' => $ot->fresh()->load('employee:id,full_name'),
         ], 201);
     }
@@ -608,10 +694,15 @@ class AttendanceController extends Controller
     public function approveOvertime(
         Request $request,
         int $id,
-        OvertimeReconciliationService $reconciliation,
-    ): JsonResponse
-    {
-        $ot = OvertimeRequest::find($id);
+    ): JsonResponse {
+        if (! $this->attendanceAccess->canReadOrganization($request)) {
+            return response()->json(['status' => 403, 'message' => 'Bạn không có quyền duyệt đơn tăng ca.', 'data' => null], 403);
+        }
+        $ot = $this->attendanceAccess->scopeEmployeeResource(
+            OvertimeRequest::query(),
+            $request,
+            'overtime_requests',
+        )->find($id);
 
         if (! $ot) {
             return $this->notFound();
@@ -627,25 +718,25 @@ class AttendanceController extends Controller
         }
 
         // Khi duyệt: bảo đảm tổng OT đã DUYỆT không vượt giới hạn luật.
-        $caps = TimePolicy::overtimeCaps((int) $ot->employee_id, $ot->work_date, (float) $ot->total_hours, $ot->id, true);
+        $caps = TimePolicy::overtimeCaps((int) $ot->employee_id, $ot->work_date, (float) $ot->total_hours, $ot->id, true, (int) $ot->tenant_id);
         if (! empty($caps['violations'])) {
-            return $this->validationError(['status' => array_map(fn ($v) => 'Không thể duyệt: ' . $v, $caps['violations'])]);
+            return $this->validationError(['status' => array_map(fn ($v) => 'Không thể duyệt: '.$v, $caps['violations'])]);
         }
 
         // Duyệt nhiều cấp (approval.overtime_chain). Chỉ chốt khi qua hết các cấp.
         $meta = is_string($ot->meta) ? (json_decode($ot->meta, true) ?: []) : (array) ($ot->meta ?? []);
-        $meta = \App\Support\ApprovalFlow::ensure($meta, 'overtime');
-        if ($err = \App\Support\ApprovalFlow::cannotApprove($meta, $approverId)) {
+        $meta = ApprovalFlow::ensure($meta, 'overtime');
+        if ($err = ApprovalFlow::cannotApprove($meta, $approverId)) {
             return $this->validationError(['approver_id' => [$err]]);
         }
-        [$meta, $final] = \App\Support\ApprovalFlow::approveStep($meta, $approverId, $request->input('comment'));
-        $progress = \App\Support\ApprovalFlow::progress($meta);
+        [$meta, $final] = ApprovalFlow::approveStep($meta, $approverId, $request->input('comment'));
+        $progress = ApprovalFlow::progress($meta);
 
         if (! $final) {
             $ot->update(['meta' => $meta]);
-            $next = \App\Support\ApprovalFlow::currentRole($meta);
+            $next = ApprovalFlow::currentRole($meta);
 
-            return $this->ok($ot->fresh(), "Đã duyệt cấp {$progress['done']}/{$progress['total']}. Chờ cấp tiếp theo" . ($next ? " ({$next})" : '') . '.');
+            return $this->ok($ot->fresh(), "Đã duyệt cấp {$progress['done']}/{$progress['total']}. Chờ cấp tiếp theo".($next ? " ({$next})" : '').'.');
         }
 
         // Tuỳ chọn: quy đổi OT này thành NGHỈ BÙ thay vì trả tiền (comp-off).
@@ -669,17 +760,17 @@ class AttendanceController extends Controller
             }
         });
 
-        $reconciliation->reconcileDate(
+        ReconcileOvertimeDay::dispatch(
             (int) $ot->tenant_id,
             (int) $ot->employee_id,
             $ot->work_date->toDateString(),
-        );
+        )->afterCommit();
 
-        \App\Support\Notifier::notify(
+        Notifier::notify(
             (int) $ot->employee_id,
             'Tăng ca được duyệt',
-            'Đơn tăng ca ngày ' . \Carbon\Carbon::parse($ot->work_date)->format('d/m/Y')
-                . ' (' . (float) $ot->total_hours . 'h) đã được duyệt.',
+            'Đơn tăng ca ngày '.Carbon::parse($ot->work_date)->format('d/m/Y')
+                .' ('.(float) $ot->total_hours.'h) đã được duyệt.',
             'overtime_request', $ot->id, ['priority' => 'normal'], $approverId
         );
 
@@ -698,7 +789,11 @@ class AttendanceController extends Controller
         }
         $date = $request->query('date') ?: now()->toDateString();
 
-        return $this->ok(TimePolicy::overtimeCaps($employeeId, $date, 0), 'Overtime usage');
+        if (! $this->attendanceAccess->canAccessEmployee($request, $employeeId)) {
+            return response()->json(['status' => 403, 'message' => 'Bạn không có quyền xem mức sử dụng OT của nhân viên này.', 'data' => null], 403);
+        }
+
+        return $this->ok(TimePolicy::overtimeCaps($employeeId, $date, 0, null, false, (int) TenantContext::id()), 'Overtime usage');
     }
 
     // ═══════════════════════════════════════════════════════
@@ -712,8 +807,15 @@ class AttendanceController extends Controller
      * the given salary period. Idempotent. Result is read back via the generic
      * GET /salary-attendance-summary endpoint.
      */
-    public function summaryRun(Request $request, AttendanceSummaryService $service): JsonResponse
+    public function summaryRun(Request $request): JsonResponse
     {
+        if (! $this->attendanceAccess->canRunSummary($request)) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Chỉ Kế toán hoặc Admin được tổng hợp công cho lương.',
+                'data' => null,
+            ], 403);
+        }
         $validator = Validator::make($request->all(), [
             'salary_period_id' => 'required|integer|exists:salary_periods,id',
         ], [
@@ -725,17 +827,25 @@ class AttendanceController extends Controller
             return $this->validationError($validator->errors()->toArray());
         }
 
-        try {
-            $summary = $service->build((int) $request->input('salary_period_id'));
-        } catch (\RuntimeException $e) {
-            if ($e->getCode() === 404) {
-                return $this->notFound($e->getMessage());
-            }
-
-            throw $e;
+        $period = DB::table('salary_periods')
+            ->where('tenant_id', TenantContext::id())
+            ->where('id', (int) $request->input('salary_period_id'))
+            ->first();
+        if (! $period || (! $this->attendanceAccess->isAdmin($request)
+            && (int) $period->legal_entity_id !== (int) TenantContext::legalEntityId())) {
+            return $this->notFound('Kỳ lương không thuộc phạm vi được phép.');
         }
 
-        return $this->ok($summary, 'Tổng hợp chấm công kỳ lương hoàn tất');
+        $operation = $this->createOperation($request, 'SUMMARY', (int) $period->legal_entity_id, [
+            'salary_period_id' => (int) $period->id,
+        ]);
+        RunAttendanceSummaryOperation::dispatch($operation->id);
+
+        return response()->json([
+            'status' => 202,
+            'message' => 'Đã xếp hàng tổng hợp chấm công kỳ lương.',
+            'data' => $this->operationResource($operation),
+        ], 202);
     }
 
     /**
@@ -749,25 +859,28 @@ class AttendanceController extends Controller
             return $this->validationError(['month' => ['Định dạng tháng phải là YYYY-MM']]);
         }
 
-        $tenantId = TenantContext::id();
-        $legalEntityId = (int) $this->requestedLegalEntity($request);
-
-        $access = (array) $request->attributes->get('access', []);
-        if (empty($access['full']) && ! in_array('time', $access['modules'] ?? [], true)) {
-            $request->query->set('employee_id', (int) $request->attributes->get('auth_employee_id'));
-        }
-        if (! $this->validTimesheetFilterScope($request, $legalEntityId, 'query')) {
+        $tenantId = (int) TenantContext::id();
+        $legalEntityId = (int) $this->attendanceAccess->requestedLegalEntity($request, false, true);
+        if (! $this->prepareTimesheetScope($request, $legalEntityId, 'query')) {
             return $this->validationError([
                 'filters' => ['Phòng ban hoặc nhân viên không thuộc pháp nhân được phép truy cập.'],
             ]);
         }
 
-        $employeeIds = null;
-        if ($request->filled('employee_id')) {
-            $employeeIds = [(int) $request->query('employee_id')];
+        $employeeIds = $request->filled('employee_id')
+            ? [(int) $request->query('employee_id')]
+            : $this->attendanceAccess->timesheetEmployeeIds($request, $legalEntityId);
+        if ($this->attendanceAccess->isDepartmentManager($request) && $request->filled('department_id')) {
+            $departmentId = (int) $request->query('department_id');
+            $employeeIds = DB::table('employees')
+                ->where('tenant_id', $tenantId)
+                ->where('legal_entity_id', $legalEntityId)
+                ->where('department_id', $departmentId)
+                ->whereIn('id', $employeeIds ?? [])
+                ->pluck('id')->map(fn ($id): int => (int) $id)->all();
         }
 
-        $grid = $service->monthlyGrid(
+        $grid = $service->cachedMonthlyGrid(
             $tenantId,
             $legalEntityId,
             $month,
@@ -775,6 +888,7 @@ class AttendanceController extends Controller
             $request->filled('department_id') ? (int) $request->query('department_id') : null,
             max((int) $request->query('page', 1), 1),
             min(max((int) $request->query('per_page', 25), 1), 50),
+            $request->boolean('refresh'),
         );
 
         // Kỳ lương trùng tháng (để nút "Tổng hợp công → lương" biết period nào).
@@ -789,15 +903,51 @@ class AttendanceController extends Controller
             ? ['id' => $period->id, 'period_code' => $period->period_code ?? null, 'status' => $period->status ?? null]
             : null;
 
-        return $this->ok($grid, 'Bảng công tháng ' . $month);
+        return $this->ok($grid, 'Bảng công tháng '.$month);
+    }
+
+    public function timesheetOverview(Request $request, TimesheetService $service): JsonResponse
+    {
+        $month = (string) $request->query('month', now()->format('Y-m'));
+        if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
+            return $this->validationError(['month' => ['Định dạng tháng phải là YYYY-MM']]);
+        }
+        $tenantId = (int) TenantContext::id();
+        $legalEntityId = (int) $this->attendanceAccess->requestedLegalEntity($request, false, true);
+        if (! $this->prepareTimesheetScope($request, $legalEntityId, 'query')) {
+            return $this->validationError(['filters' => ['Bộ lọc nằm ngoài phạm vi được phép.']]);
+        }
+        $employeeIds = $request->filled('employee_id')
+            ? [(int) $request->query('employee_id')]
+            : $this->attendanceAccess->timesheetEmployeeIds($request, $legalEntityId);
+        if ($this->attendanceAccess->isDepartmentManager($request) && $request->filled('department_id')) {
+            $departmentId = (int) $request->query('department_id');
+            $employeeIds = DB::table('employees')
+                ->where('tenant_id', $tenantId)
+                ->where('legal_entity_id', $legalEntityId)
+                ->where('department_id', $departmentId)
+                ->whereIn('id', $employeeIds ?? [])
+                ->pluck('id')->map(fn ($id): int => (int) $id)->all();
+        }
+
+        return $this->ok($service->monthlyOverview(
+            $tenantId,
+            $legalEntityId,
+            $month,
+            $employeeIds,
+            $request->filled('department_id') ? (int) $request->query('department_id') : null,
+        ), 'Tổng quan bảng công tháng '.$month);
     }
 
     /**
      * POST /attendance/recompute {month|start,end[,employee_id]}
      * Tái phân loại trạng thái chấm công theo ca + dung sai (engine). Idempotent.
      */
-    public function recompute(Request $request, TimesheetService $service): JsonResponse
+    public function recompute(Request $request): JsonResponse
     {
+        if (! $this->attendanceAccess->canRunRecompute($request)) {
+            return response()->json(['status' => 403, 'message' => 'Chỉ HR hoặc Admin được tái tính chấm công.', 'data' => null], 403);
+        }
         $start = $request->input('start');
         $end = $request->input('end');
         if ($request->filled('month')) {
@@ -805,26 +955,45 @@ class AttendanceController extends Controller
             if (! preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
                 return $this->validationError(['month' => ['Định dạng tháng phải là YYYY-MM']]);
             }
-            $start = \Carbon\Carbon::parse($month . '-01')->startOfMonth()->toDateString();
-            $end = \Carbon\Carbon::parse($month . '-01')->endOfMonth()->toDateString();
+            $start = Carbon::parse($month.'-01')->startOfMonth()->toDateString();
+            $end = Carbon::parse($month.'-01')->endOfMonth()->toDateString();
         }
 
         if (! $start || ! $end) {
             return $this->validationError(['month' => ['Cần truyền month=YYYY-MM hoặc start+end']]);
         }
 
-        $tenantId = TenantContext::id();
-        $legalEntityId = (int) $this->requestedLegalEntity($request, true);
+        $tenantId = (int) TenantContext::id();
+        $legalEntityId = (int) $this->attendanceAccess->requestedLegalEntity($request, true, true);
         $employeeIds = $request->filled('employee_id') ? [(int) $request->input('employee_id')] : null;
-        if (! $this->validTimesheetFilterScope($request, $legalEntityId, 'input')) {
+        if (! $this->prepareTimesheetScope($request, $legalEntityId, 'input')) {
             return $this->validationError([
                 'filters' => ['Nhân viên không thuộc pháp nhân được phép truy cập.'],
             ]);
         }
 
-        $result = $service->recompute($tenantId, $legalEntityId, $start, $end, $employeeIds);
+        $operation = $this->createOperation($request, 'RECOMPUTE', $legalEntityId, [
+            'start' => Carbon::parse($start)->toDateString(),
+            'end' => Carbon::parse($end)->toDateString(),
+            'employee_ids' => $employeeIds,
+        ]);
+        RunAttendanceRecomputeOperation::dispatch($operation->id);
 
-        return $this->ok($result, 'Đã tái phân loại chấm công');
+        return response()->json([
+            'status' => 202,
+            'message' => 'Đã xếp hàng tái phân loại chấm công.',
+            'data' => $this->operationResource($operation),
+        ], 202);
+    }
+
+    public function operation(Request $request, string $runId): JsonResponse
+    {
+        $operation = AttendanceOperation::withoutTenantScope()->find($runId);
+        if (! $operation || ! $this->attendanceAccess->canViewOperation($request, $operation)) {
+            return $this->notFound('Không tìm thấy tác vụ Attendance.');
+        }
+
+        return $this->ok($this->operationResource($operation), 'Trạng thái tác vụ Attendance.');
     }
 
     // ═══════════════════════════════════════════════════════
@@ -860,10 +1029,10 @@ class AttendanceController extends Controller
         $swapId = DB::table('shift_swaps')->insertGetId(TenantContext::stamp($data));
 
         $reqName = DB::table('employees')->where('id', $request->input('requester_id'))->value('full_name') ?: 'Đồng nghiệp';
-        \App\Support\Notifier::notify(
+        Notifier::notify(
             (int) $request->input('target_employee_id'),
             'Yêu cầu đổi ca',
-            $reqName . ' muốn đổi ca ngày ' . \Carbon\Carbon::parse($request->input('swap_date'))->format('d/m/Y') . ' với bạn.',
+            $reqName.' muốn đổi ca ngày '.Carbon::parse($request->input('swap_date'))->format('d/m/Y').' với bạn.',
             'shift_swap', $swapId, ['priority' => 'normal'], (int) $request->input('requester_id')
         );
 
@@ -923,7 +1092,7 @@ class AttendanceController extends Controller
                             'effective_date' => $swapDate,
                             'expiry_date' => $swapDate,
                             'status' => 'ACTIVE',
-                            'notes' => 'Đổi ca (swap #' . $id . ')',
+                            'notes' => 'Đổi ca (swap #'.$id.')',
                             'meta' => json_encode(['source' => 'shift-swap', 'swap_id' => $id], JSON_UNESCAPED_UNICODE),
                             'tenant_id' => TenantContext::id(),
                             'legal_entity_id' => $le ?? TenantContext::legalEntityId(),
@@ -935,10 +1104,10 @@ class AttendanceController extends Controller
             }
         });
 
-        \App\Support\Notifier::notifyMany(
+        Notifier::notifyMany(
             [(int) $swap->requester_id, (int) $swap->target_employee_id],
             'Đổi ca đã được duyệt',
-            'Yêu cầu đổi ca ngày ' . \Carbon\Carbon::parse($swap->swap_date)->format('d/m/Y') . ' đã được duyệt.',
+            'Yêu cầu đổi ca ngày '.Carbon::parse($swap->swap_date)->format('d/m/Y').' đã được duyệt.',
             'shift_swap', $id, ['priority' => 'normal']
         );
 
@@ -956,14 +1125,25 @@ class AttendanceController extends Controller
      */
     public function verifyAttendance(Request $request, int $id): JsonResponse
     {
-        $attendanceQuery = Attendance::query();
-        $access = (array) $request->attributes->get('access', []);
-        if (empty($access['full'])) {
-            $attendanceQuery->where('legal_entity_id', TenantContext::legalEntityId());
+        if (! $this->attendanceAccess->canModifyAttendance($request)) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Chỉ HR hoặc Admin được xác minh chấm công.',
+                'data' => null,
+            ], 403);
         }
-        $attendance = $attendanceQuery->find($id);
+        $attendance = $this->attendanceAccess
+            ->scopeAttendances(Attendance::query(), $request)
+            ->find($id);
         if (! $attendance) {
             return $this->notFound();
+        }
+        if ($this->attendanceReconciliation->isClosedDate($attendance)) {
+            return response()->json([
+                'status' => 409,
+                'message' => 'Kỳ lương chứa ngày chấm công này đã chốt, không thể xác minh lại.',
+                'data' => null,
+            ], 409);
         }
 
         $decision = strtolower((string) $request->input('decision'));
@@ -1033,8 +1213,17 @@ class AttendanceController extends Controller
 
     private function attendanceForCheckout(int $employeeId, string $today): ?Attendance
     {
+        $openSession = static function ($query): void {
+            $query->where(function ($first): void {
+                $first->whereNotNull('check_in_time')->whereNull('check_out_time');
+            })->orWhere(function ($second): void {
+                $second->whereNotNull('check_in_time_2')->whereNull('check_out_time_2');
+            });
+        };
+
         $todayAttendance = Attendance::where('employee_id', $employeeId)
             ->where('work_date', $today)
+            ->where($openSession)
             ->first();
         if ($todayAttendance) {
             return $todayAttendance;
@@ -1043,14 +1232,8 @@ class AttendanceController extends Controller
         // CA3 belongs to the date on which the shift starts. A checkout after
         // midnight must therefore close yesterday's still-open attendance row.
         return Attendance::where('employee_id', $employeeId)
-            ->where('work_date', \Carbon\Carbon::parse($today)->subDay()->toDateString())
-            ->whereNotNull('check_in_time')
-            ->where(function ($query): void {
-                $query->whereNull('check_out_time')
-                    ->orWhere(function ($second): void {
-                        $second->whereNotNull('check_in_time_2')->whereNull('check_out_time_2');
-                    });
-            })
+            ->where('work_date', Carbon::parse($today)->subDay()->toDateString())
+            ->where($openSession)
             ->first();
     }
 
@@ -1081,7 +1264,7 @@ class AttendanceController extends Controller
         $rotate = $request->boolean('rotate', true);
         // Snap về thứ Hai của tuần để các tuần xoay khớp nhau kể cả khi caller
         // truyền ngày giữa tuần (không tin mỗi FE).
-        $startMonday = \Carbon\Carbon::parse($request->input('start_date'))->startOfWeek(\Carbon\Carbon::MONDAY);
+        $startMonday = Carbon::parse($request->input('start_date'))->startOfWeek(Carbon::MONDAY);
 
         // Nhân viên: theo danh sách hoặc tất cả NV đang làm.
         $employees = DB::table('employees')
@@ -1161,23 +1344,79 @@ class AttendanceController extends Controller
         ], 422);
     }
 
-    private function requestedLegalEntity(Request $request, bool $fromBody = false): ?int
+    private function sumOvertimeMeta(Builder $query, string $key): int
     {
-        $access = (array) $request->attributes->get('access', []);
-        if (empty($access['full'])) {
-            return TenantContext::legalEntityId();
+        $expression = DB::getDriverName() === 'pgsql'
+            ? "COALESCE((overtime_requests.meta->>'{$key}')::int, 0)"
+            : "COALESCE(CAST(json_extract(overtime_requests.meta, '$.{$key}') AS INTEGER), 0)";
+        $row = (clone $query)->withoutEagerLoads()->reorder()
+            ->selectRaw("COALESCE(SUM({$expression}), 0) AS total")
+            ->first();
+
+        return (int) ($row?->total ?? 0);
+    }
+
+    private function createOperation(Request $request, string $type, int $legalEntityId, array $filters): AttendanceOperation
+    {
+        return AttendanceOperation::create([
+            'id' => (string) Str::uuid(),
+            'tenant_id' => (int) TenantContext::id(),
+            'legal_entity_id' => $legalEntityId,
+            'requested_by' => $this->attendanceAccess->actorId($request),
+            'type' => $type,
+            'status' => 'PENDING',
+            'filters' => $filters,
+        ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function operationResource(AttendanceOperation $operation): array
+    {
+        $total = max(0, (int) $operation->total_items);
+        $processed = max(0, (int) $operation->processed_items);
+
+        return [
+            'run_id' => $operation->id,
+            'type' => $operation->type,
+            'status' => $operation->status,
+            'progress_percent' => $total > 0 ? min(100, (int) floor($processed * 100 / $total)) : ($operation->status === 'COMPLETED' ? 100 : 0),
+            'total_items' => $total,
+            'processed_items' => $processed,
+            'succeeded_items' => (int) $operation->succeeded_items,
+            'failed_items' => (int) $operation->failed_items,
+            'result' => $operation->result,
+            'error' => $operation->error,
+            'started_at' => $operation->started_at?->toIso8601String(),
+            'completed_at' => $operation->completed_at?->toIso8601String(),
+        ];
+    }
+
+    private function prepareTimesheetScope(Request $request, int $legalEntityId, string $source): bool
+    {
+        $read = fn (string $key) => $source === 'input' ? $request->input($key) : $request->query($key);
+        $write = function (string $key, mixed $value) use ($request, $source): void {
+            if ($source === 'input') {
+                $request->merge([$key => $value]);
+            } else {
+                $request->query->set($key, $value);
+            }
+        };
+
+        if (! $this->attendanceAccess->canReadOrganization($request) && ! $this->attendanceAccess->isAccountant($request)) {
+            $write('employee_id', $this->attendanceAccess->actorId($request));
+        }
+        $departmentId = $read('department_id');
+        if ($departmentId !== null && $departmentId !== ''
+            && ! $this->attendanceAccess->assertDepartmentFilter($request, (int) $departmentId)) {
+            return false;
+        }
+        $employeeId = $read('employee_id');
+        if ($employeeId !== null && $employeeId !== ''
+            && ! $this->attendanceAccess->canFilterTimesheetEmployee($request, (int) $employeeId, $legalEntityId)) {
+            return false;
         }
 
-        $value = $fromBody ? $request->input('legal_entity_id') : $request->query('legal_entity_id');
-        if ($value === null || $value === '') {
-            return TenantContext::legalEntityId();
-        }
-
-        $legalEntityId = (int) $value;
-
-        return TenantContext::ownsRow('legal_entities', $legalEntityId)
-            ? $legalEntityId
-            : TenantContext::legalEntityId();
+        return $this->validTimesheetFilterScope($request, $legalEntityId, $source);
     }
 
     private function validTimesheetFilterScope(Request $request, int $legalEntityId, string $source): bool

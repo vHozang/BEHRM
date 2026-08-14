@@ -4,8 +4,11 @@ namespace App\Jobs;
 
 use App\DTOs\CheckInData;
 use App\Models\Attendance;
-use App\Services\AttendanceChangePublisher;
 use App\Repositories\Contracts\AttendanceRepositoryContract;
+use App\Services\AttendanceDayLock;
+use App\Services\AttendanceReconciliationService;
+use App\Support\TenantContext;
+use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -33,12 +36,6 @@ use Throwable;
 class ProcessAttendanceLog implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    /**
-     * Tên queue chuyên dụng cho attendance.
-     * Horizon config sẽ chạy nhiều worker hơn cho queue này vào giờ cao điểm.
-     */
-    public string $queue = 'attendance';
 
     /**
      * Số lần retry tối đa trước khi Job bị fail hoàn toàn.
@@ -85,14 +82,28 @@ class ProcessAttendanceLog implements ShouldQueue
          * Dùng readonly để đảm bảo immutability.
          */
         private readonly CheckInData $checkInData,
-    ) {}
+    ) {
+        $this->onQueue('attendance');
+    }
 
     /**
      * Xử lý chính của Job - chạy trong background worker.
      */
-    public function handle(AttendanceRepositoryContract $repository): void
-    {
+    public function handle(
+        AttendanceRepositoryContract $repository,
+        AttendanceDayLock $attendanceDayLock,
+        AttendanceReconciliationService $attendanceReconciliation,
+    ): void {
         $data = $this->checkInData;
+        $occurredAt = now()->parse($data->checkedAt);
+        $employee = DB::table('employees')
+            ->where('id', $data->employeeId)
+            ->first(['id', 'employee_code', 'tenant_id', 'legal_entity_id']);
+        if (! $employee) {
+            $this->fail(new \RuntimeException("Employee #{$data->employeeId} not found."));
+
+            return;
+        }
 
         Log::channel('attendance')->info('Processing attendance log', [
             'employee_id' => $data->employeeId,
@@ -101,100 +112,111 @@ class ProcessAttendanceLog implements ShouldQueue
             'attempt' => $this->attempts(),
         ]);
 
-        // ── Wrap trong DB Transaction để đảm bảo atomicity ────────────────
-        // Nếu bất kỳ bước nào fail → rollback tất cả, Job sẽ được retry.
-        DB::transaction(function () use ($data, $repository) {
+        TenantContext::set((int) $employee->tenant_id, (int) $employee->legal_entity_id);
+        try {
+            $attendanceDayLock->run(
+                (int) $employee->tenant_id,
+                (int) $employee->id,
+                $occurredAt->toDateString(),
+                function () use ($data, $repository, $attendanceReconciliation, $employee, $occurredAt): void {
+                    if ($attendanceReconciliation->isClosedWorkDate(
+                        (int) $employee->tenant_id,
+                        (int) $employee->legal_entity_id,
+                        $occurredAt->toDateString(),
+                    )) {
+                        throw new \RuntimeException('Kỳ lương chứa ngày chấm công này đã chốt, không thể sửa trực tiếp.', 409);
+                    }
 
-            // Bước 1: Lấy employee_code (cần để denormalize vào attendance_logs)
-            $employeeCode = $repository->getEmployeeCode($data->employeeId);
-            if (! $employeeCode) {
-                // Employee không tồn tại → fail ngay, không retry (abort)
-                $this->fail(new \RuntimeException("Employee #{$data->employeeId} not found."));
+                    // Idempotency is based on the exact punch, not action/day;
+                    // otherwise a valid second work session would be discarded.
+                    $existingLog = DB::table('attendance_logs')
+                        ->where('tenant_id', $employee->tenant_id)
+                        ->where('employee_id', $data->employeeId)
+                        ->where('action', $data->action)
+                        ->whereBetween('checked_at', [
+                            $occurredAt->copy()->subSecond(),
+                            $occurredAt->copy()->addSecond(),
+                        ])
+                        ->where('status', 'PROCESSED')
+                        ->lockForUpdate()
+                        ->first();
 
-                return;
-            }
+                    if ($existingLog) {
+                        Log::channel('attendance')->warning('Duplicate attendance punch detected, skipping', [
+                            'employee_id' => $data->employeeId,
+                            'action' => $data->action,
+                            'checked_at' => $data->checkedAt,
+                        ]);
 
-            // Bước 2: Kiểm tra duplicate check-in trong ngày
-            // Dùng SELECT FOR UPDATE để lock row, tránh race condition với concurrent workers
-            $existingLog = DB::table('attendance_logs')
-                ->where('employee_id', $data->employeeId)
-                ->where('action', $data->action)
-                ->whereBetween('checked_at', [
-                    now()->startOfDay()->toIso8601String(),
-                    now()->endOfDay()->toIso8601String(),
-                ])
-                ->where('status', 'PROCESSED')
-                ->lockForUpdate()  // PG: SELECT ... FOR UPDATE
-                ->first();
+                        return;
+                    }
 
-            if ($existingLog) {
-                Log::channel('attendance')->warning('Duplicate check-in detected, skipping', [
-                    'employee_id' => $data->employeeId,
-                    'action' => $data->action,
-                ]);
+                    $log = $repository->createLog($data, (string) $employee->employee_code);
+                    $this->updateAttendanceSummary($data, $employee, $occurredAt, $attendanceReconciliation);
 
-                return; // Không fail, chỉ bỏ qua - đây là idempotent behavior
-            }
-
-            // Bước 3: Ghi vào attendance_logs (append-only log table, partitioned)
-            $log = $repository->createLog($data, $employeeCode);
-
-            // Bước 4: Cập nhật bảng `attendances` (bảng tổng hợp để query dashboard)
-            // Đây là bảng "materialized" từ attendance_logs, dễ query hơn
-            $this->updateAttendanceSummary($data);
-
-            Log::channel('attendance')->info('Attendance log processed successfully', [
-                'log_id' => $log->id,
-                'employee_id' => $data->employeeId,
-            ]);
-        });
+                    Log::channel('attendance')->info('Attendance log processed successfully', [
+                        'log_id' => $log->id,
+                        'employee_id' => $data->employeeId,
+                    ]);
+                },
+            );
+        } finally {
+            TenantContext::clear();
+        }
     }
 
     /**
      * Cập nhật bảng attendances (summary table) sau khi ghi log thành công.
      * Dùng UPSERT (INSERT ... ON CONFLICT DO UPDATE) để tránh duplicate rows.
      */
-    private function updateAttendanceSummary(CheckInData $data): void
-    {
-        $today = now()->toDateString();
-        $timeString = now()->parse($data->checkedAt)->toTimeString();
-        $employee = DB::table('employees')->where('id', $data->employeeId)->first(['tenant_id', 'legal_entity_id']);
-        if (! $employee) {
+    private function updateAttendanceSummary(
+        CheckInData $data,
+        object $employee,
+        CarbonInterface $occurredAt,
+        AttendanceReconciliationService $attendanceReconciliation,
+    ): void {
+        $today = $occurredAt->toDateString();
+        $timeString = $occurredAt->toTimeString();
+        $attendance = Attendance::withoutTenantScope()
+            ->where('tenant_id', $employee->tenant_id)
+            ->where('employee_id', $data->employeeId)
+            ->where('work_date', $today)
+            ->lockForUpdate()
+            ->first();
+
+        if ($data->action === 'CHECK_IN') {
+            if (! $attendance) {
+                $attendance = Attendance::create([
+                    'tenant_id' => $employee->tenant_id,
+                    'legal_entity_id' => $employee->legal_entity_id,
+                    'employee_id' => $data->employeeId,
+                    'work_date' => $today,
+                    'check_in_time' => $timeString,
+                    'status' => 'ON_TIME',
+                ]);
+            } elseif (! $attendance->check_in_time) {
+                $attendance->update(['check_in_time' => $timeString]);
+            } elseif ($attendance->check_out_time && ! $attendance->check_in_time_2) {
+                $attendance->update(['check_in_time_2' => $timeString]);
+            } else {
+                return;
+            }
+        } elseif ($data->action === 'CHECK_OUT') {
+            if (! $attendance) {
+                return;
+            }
+            if ($attendance->check_in_time && ! $attendance->check_out_time) {
+                $attendance->update(['check_out_time' => $timeString]);
+            } elseif ($attendance->check_in_time_2 && ! $attendance->check_out_time_2) {
+                $attendance->update(['check_out_time_2' => $timeString]);
+            } else {
+                return;
+            }
+        } else {
             return;
         }
 
-        if ($data->action === 'CHECK_IN') {
-            // UPSERT: tạo mới nếu chưa có, update check_in_time nếu đã tồn tại
-            // ON CONFLICT là cú pháp native PostgreSQL cho upsert hiệu quả
-            DB::statement("
-                INSERT INTO attendances (employee_id, work_date, check_in_time, status, tenant_id, legal_entity_id, created_at, updated_at)
-                VALUES (?, ?, ?, 'ON_TIME', ?, ?, NOW(), NOW())
-                ON CONFLICT (employee_id, work_date)
-                DO UPDATE SET
-                    check_in_time = EXCLUDED.check_in_time,
-                    updated_at    = NOW()
-                WHERE attendances.check_in_time IS NULL
-            ", [$data->employeeId, $today, $timeString, $employee->tenant_id, $employee->legal_entity_id]);
-
-        } elseif ($data->action === 'CHECK_OUT') {
-            // Chỉ update check_out_time nếu đã có check_in_time
-            DB::table('attendances')
-                ->where('employee_id', $data->employeeId)
-                ->where('work_date', $today)
-                ->whereNotNull('check_in_time')
-                ->update([
-                    'check_out_time' => $timeString,
-                    'updated_at' => now(),
-                ]);
-        }
-
-        $attendance = Attendance::withoutTenantScope()
-            ->where('employee_id', $data->employeeId)
-            ->where('work_date', $today)
-            ->first();
-        if ($attendance) {
-            app(AttendanceChangePublisher::class)->publish($attendance, 'legacy_log');
-        }
+        $attendanceReconciliation->reconcile($attendance->fresh(), null, true);
     }
 
     /**

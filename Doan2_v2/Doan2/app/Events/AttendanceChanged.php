@@ -22,17 +22,28 @@ class AttendanceChanged implements ShouldBroadcast
     public function broadcastOn(): array
     {
         $tenantId = (int) $this->change['tenant_id'];
-        $employeeId = (int) $this->change['employee_id'];
         $channels = [
             new PrivateChannel("attendance.tenant.{$tenantId}.all"),
-            new PrivateChannel("attendance.employee.{$employeeId}"),
         ];
+
+        if (! empty($this->change['employee_id'])) {
+            $channels[] = new PrivateChannel('attendance.employee.'.(int) $this->change['employee_id']);
+        }
 
         if (! empty($this->change['legal_entity_id'])) {
             $channels[] = new PrivateChannel("attendance.tenant.{$tenantId}.entity.{$this->change['legal_entity_id']}");
         }
+        if (! empty($this->change['department_id'])) {
+            $channels[] = new PrivateChannel("attendance.tenant.{$tenantId}.department.{$this->change['department_id']}");
+        }
+        foreach ((array) ($this->change['department_ids'] ?? []) as $departmentId) {
+            $channels[] = new PrivateChannel("attendance.tenant.{$tenantId}.department.".(int) $departmentId);
+        }
+        foreach ((array) ($this->change['employee_ids'] ?? []) as $employeeId) {
+            $channels[] = new PrivateChannel('attendance.employee.'.(int) $employeeId);
+        }
 
-        return $channels;
+        return collect($channels)->unique(fn (PrivateChannel $channel) => $channel->name)->values()->all();
     }
 
     public function broadcastAs(): string
@@ -44,7 +55,7 @@ class AttendanceChanged implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return collect($this->change)->only([
-            'cursor', 'attendance_id', 'employee_id', 'legal_entity_id',
+            'cursor', 'attendance_id', 'employee_id', 'legal_entity_id', 'department_id',
             'work_date', 'change_type', 'version', 'updated_at',
         ])->all();
     }

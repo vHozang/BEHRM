@@ -3,7 +3,7 @@ import Pusher from 'pusher-js';
 import axiosClient from './axiosClient';
 
 let echo = null;
-let subscribedChannel = null;
+let subscribedChannels = [];
 let changeCursor = null;
 let fallbackTimer = null;
 let activeOnChange = null;
@@ -43,7 +43,10 @@ export const attendanceRealtimeService = {
       params: legalEntityId ? { legal_entity_id: legalEntityId } : {}
     });
     const config = response.data || {};
-    if (!config.enabled || !config.key || !config.channel) {
+    const channels = Array.isArray(config.channels)
+      ? config.channels.filter(Boolean)
+      : (config.channel ? [config.channel] : []);
+    if (!config.enabled || !config.key || !channels.length) {
       attendanceRealtimeService.startFallback(onChange);
       return false;
     }
@@ -61,11 +64,13 @@ export const attendanceRealtimeService = {
       auth: { headers: { Authorization: `Bearer ${localStorage.getItem('auth_token') || ''}` } }
     });
 
-    subscribedChannel = config.channel;
-    echo.private(config.channel).listen('.attendance.changed', (event) => {
-      if (event.cursor) changeCursor = event.cursor;
-      onChange(event);
-    });
+    subscribedChannels = channels;
+    for (const channel of channels) {
+      echo.private(channel).listen('.attendance.changed', (event) => {
+        if (event.cursor) changeCursor = event.cursor;
+        onChange(event);
+      });
+    }
 
     const connection = echo.connector?.pusher?.connection;
     connection?.bind('connected', () => {
@@ -90,10 +95,10 @@ export const attendanceRealtimeService = {
 
   disconnect() {
     clearFallback();
-    if (echo && subscribedChannel) echo.leave(subscribedChannel);
+    if (echo) subscribedChannels.forEach((channel) => echo.leave(channel));
     echo?.disconnect();
     echo = null;
-    subscribedChannel = null;
+    subscribedChannels = [];
     activeOnChange = null;
   }
 };

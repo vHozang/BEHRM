@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
+use App\Services\AttendanceDayLock;
 use App\Services\AttendanceReconciliationService;
 use App\Services\AttendanceTimeCalculator;
 use App\Services\ShiftResolver;
 use App\Support\OvertimeSuggester;
+use App\Support\TenantContext;
 use App\Support\TimePolicy;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,6 +41,7 @@ class DeviceAttendanceController extends Controller
         private readonly ShiftResolver $shiftResolver,
         private readonly AttendanceTimeCalculator $timeCalculator,
         private readonly AttendanceReconciliationService $attendanceReconciliation,
+        private readonly AttendanceDayLock $attendanceDayLock,
     ) {}
 
     public function punch(Request $request): JsonResponse
@@ -62,6 +65,15 @@ class DeviceAttendanceController extends Controller
             if (! $expected || $provided !== $expected) {
                 return response()->json(['status' => 403, 'message' => 'Thiếu device token hoặc internal token hợp lệ', 'data' => null], 403);
             }
+            $tenantId = (int) config('hrm.internal_attendance_tenant_id');
+            if ($tenantId <= 0 || ! DB::table('tenants')->where('id', $tenantId)->exists()) {
+                return response()->json([
+                    'status' => 403,
+                    'message' => 'Legacy internal token chưa được khóa vào tenant cố định.',
+                    'data' => null,
+                ], 403);
+            }
+            $device = (object) ['tenant_id' => $tenantId, 'name' => null];
         }
 
         // Cho phép 1 punch hoặc mảng punches (batch).
@@ -75,6 +87,13 @@ class DeviceAttendanceController extends Controller
                 'punch_state' => $request->input('punch_state'),
                 'device_state' => $request->input('device_state'),
             ]];
+        }
+        if (count($punches) > 200) {
+            return response()->json([
+                'status' => 422,
+                'message' => 'Mỗi request chỉ được gửi tối đa 200 punch.',
+                'data' => ['errors' => ['punches' => ['Tối đa 200 punch/request.']]],
+            ], 422);
         }
 
         $processed = 0;
@@ -135,12 +154,6 @@ class DeviceAttendanceController extends Controller
         )) {
             throw new \RuntimeException('Kỳ lương chứa ngày chấm công này đã chốt, không thể nhận thêm punch.');
         }
-        $attendance = DB::table('attendances')
-            ->where('tenant_id', $employee->tenant_id)
-            ->where('employee_id', $employee->id)
-            ->where('work_date', $workDate)
-            ->first();
-
         $deviceMeta = [
             'device_id' => $p['device_id'] ?? null,
             'verify_method' => $p['verify_method'] ?? null, // fingerprint|face|card
@@ -151,6 +164,38 @@ class DeviceAttendanceController extends Controller
         $deviceEvent = array_merge($deviceMeta, [
             'timestamp' => $when->format('Y-m-d H:i:s'),
         ]);
+
+        TenantContext::set((int) $employee->tenant_id, (int) $employee->legal_entity_id);
+        try {
+            $this->attendanceDayLock->run(
+                (int) $employee->tenant_id,
+                (int) $employee->id,
+                $workDate,
+                function () use ($employee, $workDate, $shift, $time, $punchState, $deviceMeta, $deviceEvent): void {
+                    $attendance = DB::table('attendances')
+                        ->where('tenant_id', $employee->tenant_id)
+                        ->where('employee_id', $employee->id)
+                        ->where('work_date', $workDate)
+                        ->lockForUpdate()
+                        ->first();
+                    $this->applyLockedPunch($employee, $workDate, $shift, $time, $punchState, $deviceMeta, $deviceEvent, $attendance);
+                },
+            );
+        } finally {
+            TenantContext::clear();
+        }
+    }
+
+    private function applyLockedPunch(
+        object $employee,
+        string $workDate,
+        ?object $shift,
+        string $time,
+        string $punchState,
+        array $deviceMeta,
+        array $deviceEvent,
+        ?object $attendance,
+    ): void {
 
         if (! $attendance) {
             $checkIn = in_array($punchState, self::ENTRY_STATES, true) || $punchState === 'AUTO'

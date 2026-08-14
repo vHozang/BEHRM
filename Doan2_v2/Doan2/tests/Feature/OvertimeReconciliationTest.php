@@ -16,6 +16,7 @@ class OvertimeReconciliationTest extends TestCase
     use RefreshDatabase;
 
     private int $employeeId;
+
     private int $shiftId;
 
     protected function setUp(): void
@@ -134,6 +135,21 @@ class OvertimeReconciliationTest extends TestCase
             'year' => '2026',
             'remaining_days' => 0.1250,
         ]);
+    }
+
+    public function test_reconciliation_does_not_rewrite_unchanged_request(): void
+    {
+        $this->attendance('06:00:00', '15:00:00');
+        $request = $this->approvedRequest('14:00:00', '15:00:00', 1);
+        $service = app(OvertimeReconciliationService::class);
+
+        $service->reconcileDate(1, $this->employeeId, '2026-08-11');
+        $first = DB::table('overtime_requests')->where('id', $request->id)->first(['meta', 'updated_at']);
+        $service->reconcileDate(1, $this->employeeId, '2026-08-11');
+        $second = DB::table('overtime_requests')->where('id', $request->id)->first(['meta', 'updated_at']);
+
+        $this->assertSame($first->meta, $second->meta);
+        $this->assertSame((string) $first->updated_at, (string) $second->updated_at);
     }
 
     private function attendance(string $checkIn, string $checkOut): Attendance

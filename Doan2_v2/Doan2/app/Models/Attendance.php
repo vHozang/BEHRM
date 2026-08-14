@@ -24,6 +24,7 @@ class Attendance extends Model
             // +07 boundary. (Bare 'date' caused work_date to come back as
             // "...T17:00:00Z" and display one day off.)
             'work_date' => 'date:Y-m-d',
+            'meta' => 'array',
         ];
     }
 

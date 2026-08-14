@@ -38,7 +38,7 @@ class OvertimeReconciliationService
             ->first();
 
         $calculation = $attendance
-            ? $this->attendanceReconciliation->reconcile($attendance, null, false)
+            ? $this->attendanceReconciliation->reconcile($attendance, null, false, false)
             : null;
         $actualIntervals = $this->deserializeIntervals($calculation['outside_shift_intervals'] ?? []);
         $hasCompletedPunch = (bool) ($calculation['has_completed_session'] ?? false);
@@ -111,9 +111,20 @@ class OvertimeReconciliationService
                 'payable_minutes' => $payableMinutes,
                 'payable_intervals' => $this->serializeIntervals($payableIntervals),
                 'warnings' => $requestWarnings,
-                'calculated_at' => now()->toIso8601String(),
             ];
-            $request->update(['meta' => $meta]);
+            $previousMeta = is_array($request->meta) ? $request->meta : [];
+            $previousReconciliation = (array) ($previousMeta['overtime_reconciliation'] ?? []);
+            $nextReconciliation = $meta['overtime_reconciliation'];
+            $previousComparable = $previousReconciliation;
+            unset($previousComparable['calculated_at']);
+            if ($previousComparable !== $nextReconciliation
+                || (int) ($previousMeta['payable_overtime_minutes'] ?? 0) !== $payableMinutes) {
+                $nextReconciliation['calculated_at'] = now()->toIso8601String();
+                $meta['overtime_reconciliation'] = $nextReconciliation;
+                $request->update(['meta' => $meta]);
+            } elseif (isset($previousReconciliation['calculated_at'])) {
+                $meta['overtime_reconciliation']['calculated_at'] = $previousReconciliation['calculated_at'];
+            }
             $this->compOff->syncForRequest($request->fresh());
 
             array_push($warnings, ...$requestWarnings);
@@ -290,6 +301,7 @@ class OvertimeReconciliationService
             foreach ($result as [$start, $end]) {
                 if ($cutEnd <= $start || $cutStart >= $end) {
                     $next[] = [$start, $end];
+
                     continue;
                 }
                 if ($cutStart > $start) {

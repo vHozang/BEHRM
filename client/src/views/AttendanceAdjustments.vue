@@ -104,6 +104,7 @@
             </button>
             <template v-if="isPending(item)">
               <button
+                v-if="canReviewAdjustment(item)"
                 @click="approve(item)"
                 class="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900 text-green-600 dark:text-green-400 disabled:opacity-50"
                 title="Duyệt"
@@ -115,6 +116,7 @@
                 </svg>
               </button>
               <button
+                v-if="canReviewAdjustment(item)"
                 @click="openRejectModal(item)"
                 class="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900 text-red-600 dark:text-red-400 disabled:opacity-50"
                 title="Từ chối"
@@ -126,6 +128,7 @@
                 </svg>
               </button>
               <button
+                v-if="canCancelAdjustment(item)"
                 @click="cancel(item)"
                 class="p-1.5 rounded hover:bg-orange-100 dark:hover:bg-orange-900 text-orange-600 dark:text-orange-400 disabled:opacity-50"
                 title="Hủy đơn"
@@ -141,6 +144,17 @@
           </div>
         </template>
       </BaseTable>
+      <div
+        v-if="!loading && pagination.last_page > 1"
+        class="mt-4 flex items-center justify-between border-t border-border pt-4 text-sm"
+        data-testid="adjustment-pagination"
+      >
+        <span>Trang {{ pagination.current_page }}/{{ pagination.last_page }} · {{ pagination.total }} đơn</span>
+        <div class="flex gap-2">
+          <BaseButton variant="outline" :disabled="pagination.current_page <= 1" @click="changePage(-1)">Trước</BaseButton>
+          <BaseButton variant="outline" :disabled="pagination.current_page >= pagination.last_page" @click="changePage(1)">Sau</BaseButton>
+        </div>
+      </div>
     </BaseCard>
 
     <!-- Create modal -->
@@ -293,10 +307,17 @@ import RemoteEmployeeSelect from '../components/RemoteEmployeeSelect.vue';
 import { buildApprovalSteps, statusVN } from '../utils/approvalSteps';
 import { regularizationService } from '../services/regularizationService';
 import { employeeService } from '../services/employeeService';
+import { authService } from '../services/authService';
 import { useToast } from '../composables/useToast';
 
 const toast = useToast();
 const route = useRoute();
+const currentUser = computed(() => authService.getUser());
+const myEmployeeId = computed(() => currentUser.value?.employee_id || currentUser.value?.id || null);
+const access = computed(() => authService.getAccess());
+const roleCodes = computed(() => access.value.roles.map((role) => String(role.role_code || '').toUpperCase()));
+const canManageAdjustments = computed(() => access.value.full
+  || roleCodes.value.some((role) => ['ADMIN', 'TENANT_ADMIN', 'HR', 'MANAGER', 'DEPT_HEAD'].includes(role)));
 
 const loading = ref(false);
 const saving = ref(false);
@@ -306,6 +327,7 @@ const formError = ref('');
 
 const adjustments = ref([]);
 const employees = ref([]);
+const pagination = ref({ current_page: 1, per_page: 15, total: 0, last_page: 1 });
 
 // Chi tiết + tiến trình duyệt (người tạo + người duyệt thật).
 const showDetailModal = ref(false);
@@ -386,6 +408,9 @@ const STATUS_LABELS = {
 const statusLabel = (status) => statusVN(status);
 
 const isPending = (item) => String(item?.status || '').toUpperCase() === 'PENDING';
+const canReviewAdjustment = (item) => canManageAdjustments.value
+  && String(item?.employee_id) !== String(myEmployeeId.value);
+const canCancelAdjustment = (item) => String(item?.employee_id) === String(myEmployeeId.value);
 
 const employeeName = (item) =>
   item?.employee?.full_name || item?.full_name || `NV #${item?.employee_id ?? '?'}`;
@@ -420,6 +445,8 @@ const resetForm = () => {
 
 const openCreateModal = () => {
   resetForm();
+  form.value.employee_id = myEmployeeId.value ? String(myEmployeeId.value) : '';
+  if (currentUser.value) rememberEmployee(currentUser.value);
   showCreateModal.value = true;
 };
 
@@ -430,28 +457,23 @@ const closeCreateModal = () => {
 
 const resetFilters = () => {
   filters.value = { status: '', work_date: '' };
+  pagination.value.current_page = 1;
   loadAdjustments();
-};
-
-const extractItems = (response) => {
-  // axiosClient unwraps {items,pagination} envelopes to a plain array on response.data.
-  // Be defensive: also accept raw {items} / {data:{items}} / array shapes.
-  if (Array.isArray(response)) return response;
-  if (Array.isArray(response?.items)) return response.items;
-  if (Array.isArray(response?.data)) return response.data;
-  if (Array.isArray(response?.data?.items)) return response.data.items;
-  return [];
 };
 
 const loadAdjustments = async () => {
   loading.value = true;
   error.value = '';
   try {
-    const params = {};
+    const params = {
+      page: pagination.value.current_page,
+      per_page: pagination.value.per_page,
+    };
     if (filters.value.status) params.status = filters.value.status;
     if (filters.value.work_date) params.work_date = filters.value.work_date;
     const response = await regularizationService.getAll(params);
-    adjustments.value = extractItems(response);
+    adjustments.value = response.items;
+    pagination.value = response.pagination || pagination.value;
   } catch (err) {
     console.error('Error loading attendance adjustments:', err);
     error.value = apiErrorMessage(err, 'Không thể tải danh sách đơn điều chỉnh');
@@ -459,6 +481,17 @@ const loadAdjustments = async () => {
     loading.value = false;
   }
 };
+
+const changePage = (delta) => {
+  const page = pagination.value.current_page + delta;
+  if (page < 1 || page > pagination.value.last_page) return;
+  pagination.value.current_page = page;
+  loadAdjustments();
+};
+
+watch(() => [filters.value.status, filters.value.work_date], () => {
+  pagination.value.current_page = 1;
+});
 
 const loadPrefilledEmployee = async (employeeId) => {
   if (!employeeId || employees.value.some(item => String(item.id) === String(employeeId))) return;
@@ -513,7 +546,7 @@ const handleCreate = async () => {
 };
 
 const approve = async (item) => {
-  if (processing.value) return;
+  if (processing.value || !canReviewAdjustment(item)) return;
   processing.value = true;
   try {
     const res = await regularizationService.approve(item.id);
@@ -528,6 +561,7 @@ const approve = async (item) => {
 };
 
 const openRejectModal = (item) => {
+  if (!canReviewAdjustment(item)) return;
   rejectTarget.value = item;
   rejectComment.value = '';
   showRejectModal.value = true;
@@ -554,7 +588,7 @@ const confirmReject = async () => {
 };
 
 const cancel = async (item) => {
-  if (processing.value) return;
+  if (processing.value || !canCancelAdjustment(item)) return;
   if (!confirm('Bạn có chắc chắn muốn hủy đơn điều chỉnh này?')) return;
   processing.value = true;
   try {

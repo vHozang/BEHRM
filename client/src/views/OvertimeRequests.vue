@@ -15,7 +15,7 @@
       </div>
     </div>
 
-    <div v-if="hasManagementLens" class="flex gap-1 border-b border-border">
+    <div v-if="canManageTickets" class="flex gap-1 border-b border-border">
       <button @click="viewMode = 'org'" :class="lensClass('org')">Toàn công ty</button>
       <button @click="viewMode = 'mine'" :class="lensClass('mine')">Của tôi</button>
     </div>
@@ -27,7 +27,7 @@
         :class="requestGroup === 'requests' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
         @click="requestGroup = 'requests'"
       >
-        Đơn đăng ký <span class="ml-1 text-xs">({{ scopedNormalRequests.length }})</span>
+        Đơn đăng ký <span class="ml-1 text-xs">({{ groupSummary.requests.total || 0 }})</span>
       </button>
       <button
         type="button"
@@ -35,7 +35,7 @@
         :class="requestGroup === 'tickets' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
         @click="requestGroup = 'tickets'"
       >
-        Ticket được giao <span class="ml-1 text-xs">({{ scopedTickets.length }})</span>
+        Ticket được giao <span class="ml-1 text-xs">({{ groupSummary.tickets.total || 0 }})</span>
       </button>
     </div>
 
@@ -129,7 +129,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268-2.943 9.542-7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                 </svg>
               </button>
-              <template v-if="requestGroup === 'requests' && orgLens && item.status === 'pending'">
+              <template v-if="canApproveRequest(item)">
                 <button class="rounded p-1.5 text-green-600 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900" title="Duyệt trả tiền tăng ca" :disabled="processing" @click="approveRequest(item, false)">
                   <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
                 </button>
@@ -143,6 +143,17 @@
             </div>
           </template>
         </BaseTable>
+        <div
+          v-if="activePagination.last_page > 1"
+          class="mt-4 flex items-center justify-between border-t border-border pt-4 text-sm"
+          data-testid="overtime-pagination"
+        >
+          <span>Trang {{ activePagination.current_page }}/{{ activePagination.last_page }} · {{ activePagination.total }} bản ghi</span>
+          <div class="flex gap-2">
+            <BaseButton variant="outline" :disabled="loading || activePagination.current_page <= 1" @click="changePage(-1)">Trước</BaseButton>
+            <BaseButton variant="outline" :disabled="loading || activePagination.current_page >= activePagination.last_page" @click="changePage(1)">Sau</BaseButton>
+          </div>
+        </div>
       </BaseCard>
     </template>
 
@@ -242,12 +253,11 @@ const currentUser = computed(() => authService.getUser());
 const myEmployeeId = computed(() => currentUser.value?.employee_id || currentUser.value?.id || null);
 const access = computed(() => authService.getAccess());
 const roleCodes = computed(() => access.value.roles.map((role) => String(role.role_code || '').toUpperCase()));
-const hasManagementLens = computed(() => authService.canAccessModule('time'));
 const canManageTickets = computed(() => access.value.full || roleCodes.value.some((role) => ['ADMIN', 'TENANT_ADMIN', 'HR', 'MANAGER', 'DEPT_HEAD'].includes(role)));
 const canCancelAllTickets = computed(() => access.value.full || roleCodes.value.some((role) => ['ADMIN', 'TENANT_ADMIN', 'HR'].includes(role)));
 
-const viewMode = ref(hasManagementLens.value ? 'org' : 'mine');
-const orgLens = computed(() => hasManagementLens.value && viewMode.value === 'org');
+const viewMode = ref(canManageTickets.value ? 'org' : 'mine');
+const orgLens = computed(() => canManageTickets.value && viewMode.value === 'org');
 const requestGroup = ref('requests');
 const pageTitle = computed(() => orgLens.value ? 'Quản lý Tăng ca' : 'Tăng ca của tôi');
 const pageSubtitle = computed(() => orgLens.value
@@ -258,7 +268,15 @@ const loading = ref(true);
 const error = ref('');
 const saving = ref(false);
 const processing = ref(false);
-const requests = ref([]);
+const groupItems = ref({ requests: [], tickets: [] });
+const groupPagination = ref({
+  requests: { current_page: 1, per_page: 15, total: 0, last_page: 1 },
+  tickets: { current_page: 1, per_page: 15, total: 0, last_page: 1 },
+});
+const groupSummary = ref({
+  requests: { total: 0, pending: 0, approved: 0, rejected: 0, payable_minutes: 0 },
+  tickets: { total: 0, pending: 0, approved: 0, rejected: 0, payable_minutes: 0 },
+});
 const employees = ref([]);
 const showCreateModal = ref(false);
 const showDetailModal = ref(false);
@@ -280,13 +298,9 @@ const rememberEmployee = (employee) => {
   else employees.value.push(employee);
 };
 
-const scopeRequests = computed(() => {
-  if (orgLens.value) return requests.value;
-  return requests.value.filter((item) => String(item.employee_id) === String(myEmployeeId.value));
-});
-const scopedNormalRequests = computed(() => scopeRequests.value.filter((item) => !item.is_ticket));
-const scopedTickets = computed(() => scopeRequests.value.filter((item) => item.is_ticket));
-const displayRequests = computed(() => requestGroup.value === 'tickets' ? scopedTickets.value : scopedNormalRequests.value);
+const displayRequests = computed(() => groupItems.value[requestGroup.value] || []);
+const activePagination = computed(() => groupPagination.value[requestGroup.value]);
+const activeSummary = computed(() => groupSummary.value[requestGroup.value]);
 
 const allColumns = [
   { key: 'employee', label: 'Nhân viên' },
@@ -305,11 +319,11 @@ const tableTitle = computed(() => requestGroup.value === 'tickets'
   : (orgLens.value ? 'Đơn đăng ký tăng ca' : 'Đơn tăng ca của tôi'));
 
 const statusCounts = computed(() => ({
-  pending: displayRequests.value.filter((item) => ['pending', 'offered'].includes(item.status)).length,
-  approved: displayRequests.value.filter((item) => item.status === 'approved').length,
-  rejected: displayRequests.value.filter((item) => ['rejected', 'declined', 'cancelled'].includes(item.status)).length,
+  pending: Number(activeSummary.value.pending || 0),
+  approved: Number(activeSummary.value.approved || 0),
+  rejected: Number(activeSummary.value.rejected || 0),
 }));
-const totalPayableMinutes = computed(() => displayRequests.value.reduce((sum, item) => sum + Number(item.payable_overtime_minutes || 0), 0));
+const totalPayableMinutes = computed(() => Number(activeSummary.value.payable_minutes || 0));
 
 const lensClass = (mode) => [
   'border-b-2 px-4 py-2 text-sm font-medium transition-colors',
@@ -455,6 +469,10 @@ const canCancelTicket = (ticket) => {
   if (!['offered', 'approved'].includes(ticket.status)) return false;
   return canCancelAllTickets.value || Number(ticket.meta?.created_by || 0) === Number(myEmployeeId.value);
 };
+const canApproveRequest = (request) => requestGroup.value === 'requests'
+  && orgLens.value
+  && request.status === 'pending'
+  && String(request.employee_id) !== String(myEmployeeId.value);
 const cancelTicket = async (ticket) => {
   if (processing.value || !window.confirm('Hủy ticket tăng ca này?')) return;
   processing.value = true;
@@ -474,10 +492,42 @@ const openDetail = (item) => {
   showDetailModal.value = true;
 };
 
-const loadRequests = async () => {
-  const params = hasManagementLens.value ? {} : { employee_id: myEmployeeId.value };
-  requests.value = await attendanceService.getOvertime(params);
+const loadGroup = async (group) => {
+  const params = {
+    page: groupPagination.value[group].current_page,
+    per_page: groupPagination.value[group].per_page,
+    kind: group === 'tickets' ? 'MANAGER_TICKET' : 'EMPLOYEE_REQUEST',
+  };
+  if (!orgLens.value) params.employee_id = myEmployeeId.value;
+  const result = await attendanceService.getOvertime(params);
+  groupItems.value[group] = result.items;
+  groupPagination.value[group] = result.pagination || groupPagination.value[group];
+  groupSummary.value[group] = { ...groupSummary.value[group], ...(result.summary || {}) };
 };
+
+const loadRequests = async () => {
+  await Promise.all([loadGroup('requests'), loadGroup('tickets')]);
+};
+
+const changePage = async (delta) => {
+  const group = requestGroup.value;
+  const next = groupPagination.value[group].current_page + delta;
+  if (next < 1 || next > groupPagination.value[group].last_page) return;
+  groupPagination.value[group].current_page = next;
+  loading.value = true;
+  try { await loadGroup(group); }
+  catch (err) { error.value = firstError(err, 'Không thể tải trang tăng ca.'); }
+  finally { loading.value = false; }
+};
+
+watch(viewMode, async () => {
+  groupPagination.value.requests.current_page = 1;
+  groupPagination.value.tickets.current_page = 1;
+  loading.value = true;
+  try { await loadRequests(); }
+  catch (err) { error.value = firstError(err, 'Không thể tải dữ liệu tăng ca.'); }
+  finally { loading.value = false; }
+});
 
 onMounted(async () => {
   loading.value = true;

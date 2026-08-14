@@ -11,12 +11,21 @@ export const useAttendanceStore = defineStore('attendance', () => {
   const error = ref(null);
   const pageCache = new Map();
   const overviewCache = new Map();
+  const timesheetPageCache = new Map();
+  const timesheetOverviewCache = new Map();
+  const timesheetRequests = new Map();
+  const timesheetCacheTtlMs = 60_000;
+  const maxTimesheetCacheEntries = 40;
+  let timesheetCacheGeneration = 0;
 
   const cacheKey = (params = {}) => {
     const user = authService.getUser() || {};
+    const access = authService.getAccess();
     const scopedParams = {
       tenant_id: user.tenant_id || '',
       legal_entity_id: params.legal_entity_id || user.legal_entity_id || '',
+      viewer_employee_id: user.employee_id || user.id || '',
+      access_scope: access.full ? 'full' : [...access.modules].sort().join(','),
       ...params,
     };
     return JSON.stringify(Object.keys(scopedParams).sort().reduce((result, key) => {
@@ -31,6 +40,69 @@ export const useAttendanceStore = defineStore('attendance', () => {
   const setCachedPage = (params, value) => pageCache.set(cacheKey(params), { value, cachedAt: Date.now() });
   const getCachedOverview = (params) => overviewCache.get(cacheKey(params)) || null;
   const setCachedOverview = (params, value) => overviewCache.set(cacheKey(params), { value, cachedAt: Date.now() });
+  const getCachedTimesheetPage = (params) => {
+    const key = cacheKey(params);
+    const cached = timesheetPageCache.get(key);
+    if (!cached) return null;
+
+    // Touch the entry so the bounded Map behaves like a small LRU cache.
+    timesheetPageCache.delete(key);
+    timesheetPageCache.set(key, cached);
+    return {
+      ...cached,
+      fresh: Date.now() - cached.cachedAt <= timesheetCacheTtlMs,
+    };
+  };
+  const setCachedTimesheetPage = (params, value) => {
+    const key = cacheKey(params);
+    timesheetPageCache.delete(key);
+    timesheetPageCache.set(key, { value, cachedAt: Date.now() });
+    while (timesheetPageCache.size > maxTimesheetCacheEntries) {
+      timesheetPageCache.delete(timesheetPageCache.keys().next().value);
+    }
+  };
+  const getCachedTimesheetOverview = (params) => timesheetOverviewCache.get(cacheKey(params)) || null;
+  const setCachedTimesheetOverview = (params, value) => timesheetOverviewCache.set(cacheKey(params), { value, cachedAt: Date.now() });
+  const fetchTimesheetOverview = async (params, { force = false } = {}) => {
+    const cached = getCachedTimesheetOverview(params);
+    if (!force && cached && Date.now() - cached.cachedAt <= timesheetCacheTtlMs) return cached.value;
+    const { month, ...query } = params;
+    const value = await attendanceService.getTimesheetOverview(month, query);
+    setCachedTimesheetOverview(params, value);
+    return value;
+  };
+  const fetchTimesheetPage = (params, { force = false } = {}) => {
+    const key = cacheKey(params);
+    const cached = getCachedTimesheetPage(params);
+    if (!force && cached?.fresh) return Promise.resolve(cached.value);
+    if (timesheetRequests.has(key)) return timesheetRequests.get(key);
+
+    const generation = timesheetCacheGeneration;
+    const { month, ...query } = params;
+    let request;
+    request = attendanceService.getTimesheet(month, {
+      ...query,
+      refresh: force ? 1 : undefined,
+    })
+      .then((value) => {
+        if (generation === timesheetCacheGeneration) {
+          setCachedTimesheetPage(params, value);
+        }
+        return value;
+      })
+      .finally(() => {
+        if (timesheetRequests.get(key) === request) timesheetRequests.delete(key);
+      });
+    timesheetRequests.set(key, request);
+    return request;
+  };
+  const prefetchTimesheetPage = (params) => fetchTimesheetPage(params).catch(() => null);
+  const invalidateTimesheetCache = () => {
+    timesheetCacheGeneration += 1;
+    timesheetPageCache.clear();
+    timesheetOverviewCache.clear();
+    timesheetRequests.clear();
+  };
   const prefetchFirstPage = async (params = {}) => {
     const pageParams = { ...params };
     delete pageParams.cursor;
@@ -46,6 +118,7 @@ export const useAttendanceStore = defineStore('attendance', () => {
   const invalidateAttendanceCache = () => {
     pageCache.clear();
     overviewCache.clear();
+    invalidateTimesheetCache();
   };
 
   const fetchRecords = async (params) => {
@@ -129,6 +202,11 @@ export const useAttendanceStore = defineStore('attendance', () => {
     setCachedPage,
     getCachedOverview,
     setCachedOverview,
+    getCachedTimesheetPage,
+    fetchTimesheetPage,
+    prefetchTimesheetPage,
+    fetchTimesheetOverview,
+    invalidateTimesheetCache,
     prefetchFirstPage,
     invalidateAttendanceCache,
   };

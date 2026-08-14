@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Support\AccessControl;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -86,7 +87,7 @@ class ModuleAccess
             $parts = explode('/', ltrim($path, '/'));
             $ticketId = $parts[1] ?? '';
             if (is_numeric($ticketId)) {
-                $ownerId = (int) \Illuminate\Support\Facades\DB::table('service_tickets')
+                $ownerId = (int) DB::table('service_tickets')
                     ->where('id', (int) $ticketId)->value('requester_id');
 
                 return $ownerId === $employeeId;
@@ -141,7 +142,7 @@ class ModuleAccess
             $action = $parts[2] ?? '';
 
             if (is_numeric($idPart)) {
-                $ownerId = (int) \Illuminate\Support\Facades\DB::table('contracts')->where('id', (int) $idPart)->value('employee_id');
+                $ownerId = (int) DB::table('contracts')->where('id', (int) $idPart)->value('employee_id');
                 if ($ownerId === $employeeId && in_array($action, ['', 'render', 'request-otp', 'sign'], true)) {
                     return true;
                 }
@@ -165,7 +166,7 @@ class ModuleAccess
             $rid = $parts[1] ?? '';
             if (is_numeric($rid)) {
                 $table = $segment === 'leave-requests' ? 'leave_requests' : 'attendance_adjustment_requests';
-                $ownerId = (int) \Illuminate\Support\Facades\DB::table($table)
+                $ownerId = (int) DB::table($table)
                     ->where('id', (int) $rid)->value('employee_id');
 
                 return $ownerId === $employeeId;
@@ -187,7 +188,7 @@ class ModuleAccess
                 $parts = explode('/', ltrim($path, '/'));
                 $offerId = $parts[1] ?? '';
                 if (is_numeric($offerId)) {
-                    $ownerId = (int) \Illuminate\Support\Facades\DB::table('shift_coverage_offers')
+                    $ownerId = (int) DB::table('shift_coverage_offers')
                         ->where('id', (int) $offerId)->value('employee_id');
 
                     return $ownerId === $employeeId;
@@ -204,7 +205,7 @@ class ModuleAccess
             $parts = explode('/', ltrim($path, '/'));
             $ticketId = $parts[1] ?? '';
             if (is_numeric($ticketId)) {
-                $ownerId = (int) \Illuminate\Support\Facades\DB::table('overtime_requests')
+                $ownerId = (int) DB::table('overtime_requests')
                     ->where('id', (int) $ticketId)
                     ->whereRaw("meta->>'kind' = 'MANAGER_TICKET'")
                     ->value('employee_id');
@@ -247,7 +248,7 @@ class ModuleAccess
             $parts = explode('/', ltrim($path, '/'));
             $rid = $parts[1] ?? '';
             if (is_numeric($rid)) {
-                $ownerId = (int) \Illuminate\Support\Facades\DB::table('salary_details')
+                $ownerId = (int) DB::table('salary_details')
                     ->where('id', (int) $rid)->value('employee_id');
 
                 return $ownerId === $employeeId;
@@ -258,15 +259,22 @@ class ModuleAccess
 
         if (! in_array($segment, self::SELF_SERVICE, true)) {
             if ($segment === 'attendance' && (
-                in_array($path, ['attendance/overview', 'attendance/changes'], true)
+                in_array($path, ['attendance/overview', 'attendance/changes', 'attendance/timesheet/overview'], true)
                 || str_starts_with($path, 'attendance/realtime/')
             )) {
                 return true;
             }
+            if ($segment === 'attendance' && preg_match('#^attendance/operations/[^/]+$#', $path)) {
+                $operation = DB::table('attendance_operations')
+                    ->where('id', basename($path))
+                    ->first(['requested_by']);
+
+                return (int) ($operation?->requested_by ?? 0) === $employeeId;
+            }
             if ($segment === 'attendance' && str_starts_with($path, 'attendance/timesheet')) {
                 $method = strtoupper($request->method());
                 if ($method === 'GET' && preg_match('#^attendance/timesheet/exports/([^/]+)(?:/download)?$#', $path, $matches)) {
-                    $export = \Illuminate\Support\Facades\DB::table('attendance_timesheet_exports')
+                    $export = DB::table('attendance_timesheet_exports')
                         ->where('id', $matches[1])
                         ->first(['requested_by', 'filters']);
                     $filters = is_string($export?->filters) ? json_decode($export->filters, true) : (array) ($export?->filters ?? []);
@@ -279,14 +287,24 @@ class ModuleAccess
 
                 return $target !== null && (int) $target === $employeeId;
             }
+
             return false;
+        }
+
+        // Web/mobile check-in/out resolve the employee exclusively from the
+        // authenticated account. The optional employee_id is only a mismatch
+        // guard in the controller, so the middleware must not require it.
+        if ($segment === 'attendances'
+            && in_array($path, ['attendances/check-in', 'attendances/check-out'], true)
+            && strtoupper($request->method()) === 'POST') {
+            return true;
         }
 
         if ($segment === 'attendances' && strtoupper($request->method()) === 'GET') {
             $parts = explode('/', ltrim($path, '/'));
             $attendanceId = $parts[1] ?? '';
             if (is_numeric($attendanceId)) {
-                $ownerId = (int) \Illuminate\Support\Facades\DB::table('attendances')
+                $ownerId = (int) DB::table('attendances')
                     ->where('id', (int) $attendanceId)->value('employee_id');
 
                 return $ownerId === $employeeId;

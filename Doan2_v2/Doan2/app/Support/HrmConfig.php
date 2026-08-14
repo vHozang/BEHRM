@@ -21,17 +21,27 @@ use Illuminate\Support\Facades\DB;
  */
 class HrmConfig
 {
+    /** @var array<int, array<string, mixed>> */
+    private static array $memoized = [];
+
     public static function get(string $key, mixed $default = null): mixed
     {
         if (TenantContext::hasTenant()) {
+            $tenantId = (int) TenantContext::id();
+            if (array_key_exists($key, self::$memoized[$tenantId] ?? [])) {
+                return self::$memoized[$tenantId][$key];
+            }
+
             $row = DB::table('system_configs')
-                ->where('tenant_id', TenantContext::id())
+                ->where('tenant_id', $tenantId)
                 ->where('config_key', $key)
                 ->first();
 
             if ($row) {
-                return self::decode($row);
+                return self::$memoized[$tenantId][$key] = self::decode($row);
             }
+
+            return self::$memoized[$tenantId][$key] = config("hrm.$key", $default);
         }
 
         return config("hrm.$key", $default);
@@ -75,6 +85,14 @@ class HrmConfig
                 'created_at' => now(),
             ])));
         }
+
+        self::$memoized[(int) TenantContext::id()][$key] = $value;
+    }
+
+    /** Clear request/job-local values when the tenant context ends or changes. */
+    public static function flushMemoized(): void
+    {
+        self::$memoized = [];
     }
 
     private static function decode(object $row): mixed
