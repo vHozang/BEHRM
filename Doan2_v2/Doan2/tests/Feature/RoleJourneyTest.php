@@ -833,24 +833,34 @@ class RoleJourneyTest extends TestCase
     {
         $first = $this->actor('first');
         $second = $this->actor('second');
-        $hr = $this->actor('helpdesk', ['communications']);
+        $hr = $this->actor('HR', ['communications']);
+        $categoryId = DB::table('service_categories')->insertGetId([
+            'category_code' => 'QA-HELPDESK',
+            'category_name' => 'QA Helpdesk',
+            'status' => 'ACTIVE',
+            'tenant_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $firstTicket = $this->withToken($first['token'])->postJson('/api/v1/service-tickets', [
             'ticket_code' => 'QA-1',
             'requester_id' => $second['id'],
             'title' => 'First ticket',
             'description' => 'Created by first employee',
+            'category_id' => $categoryId,
             'priority' => 'normal',
             'status' => 'completed',
         ])->assertCreated()
             ->assertJsonPath('data.requester_id', $first['id'])
-            ->assertJsonPath('data.status', 'pending')
+            ->assertJsonPath('data.status', 'PENDING')
             ->json('data.id');
 
         $secondTicket = $this->withToken($second['token'])->postJson('/api/v1/service-tickets', [
             'ticket_code' => 'QA-2',
             'title' => 'Second ticket',
             'description' => 'Created by second employee',
+            'category_id' => $categoryId,
             'priority' => 'high',
         ])->assertCreated()->json('data.id');
 
@@ -866,21 +876,21 @@ class RoleJourneyTest extends TestCase
             ->assertForbidden();
 
         $this->withToken($first['token'])
-            ->patchJson('/api/v1/service-tickets/'.$firstTicket, ['status' => 'cancelled'])
+            ->postJson('/api/v1/service-tickets/'.$firstTicket.'/cancel')
             ->assertOk()
-            ->assertJsonPath('data.status', 'cancelled');
+            ->assertJsonPath('data.status', 'CANCELLED');
         $this->withToken($first['token'])
             ->deleteJson('/api/v1/service-tickets/'.$firstTicket)
             ->assertConflict();
-        $this->assertDatabaseHas('service_tickets', ['id' => $firstTicket, 'status' => 'cancelled']);
+        $this->assertDatabaseHas('service_tickets', ['id' => $firstTicket, 'status' => 'CANCELLED']);
 
         $this->withToken($hr['token'])->getJson('/api/v1/service-tickets')
             ->assertOk()
             ->assertJsonCount(2, 'data.items');
         $this->withToken($hr['token'])
-            ->patchJson('/api/v1/service-tickets/'.$secondTicket, ['status' => 'processing'])
+            ->patchJson('/api/v1/service-tickets/'.$secondTicket, ['status' => 'IN_PROGRESS'])
             ->assertOk()
-            ->assertJsonPath('data.status', 'processing');
+            ->assertJsonPath('data.status', 'IN_PROGRESS');
     }
 
     public function test_employee_directory_hides_sensitive_fields_from_regular_employees(): void

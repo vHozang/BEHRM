@@ -305,23 +305,34 @@ class PayrollRunService
                     ->whereBetween('work_date', [$periodStart, $periodEnd])
                     ->sum('amount');
 
-                // Thưởng / lương tháng 13 / thưởng Tết cho kỳ này (payroll_adjustments,
-                // type BONUS/THANG_13/THUONG…). LUẬT VN: thưởng CHỊU thuế TNCN nhưng
-                // KHÔNG đóng BHXH — nên cộng vào gross + thu nhập chịu thuế, còn BH vẫn
-                // tính trên $baseSalary (không đổi ⇒ thưởng nằm ngoài nền BHXH, Đ.89 Luật BHXH).
-                $bonusTotal = (float) DB::table('payroll_adjustments')
+                // Chỉ điều chỉnh đã qua maker-checker mới được engine sử dụng. APPLIED
+                // vẫn được đọc khi chạy lại để salary_details được ghi đè idempotent.
+                $adjustmentRows = DB::table('payroll_adjustments')
                     ->where('tenant_id', $tenantId)
+                    ->where('legal_entity_id', $legalEntityId)
                     ->where('employee_id', $employeeId)
                     ->where('paid_period_id', $salaryPeriodId)
-                    ->whereIn('adjustment_type', ['BONUS', 'THANG_13', 'THUONG', 'THUONG_TET'])
-                    ->whereRaw("UPPER(COALESCE(status, '')) NOT IN ('CANCELLED', 'REJECTED', 'VOID')")
+                    ->whereIn('status', ['APPROVED', 'APPLIED'])
+                    ->get(['id', 'adjustment_type', 'amount', 'status']);
+                $earningTypes = ['BONUS', 'THANG_13', 'THUONG', 'THUONG_TET', 'EARNING', 'OTHER_EARNING'];
+                $deductionTypes = ['DEDUCTION', 'ADVANCE', 'OTHER_DEDUCTION'];
+                $bonusTypes = ['BONUS', 'THANG_13', 'THUONG', 'THUONG_TET'];
+                $bonusTotal = (float) $adjustmentRows
+                    ->whereIn('adjustment_type', $bonusTypes)
+                    ->sum('amount');
+                $otherAdjustmentEarnings = (float) $adjustmentRows
+                    ->whereIn('adjustment_type', array_values(array_diff($earningTypes, $bonusTypes)))
+                    ->sum('amount');
+                $adjustmentEarningTotal = $bonusTotal + $otherAdjustmentEarnings;
+                $adjustmentDeductionTotal = (float) $adjustmentRows
+                    ->whereIn('adjustment_type', $deductionTypes)
                     ->sum('amount');
 
                 // GROSS = tổng thu nhập TRƯỚC khấu trừ. Khấu trừ cố định (tạm ứng,
                 // đoàn phí…) là khấu trừ SAU THUẾ: trừ vào NET, KHÔNG giảm gross và
                 // KHÔNG giảm thu nhập chịu thuế (chỉ BH + giảm trừ gia cảnh mới
                 // giảm thuế). Trước đây trừ vào gross → gross sai + tính thiếu thuế.
-                $gross = round(max(0.0, $proratedBase + $proratedAllowance + $overtimePay + $pieceRatePay + $bonusTotal), 4);
+                $gross = round(max(0.0, $proratedBase + $proratedAllowance + $overtimePay + $pieceRatePay + $adjustmentEarningTotal), 4);
                 // Thu nhập chịu thuế: dùng $overtimeTaxable (đã loại phần phụ trội
                 // OT được miễn thuế) thay vì toàn bộ $overtimePay. Thưởng cộng đủ (chịu thuế).
                 // Thu nhập chịu thuế dùng phụ cấp GẮN CỜ is_taxable (ăn ca miễn thuế
@@ -329,8 +340,8 @@ class PayrollRunService
                 // khi tắt hẳn (false → bỏ toàn bộ phụ cấp khỏi thuế như cũ).
                 $proratedTaxableAllowance = round($taxableAllowance * $prorationFactor, 4);
                 $grossTaxable = $allowancesTaxable
-                    ? round(max(0.0, $proratedBase + $proratedTaxableAllowance + $overtimeTaxable + $pieceRatePay + $bonusTotal), 4)
-                    : round(max(0.0, $proratedBase + $overtimeTaxable + $pieceRatePay + $bonusTotal), 4);
+                    ? round(max(0.0, $proratedBase + $proratedTaxableAllowance + $overtimeTaxable + $pieceRatePay + $adjustmentEarningTotal), 4)
+                    : round(max(0.0, $proratedBase + $overtimeTaxable + $pieceRatePay + $adjustmentEarningTotal), 4);
 
                 // Active dependents registered within the period window.
                 // status is mixed-encoded across data ('true','1','ACTIVE',NULL);
@@ -363,7 +374,10 @@ class PayrollRunService
                 $taxableIncome = max(0.0, round($grossTaxable - $empInsurance['total'] - $relief, 4));
                 $pit = $this->tax->pit($taxableIncome);
 
-                $preAttendanceDeductionNet = round($gross - $empInsurance['total'] - $pit['tax'] - $fixedDeductions, 4);
+                $preAttendanceDeductionNet = round(
+                    $gross - $empInsurance['total'] - $pit['tax'] - $fixedDeductions - $adjustmentDeductionTotal,
+                    4,
+                );
                 $standardDaysForViolation = $attendance && (float) ($attendance->standard_days ?? 0) > 0
                     ? (float) $attendance->standard_days
                     : 0.0;
@@ -410,6 +424,10 @@ class PayrollRunService
                     'overtime_premium_tax_exempt' => $otPremiumExempt,
                     'piece_rate_pay' => $pieceRatePay,
                     'bonus_total' => $bonusTotal,
+                    'payroll_adjustment_earning_total' => $adjustmentEarningTotal,
+                    'payroll_adjustment_other_earning_total' => $otherAdjustmentEarnings,
+                    'payroll_adjustment_deduction_total' => $adjustmentDeductionTotal,
+                    'payroll_adjustment_ids' => $adjustmentRows->pluck('id')->map(fn ($id) => (int) $id)->all(),
                     'fixed_deduction_total' => $fixedDeductions,
                     'pre_attendance_deduction_net' => $preAttendanceDeductionNet,
                     'attendance_violation_deduction' => $attendanceViolationDeduction,
@@ -481,6 +499,7 @@ class PayrollRunService
                     ['INFO', 'OT_EXEMPT', 'Phụ trội tăng ca (miễn thuế TNCN)', $otPremiumExempt ? $otPremiumPay : 0.0],
                     ['EARNING', 'PIECE_RATE', 'Công khoán sản phẩm', $pieceRatePay],
                     ['EARNING', 'BONUS', 'Thưởng / Lương tháng 13', $bonusTotal],
+                    ['EARNING', 'PAYROLL_ADJUSTMENT', 'Điều chỉnh tăng lương khác', $otherAdjustmentEarnings],
                 ]);
                 $this->writeBreakdowns($detailId, $tenantId, $legalEntityId, $now, array_merge($lines, [
                     ['DEDUCTION', 'INS_BHXH', 'BHXH (8%)', $empInsurance['bhxh']],
@@ -488,6 +507,7 @@ class PayrollRunService
                     ['DEDUCTION', 'INS_BHTN', 'BHTN (1%)', $empInsurance['bhtn']],
                     ['DEDUCTION', 'PIT', 'Thuế TNCN', $pit['tax']],
                     ['DEDUCTION', 'FIXED_DEDUCTION', 'Khấu trừ cố định', $fixedDeductions],
+                    ['DEDUCTION', 'PAYROLL_ADJUSTMENT', 'Điều chỉnh khấu trừ lương', $adjustmentDeductionTotal],
                     ['DEDUCTION', 'ATTENDANCE_VIOLATION', 'Khấu trừ đi trễ/về sớm', $attendanceViolationDeduction],
                     ['INFO', 'INS_BASE', 'Nền đóng BHXH (lương + PC tính chất lương)', $insuranceBase],
                     ['INFO', 'WORK_DAYS', 'Số ngày công thực tế (chuẩn '.(float) ($attendance?->standard_days ?? 26).')', (float) ($attendance?->actual_work_days ?? 0)],
@@ -508,6 +528,19 @@ class PayrollRunService
                         ->whereIn('id', $attendanceReviewRows->pluck('id')->all())
                         ->where('status', 'APPROVED')
                         ->update(['status' => 'APPLIED', 'applied_at' => $now, 'updated_at' => $now]);
+                }
+                if ($adjustmentRows->where('status', 'APPROVED')->isNotEmpty()) {
+                    DB::table('payroll_adjustments')
+                        ->where('tenant_id', $tenantId)
+                        ->where('legal_entity_id', $legalEntityId)
+                        ->whereIn('id', $adjustmentRows->where('status', 'APPROVED')->pluck('id')->all())
+                        ->where('status', 'APPROVED')
+                        ->update([
+                            'status' => 'APPLIED',
+                            'paid_salary_detail_id' => $detailId,
+                            'applied_at' => $now,
+                            'updated_at' => $now,
+                        ]);
                 }
                 $processed++;
             }

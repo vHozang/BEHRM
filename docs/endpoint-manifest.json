@@ -1,0 +1,1960 @@
+{
+  "version": 1,
+  "statuses": {
+    "UI_DIRECT": "Được màn hình hoặc service frontend gọi trực tiếp.",
+    "UI_INDIRECT": "Được dùng qua interceptor, upload/download, realtime hoặc workflow chuyên biệt.",
+    "INTERNAL": "Endpoint vận hành, bridge, worker, telemetry hoặc hạ tầng.",
+    "DEPRECATED": "Contract cũ được giữ để tương thích nhưng không dùng cho UI mới.",
+    "BACKEND_ONLY": "Dữ liệu engine hoặc API chủ ý chưa có thao tác UI trực tiếp."
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/",
+      "action": "Closure",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "GET",
+      "path": "/api",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@root",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@root",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/{resource}",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@index",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/{resource}",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@store",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/{resource}/{id}",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@destroy",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/{resource}/{id}",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@show",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/{resource}/{id}",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/{resource}/{id}",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/activity-logs",
+      "action": "App\\Http\\Controllers\\Api\\AuthController@activityLogs",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai/ask",
+      "action": "App\\Http\\Controllers\\Api\\AiAssistantController@ask",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/approval-flows",
+      "action": "App\\Http\\Controllers\\Api\\RequestConfigurationController@approvalFlows",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/approval-flows",
+      "action": "App\\Http\\Controllers\\Api\\RequestConfigurationController@storeApprovalFlow",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/approval-flows/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RequestConfigurationController@destroyApprovalFlow",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/approval-flows/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RequestConfigurationController@updateApprovalFlow",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/approval-flows/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RequestConfigurationController@updateApprovalFlow",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance-adjustments",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceRegularizationController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance-adjustments",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceRegularizationController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance-adjustments/{id}",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceRegularizationController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance-adjustments/{id}/approve",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceRegularizationController@approve",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance-adjustments/{id}/cancel",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceRegularizationController@cancel",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance-adjustments/{id}/reject",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceRegularizationController@reject",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance-devices",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceDeviceController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance-devices",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceDeviceController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/attendance-devices/{id}",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceDeviceController@destroy",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance-devices/{id}",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceDeviceController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/attendance-devices/{id}",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceDeviceController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance-devices/{id}/rotate-token",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceDeviceController@rotateToken",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance/changes",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@changes",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance/device-sync",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceDeviceSyncController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance/device-sync",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceDeviceSyncController@requestSync",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance/operations/{runId}",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@operation",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance/overview",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@overview",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance/payroll-reviews",
+      "action": "App\\Http\\Controllers\\Api\\AttendancePayrollReviewController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance/payroll-reviews/{id}/decision",
+      "action": "App\\Http\\Controllers\\Api\\AttendancePayrollReviewController@decision",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance/realtime/auth",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceRealtimeController@authenticate",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance/realtime/config",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceRealtimeController@config",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance/recompute",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@recompute",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance/summary/run",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@summaryRun",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance/timesheet",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@timesheet",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance/timesheet/exports",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceTimesheetExportController@store",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance/timesheet/exports/{id}",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceTimesheetExportController@show",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance/timesheet/exports/{id}/download",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceTimesheetExportController@download",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendance/timesheet/overview",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@timesheetOverview",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendances",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attendances/{id}",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/attendances/{id}",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendances/{id}/verify",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@verifyAttendance",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendances/check-in",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@checkIn",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendances/check-out",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@checkOut",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audit-logs",
+      "action": "App\\Http\\Controllers\\Api\\AuditLogController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/change-password",
+      "action": "App\\Http\\Controllers\\Api\\AuthController@changePassword",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/forgot-password",
+      "action": "App\\Http\\Controllers\\Api\\AuthController@forgotPassword",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/hierarchy",
+      "action": "App\\Http\\Controllers\\Api\\AuthController@hierarchy",
+      "status": "DEPRECATED"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "action": "App\\Http\\Controllers\\Api\\AuthController@login",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "action": "App\\Http\\Controllers\\Api\\AuthController@logout",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "action": "App\\Http\\Controllers\\Api\\AuthController@me",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/refresh",
+      "action": "App\\Http\\Controllers\\Api\\AuthController@refresh",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/reset-password",
+      "action": "App\\Http\\Controllers\\Api\\AuthController@resetPassword",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/ui-preferences",
+      "action": "App\\Http\\Controllers\\Api\\AuthController@uiPreferences",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/contract-templates",
+      "action": "App\\Http\\Controllers\\Api\\ContractTemplateController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/contract-templates",
+      "action": "App\\Http\\Controllers\\Api\\ContractTemplateController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/contract-templates/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ContractTemplateController@destroy",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/contract-templates/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ContractTemplateController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/contract-templates/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ContractTemplateController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/contract-templates/placeholders",
+      "action": "App\\Http\\Controllers\\Api\\ContractTemplateController@placeholders",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/contracts",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/contracts",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/contracts/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@destroy",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/contracts/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/contracts/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/contracts/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/contracts/{id}/activate",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@activate",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/contracts/{id}/render",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@render",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/contracts/{id}/request-otp",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@requestOtp",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/contracts/{id}/send-sign",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@sendForSign",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/contracts/{id}/sign",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@sign",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/contracts/{id}/terminate",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@terminate",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/contracts/lookup",
+      "action": "App\\Http\\Controllers\\Api\\ContractController@lookup",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/dashboard/stats",
+      "action": "App\\Http\\Controllers\\Api\\AnalyticsController@stats",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/departments/{id}/assign-employee",
+      "action": "App\\Http\\Controllers\\Api\\DepartmentController@assignEmployee",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/departments/{id}/members",
+      "action": "App\\Http\\Controllers\\Api\\DepartmentController@members",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/departments/{id}/members",
+      "action": "App\\Http\\Controllers\\Api\\DepartmentController@addMember",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/departments/{id}/members/{employeeId}",
+      "action": "App\\Http\\Controllers\\Api\\DepartmentController@removeMember",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/departments/{id}/remove-employee",
+      "action": "App\\Http\\Controllers\\Api\\DepartmentController@unassignEmployee",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/departments/cost-summary",
+      "action": "App\\Http\\Controllers\\Api\\DepartmentController@costSummary",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/employee-record-files/{resource}/{id}/{slot}",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeRecordFileController@download",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/employee-record-files/{resource}/{id}/{slot}",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeRecordFileController@upload",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/employees",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/employees",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/employees/{id}",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@destroy",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/employees/{id}",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/employees/{id}",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/employees/{id}",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/employees/{id}/certificates",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@certificates",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/employees/{id}/certificates",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@storeCertificate",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/employees/{id}/certificates/{certId}",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@destroyCertificate",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/employees/{id}/departments",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@departments",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/employees/{id}/detach-from-org",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@detachFromOrg",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/employees/{id}/employment-histories",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@employmentHistories",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/employees/{id}/leave-balances",
+      "action": "App\\Http\\Controllers\\Api\\LeaveController@balance",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/employees/{id}/profile",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@showProfile",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/employees/{id}/profile",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@updateProfile",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/employees/import",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@import",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/employees/import-probation",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@importProbation",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/employees/lookup",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@lookup",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/employees/org-chart",
+      "action": "App\\Http\\Controllers\\Api\\EmployeeController@orgChart",
+      "status": "DEPRECATED"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/health",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@health",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/holidays/seed-vn",
+      "action": "App\\Http\\Controllers\\Api\\HolidayController@seed",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/holidays/statutory-preview",
+      "action": "App\\Http\\Controllers\\Api\\HolidayController@preview",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/insurance-claims",
+      "action": "App\\Http\\Controllers\\Api\\InsuranceClaimController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/insurance-claims",
+      "action": "App\\Http\\Controllers\\Api\\InsuranceClaimController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/insurance-claims/{id}",
+      "action": "App\\Http\\Controllers\\Api\\InsuranceClaimController@destroy",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/insurance-claims/{id}",
+      "action": "App\\Http\\Controllers\\Api\\InsuranceClaimController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/insurance-claims/{id}",
+      "action": "App\\Http\\Controllers\\Api\\InsuranceClaimController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/insurance-claims/{id}/certificate",
+      "action": "App\\Http\\Controllers\\Api\\InsuranceClaimController@downloadCertificate",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/insurance-claims/{id}/certificate",
+      "action": "App\\Http\\Controllers\\Api\\InsuranceClaimController@uploadCertificate",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/insurance-claims/{id}/payment",
+      "action": "App\\Http\\Controllers\\Api\\InsuranceClaimController@payment",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/insurance-claims/{id}/review",
+      "action": "App\\Http\\Controllers\\Api\\InsuranceClaimController@review",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/insurance-claims/{id}/submit",
+      "action": "App\\Http\\Controllers\\Api\\InsuranceClaimController@submit",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/internal/attendance/device-control",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceDeviceSyncController@control",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/internal/attendance/device-punch",
+      "action": "App\\Http\\Controllers\\Api\\DeviceAttendanceController@punch",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/internal/attendance/device-sync-status",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceDeviceSyncController@report",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/internal/recruitment-ai-jobs/process",
+      "action": "Closure",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/interviews",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@interviewsIndex",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/interviews",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@storeInterview",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/interviews/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@destroyInterview",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/interviews/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@showInterview",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/interviews/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@updateInterview",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/interviews/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@updateInterview",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/interviews/{id}/manager-review",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@interviewManagerReview",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/leave-advancement-requests",
+      "action": "App\\Http\\Controllers\\Api\\LeaveAdvancementController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/leave-advancement-requests",
+      "action": "App\\Http\\Controllers\\Api\\LeaveAdvancementController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/leave-advancement-requests/{id}",
+      "action": "App\\Http\\Controllers\\Api\\LeaveAdvancementController@show",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/leave-advancement-requests/{id}/cancel",
+      "action": "App\\Http\\Controllers\\Api\\LeaveAdvancementController@cancel",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/leave-advancement-requests/{id}/hr-decision",
+      "action": "App\\Http\\Controllers\\Api\\LeaveAdvancementController@hrDecision",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/leave-advancement-requests/{id}/manager-decision",
+      "action": "App\\Http\\Controllers\\Api\\LeaveAdvancementController@managerDecision",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/leave-requests",
+      "action": "App\\Http\\Controllers\\Api\\LeaveController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/leave-requests",
+      "action": "App\\Http\\Controllers\\Api\\LeaveController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/leave-requests/{id}",
+      "action": "App\\Http\\Controllers\\Api\\LeaveController@destroy",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/leave-requests/{id}",
+      "action": "App\\Http\\Controllers\\Api\\LeaveController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/leave-requests/{id}",
+      "action": "App\\Http\\Controllers\\Api\\LeaveController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/leave-requests/{id}",
+      "action": "App\\Http\\Controllers\\Api\\LeaveController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/leave-requests/{id}/approve",
+      "action": "App\\Http\\Controllers\\Api\\LeaveController@approve",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/leave-requests/{id}/cancel",
+      "action": "App\\Http\\Controllers\\Api\\LeaveController@cancel",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/leave-requests/{id}/reject",
+      "action": "App\\Http\\Controllers\\Api\\LeaveController@reject",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/leave/accrual/run",
+      "action": "App\\Http\\Controllers\\Api\\LeaveController@accrualRun",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/legal-entities",
+      "action": "App\\Http\\Controllers\\Api\\LegalEntityController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/legal-entities",
+      "action": "App\\Http\\Controllers\\Api\\LegalEntityController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/legal-entities/{id}",
+      "action": "App\\Http\\Controllers\\Api\\LegalEntityController@destroy",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/legal-entities/{id}",
+      "action": "App\\Http\\Controllers\\Api\\LegalEntityController@show",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/legal-entities/{id}",
+      "action": "App\\Http\\Controllers\\Api\\LegalEntityController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/legal-entities/{id}",
+      "action": "App\\Http\\Controllers\\Api\\LegalEntityController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/news/{id}/read",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications",
+      "action": "App\\Http\\Controllers\\Api\\NotificationController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/{id}/read",
+      "action": "App\\Http\\Controllers\\Api\\NotificationController@markRead",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/read-all",
+      "action": "App\\Http\\Controllers\\Api\\NotificationController@markAllRead",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/onboarding-checklists",
+      "action": "App\\Http\\Controllers\\Api\\OnboardingController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/onboarding-checklists",
+      "action": "App\\Http\\Controllers\\Api\\OnboardingController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/onboarding-checklists/{id}",
+      "action": "App\\Http\\Controllers\\Api\\OnboardingController@destroy",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/onboarding-checklists/{id}",
+      "action": "App\\Http\\Controllers\\Api\\OnboardingController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/onboarding-checklists/{id}/status",
+      "action": "App\\Http\\Controllers\\Api\\OnboardingController@updateStatus",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/onboarding-checklists/{id}/tasks",
+      "action": "App\\Http\\Controllers\\Api\\OnboardingController@addTask",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/onboarding-checklists/{id}/tasks/{taskId}",
+      "action": "App\\Http\\Controllers\\Api\\OnboardingController@deleteTask",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/onboarding-checklists/{id}/tasks/{taskId}",
+      "action": "App\\Http\\Controllers\\Api\\OnboardingController@updateTask",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/organization-chart/structure",
+      "action": "App\\Http\\Controllers\\Api\\OrganizationChartController@structure",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/overtime-requests",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@overtimeIndex",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/overtime-requests",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@storeOvertime",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/overtime-requests/{id}/approve",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@approveOvertime",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/overtime-requests/usage",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@overtimeUsage",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/overtime-tickets",
+      "action": "App\\Http\\Controllers\\Api\\OvertimeTicketController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/overtime-tickets/{id}/cancel",
+      "action": "App\\Http\\Controllers\\Api\\OvertimeTicketController@cancel",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/overtime-tickets/{id}/respond",
+      "action": "App\\Http\\Controllers\\Api\\OvertimeTicketController@respond",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/payroll-adjustments",
+      "action": "App\\Http\\Controllers\\Api\\PayrollAdjustmentController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/payroll-adjustments",
+      "action": "App\\Http\\Controllers\\Api\\PayrollAdjustmentController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/payroll-adjustments/{id}",
+      "action": "App\\Http\\Controllers\\Api\\PayrollAdjustmentController@destroy",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/payroll-adjustments/{id}",
+      "action": "App\\Http\\Controllers\\Api\\PayrollAdjustmentController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/payroll-adjustments/{id}",
+      "action": "App\\Http\\Controllers\\Api\\PayrollAdjustmentController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/payroll-adjustments/{id}/approve",
+      "action": "App\\Http\\Controllers\\Api\\PayrollAdjustmentController@approve",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/payroll-adjustments/{id}/reject",
+      "action": "App\\Http\\Controllers\\Api\\PayrollAdjustmentController@reject",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/payroll-adjustments/{id}/submit",
+      "action": "App\\Http\\Controllers\\Api\\PayrollAdjustmentController@submit",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/payroll/bonus-run",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@bonusRun",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/payroll/payslip-issues",
+      "action": "App\\Http\\Controllers\\Api\\PayslipController@issues",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/payroll/payslip-issues/{id}/retry",
+      "action": "App\\Http\\Controllers\\Api\\PayslipController@retryIssue",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/payroll/run",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@run",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/payroll/run-status",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@runStatus",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/personnel-decisions",
+      "action": "App\\Http\\Controllers\\Api\\PersonnelDecisionController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/personnel-decisions",
+      "action": "App\\Http\\Controllers\\Api\\PersonnelDecisionController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/personnel-decisions/{id}/approve",
+      "action": "App\\Http\\Controllers\\Api\\PersonnelDecisionController@approve",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/personnel-decisions/{id}/reject",
+      "action": "App\\Http\\Controllers\\Api\\PersonnelDecisionController@reject",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/piece-rate-entries",
+      "action": "App\\Http\\Controllers\\Api\\PieceRateController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/piece-rate-entries",
+      "action": "App\\Http\\Controllers\\Api\\PieceRateController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/piece-rate-entries/{id}",
+      "action": "App\\Http\\Controllers\\Api\\PieceRateController@destroy",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/platform/tenants",
+      "action": "App\\Http\\Controllers\\Api\\PlatformController@index",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/platform/tenants",
+      "action": "App\\Http\\Controllers\\Api\\PlatformController@store",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/platform/tenants/{id}",
+      "action": "App\\Http\\Controllers\\Api\\PlatformController@show",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/policies/{id}/acknowledge",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/profile-change-requests",
+      "action": "App\\Http\\Controllers\\Api\\ProfileChangeRequestController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/profile-change-requests",
+      "action": "App\\Http\\Controllers\\Api\\ProfileChangeRequestController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/profile-change-requests/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ProfileChangeRequestController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/profile-change-requests/{id}/approve",
+      "action": "App\\Http\\Controllers\\Api\\ProfileChangeRequestController@approve",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/profile-change-requests/{id}/cancel",
+      "action": "App\\Http\\Controllers\\Api\\ProfileChangeRequestController@cancel",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/profile-change-requests/{id}/reject",
+      "action": "App\\Http\\Controllers\\Api\\ProfileChangeRequestController@reject",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/profile-change-requests/fields",
+      "action": "App\\Http\\Controllers\\Api\\ProfileChangeRequestController@fields",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/public/positions",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@publicPositions",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/public/recruitment-posts",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentPostController@publicListing",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/public/recruitment-posts/{slug}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentPostController@publicShow",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/recruitment/applications",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@publicApplication",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/recruitment-ai/feedback-stats",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@aiFeedbackStats",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/recruitment-candidates",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/recruitment-candidates",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/recruitment-candidates/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@destroy",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/recruitment-candidates/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/recruitment-candidates/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/recruitment-candidates/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/recruitment-candidates/{id}/advance",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@advanceStage",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/recruitment-candidates/{id}/ai-score/retry",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@retryAiScore",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/recruitment-candidates/{id}/cv",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@downloadCv",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/recruitment-candidates/{id}/cv",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@uploadCv",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/recruitment-candidates/{id}/hire",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@hire",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/recruitment-candidates/{id}/manager-review",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@managerReview",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/recruitment-candidates/{id}/reject",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentController@reject",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/recruitment-posts",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentPostController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/recruitment-posts",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentPostController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/recruitment-posts/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentPostController@destroy",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/recruitment-posts/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentPostController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/recruitment-posts/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentPostController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/recruitment-posts/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentPostController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/recruitment-posts/{id}/close",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentPostController@close",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/recruitment-posts/{id}/publish",
+      "action": "App\\Http\\Controllers\\Api\\RecruitmentPostController@publish",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/catalog",
+      "action": "App\\Http\\Controllers\\Api\\ReportTemplateController@catalog",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reports/generate",
+      "action": "App\\Http\\Controllers\\Api\\AnalyticsController@generateReport",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/history",
+      "action": "App\\Http\\Controllers\\Api\\ReportTemplateController@histories",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/history/{id}/download",
+      "action": "App\\Http\\Controllers\\Api\\ReportTemplateController@download",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/templates",
+      "action": "App\\Http\\Controllers\\Api\\ReportTemplateController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/reports/templates",
+      "action": "App\\Http\\Controllers\\Api\\ReportTemplateController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/reports/templates/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ReportTemplateController@destroy",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reports/templates/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ReportTemplateController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/reports/templates/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ReportTemplateController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/reports/templates/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ReportTemplateController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/request-types",
+      "action": "App\\Http\\Controllers\\Api\\RequestConfigurationController@requestTypes",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/request-types",
+      "action": "App\\Http\\Controllers\\Api\\RequestConfigurationController@storeRequestType",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/request-types/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RequestConfigurationController@destroyRequestType",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/request-types/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RequestConfigurationController@updateRequestType",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/request-types/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RequestConfigurationController@updateRequestType",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/requests",
+      "action": "App\\Http\\Controllers\\Api\\RequestApprovalController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/requests",
+      "action": "App\\Http\\Controllers\\Api\\RequestApprovalController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/requests/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RequestApprovalController@destroy",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/requests/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RequestApprovalController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/requests/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RequestApprovalController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/requests/{id}",
+      "action": "App\\Http\\Controllers\\Api\\RequestApprovalController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/requests/{id}/approve",
+      "action": "App\\Http\\Controllers\\Api\\RequestApprovalController@approve",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/requests/{id}/attachments",
+      "action": "App\\Http\\Controllers\\Api\\RequestApprovalController@attachments",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/requests/{id}/attachments",
+      "action": "App\\Http\\Controllers\\Api\\RequestApprovalController@uploadAttachment",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/requests/{id}/attachments/{attachmentId}",
+      "action": "App\\Http\\Controllers\\Api\\RequestApprovalController@downloadAttachment",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/requests/{id}/cancel",
+      "action": "App\\Http\\Controllers\\Api\\RequestApprovalController@cancel",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/requests/{id}/reject",
+      "action": "App\\Http\\Controllers\\Api\\RequestApprovalController@reject",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/salary-details",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@salaryDetails",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/salary-details",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@storeSalaryDetail",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/salary-details/{id}",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@destroySalaryDetail",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/salary-details/{id}",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@updateSalaryDetail",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/salary-details/{id}",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@updateSalaryDetail",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/salary-details/{id}/payslip",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@payslip",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/salary-details/{id}/payslip/email",
+      "action": "App\\Http\\Controllers\\Api\\PayslipController@email",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/salary-details/{id}/payslip/pdf",
+      "action": "App\\Http\\Controllers\\Api\\PayslipController@pdf",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/salary-periods",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/salary-periods",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/salary-periods/{id}",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@destroy",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/salary-periods/{id}",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/salary-periods/{id}",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/salary-periods/{id}",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/salary-periods/{id}/close",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@closePeriod",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/salary-periods/{id}/payslips/archive",
+      "action": "App\\Http\\Controllers\\Api\\PayslipController@archive",
+      "status": "UI_INDIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/salary-periods/{id}/payslips/publish",
+      "action": "App\\Http\\Controllers\\Api\\PayslipController@publish",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/salary-periods/{id}/payslips/readiness",
+      "action": "App\\Http\\Controllers\\Api\\PayslipController@readiness",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/salary-periods/{id}/payslips/status",
+      "action": "App\\Http\\Controllers\\Api\\PayslipController@status",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/salary-periods/{id}/reopen",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@reopenPeriod",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/salary-periods/{id}/submit",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@submitPeriod",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/salary-periods/suggestion",
+      "action": "App\\Http\\Controllers\\Api\\PayrollController@suggestion",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/service-tickets",
+      "action": "App\\Http\\Controllers\\Api\\ServiceTicketController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/service-tickets",
+      "action": "App\\Http\\Controllers\\Api\\ServiceTicketController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/service-tickets/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ServiceTicketController@destroy",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/service-tickets/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ServiceTicketController@show",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/service-tickets/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ServiceTicketController@update",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/service-tickets/{id}",
+      "action": "App\\Http\\Controllers\\Api\\ServiceTicketController@update",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/service-tickets/{id}/cancel",
+      "action": "App\\Http\\Controllers\\Api\\ServiceTicketController@cancel",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/service-tickets/{id}/updates",
+      "action": "App\\Http\\Controllers\\Api\\ServiceTicketController@addUpdate",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/catalog",
+      "action": "App\\Http\\Controllers\\Api\\SettingsController@catalog",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/general",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@index",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/settings/general",
+      "action": "App\\Http\\Controllers\\Api\\GenericResourceController@store",
+      "status": "BACKEND_ONLY"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/integrations/autorecruit/health",
+      "action": "App\\Http\\Controllers\\Api\\SettingsController@autoRecruitHealth",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/settings/notifications",
+      "action": "App\\Http\\Controllers\\Api\\SettingsController@notificationTemplates",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/settings/notifications",
+      "action": "App\\Http\\Controllers\\Api\\SettingsController@saveNotificationTemplates",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/settings/save",
+      "action": "App\\Http\\Controllers\\Api\\SettingsController@save",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/shift-coverage-offers",
+      "action": "App\\Http\\Controllers\\Api\\ShiftCoverageController@myOffers",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-coverage-offers/{id}/respond",
+      "action": "App\\Http\\Controllers\\Api\\ShiftCoverageController@respond",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/shift-coverage-requests",
+      "action": "App\\Http\\Controllers\\Api\\ShiftCoverageController@index",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-coverage-requests",
+      "action": "App\\Http\\Controllers\\Api\\ShiftCoverageController@store",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-coverage-requests/{id}/cancel",
+      "action": "App\\Http\\Controllers\\Api\\ShiftCoverageController@cancel",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-coverage-requests/{id}/offer",
+      "action": "App\\Http\\Controllers\\Api\\ShiftCoverageController@offer",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/shift-roster/calendar",
+      "action": "App\\Http\\Controllers\\Api\\ShiftRosterController@calendar",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-roster/generate",
+      "action": "App\\Http\\Controllers\\Api\\ShiftRosterController@generate",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-roster/import/apply",
+      "action": "App\\Http\\Controllers\\Api\\ShiftRosterController@importApply",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-roster/import/preview",
+      "action": "App\\Http\\Controllers\\Api\\ShiftRosterController@importPreview",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-roster/rotation/apply",
+      "action": "App\\Http\\Controllers\\Api\\ShiftRosterController@rotationApply",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-roster/rotation/preview",
+      "action": "App\\Http\\Controllers\\Api\\ShiftRosterController@rotationPreview",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/shift-roster/template",
+      "action": "App\\Http\\Controllers\\Api\\ShiftRosterController@template",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-swaps",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@requestShiftSwap",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/shift-swaps/{id}/approve",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@approveShiftSwap",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
+      "path": "/storage/{path}",
+      "action": "Closure",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "PUT",
+      "path": "/storage/{path}",
+      "action": "Closure",
+      "status": "INTERNAL"
+    },
+    {
+      "method": "GET",
+      "path": "/up",
+      "action": "Closure",
+      "status": "INTERNAL"
+    }
+  ],
+  "generic_resources": {
+    "allowances": "UI_DIRECT",
+    "approval-flows": "UI_DIRECT",
+    "approval-histories": "BACKEND_ONLY",
+    "approval-roles": "DEPRECATED",
+    "approval-steps": "BACKEND_ONLY",
+    "asset-assignments": "UI_DIRECT",
+    "asset-categories": "UI_DIRECT",
+    "asset-incidents": "UI_DIRECT",
+    "asset-locations": "UI_DIRECT",
+    "asset-maintenance": "UI_DIRECT",
+    "assets": "UI_DIRECT",
+    "banks": "UI_DIRECT",
+    "certificate-types": "UI_DIRECT",
+    "certificates": "UI_INDIRECT",
+    "contract-change-logs": "UI_DIRECT",
+    "contract-histories": "DEPRECATED",
+    "contract-templates": "UI_DIRECT",
+    "contract-types": "UI_DIRECT",
+    "dashboard-views": "INTERNAL",
+    "deductions": "UI_DIRECT",
+    "departments": "UI_DIRECT",
+    "dependents": "UI_DIRECT",
+    "document-types": "UI_DIRECT",
+    "employee-allowances": "UI_DIRECT",
+    "employee-deductions": "UI_DIRECT",
+    "employee-roles": "UI_DIRECT",
+    "employment-histories": "UI_DIRECT",
+    "holidays": "UI_DIRECT",
+    "identity-documents": "UI_DIRECT",
+    "insurance-claims": "UI_DIRECT",
+    "insurance-types": "UI_DIRECT",
+    "job-families": "UI_DIRECT",
+    "leave-advancement-config": "UI_DIRECT",
+    "leave-advancement-requests": "UI_DIRECT",
+    "leave-balances": "UI_INDIRECT",
+    "leave-carryover-tracking": "UI_DIRECT",
+    "leave-transactions": "UI_DIRECT",
+    "leave-types": "UI_DIRECT",
+    "nationalities": "UI_DIRECT",
+    "news": "UI_DIRECT",
+    "news-categories": "UI_DIRECT",
+    "news-reads": "UI_INDIRECT",
+    "notification-configs": "UI_INDIRECT",
+    "notifications": "UI_DIRECT",
+    "payroll-adjustments": "UI_DIRECT",
+    "permissions": "UI_DIRECT",
+    "policies": "UI_DIRECT",
+    "policy-acknowledgments": "UI_INDIRECT",
+    "positions": "UI_DIRECT",
+    "qualification-types": "UI_DIRECT",
+    "qualifications": "UI_DIRECT",
+    "recruitment-positions": "UI_DIRECT",
+    "report-histories": "BACKEND_ONLY",
+    "report-templates": "BACKEND_ONLY",
+    "request-attachments": "UI_INDIRECT",
+    "request-types": "UI_DIRECT",
+    "role-permissions": "UI_DIRECT",
+    "roles": "UI_DIRECT",
+    "salary-attendance-summary": "BACKEND_ONLY",
+    "salary-breakdowns": "BACKEND_ONLY",
+    "salary-components": "UI_DIRECT",
+    "seniority-leave-history": "UI_DIRECT",
+    "service-categories": "UI_DIRECT",
+    "service-ticket-updates": "BACKEND_ONLY",
+    "service-tickets": "UI_DIRECT",
+    "settings": "UI_DIRECT",
+    "shift-assignments": "UI_DIRECT",
+    "shift-schedule-details": "DEPRECATED",
+    "shift-schedules": "DEPRECATED",
+    "shift-swaps": "UI_DIRECT",
+    "shift-types": "UI_DIRECT",
+    "social-insurance-info": "UI_DIRECT",
+    "suppliers": "UI_DIRECT",
+    "users": "BACKEND_ONLY"
+  }
+}

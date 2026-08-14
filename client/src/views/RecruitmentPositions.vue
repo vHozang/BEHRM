@@ -1,5 +1,10 @@
 <template>
   <div class="space-y-6">
+    <div class="flex gap-2 border-b border-border">
+      <button v-for="tab in tabs" :key="tab.id" class="border-b-2 px-4 py-2 text-sm font-semibold" :class="activeTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground'" @click="activeTab = tab.id">{{ tab.label }}</button>
+    </div>
+
+    <template v-if="activeTab === 'posts'">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h1 class="text-3xl font-bold text-foreground">Tin Tuyển Dụng (JD)</h1>
@@ -126,6 +131,17 @@
       </article>
       <template #footer><BaseButton variant="outline" @click="showPreview = false">Đóng</BaseButton></template>
     </BaseModal>
+    </template>
+
+    <ResourceCrudPanel
+      v-else
+      resource="recruitment-positions"
+      title="Vị trí tuyển dụng"
+      description="Danh mục vị trí dùng để nhận ứng viên và liên kết với bài đăng tuyển dụng. Chuyển trạng thái để mở/đóng tuyển."
+      :columns="positionColumns"
+      :fields="positionFields"
+      :defaults="{ employment_type: 'FULL_TIME', status: 'OPEN', required_skills_json: [] }"
+    />
   </div>
 </template>
 
@@ -137,10 +153,26 @@ import BaseCard from '../components/BaseCard.vue';
 import BaseInput from '../components/BaseInput.vue';
 import BaseModal from '../components/BaseModal.vue';
 import BaseTable from '../components/BaseTable.vue';
+import ResourceCrudPanel from '../components/ResourceCrudPanel.vue';
 import { useToast } from '../composables/useToast';
 import { recruitmentService } from '../services/recruitmentService';
 
 const toast = useToast();
+const activeTab = ref('posts');
+const tabs = [{ id: 'posts', label: 'Bài đăng tuyển dụng' }, { id: 'positions', label: 'Vị trí tuyển dụng' }];
+const positionColumns = [
+  { key: 'position_name', label: 'Tên vị trí' },
+  { key: 'department_name', label: 'Phòng ban' },
+  { key: 'employment_type', label: 'Hình thức' },
+  { key: 'status', label: 'Trạng thái' },
+];
+const positionFields = [
+  { key: 'position_name', label: 'Tên vị trí', required: true, full: true },
+  { key: 'department_id', label: 'Phòng ban', type: 'resource', resource: 'departments', labelKey: 'department_name', codeKey: 'department_code', cast: 'number', nullable: true },
+  { key: 'employment_type', label: 'Hình thức', type: 'select', options: [{ value: 'FULL_TIME', label: 'Toàn thời gian' }, { value: 'PART_TIME', label: 'Bán thời gian' }, { value: 'CONTRACT', label: 'Hợp đồng' }, { value: 'REMOTE', label: 'Từ xa' }], required: true },
+  { key: 'status', label: 'Trạng thái', type: 'select', options: [{ value: 'OPEN', label: 'Đang tuyển' }, { value: 'CLOSED', label: 'Đã đóng' }], required: true },
+  { key: 'required_skills_json', label: 'Kỹ năng yêu cầu', type: 'textarea', cast: 'json-array', full: true, help: 'Nhập mỗi kỹ năng một dòng hoặc phân cách bằng dấu phẩy' },
+];
 const posts = ref([]);
 const showModal = ref(false);
 const showPreview = ref(false);

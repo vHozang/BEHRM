@@ -164,12 +164,18 @@ const openCreate = () => {
   showModal.value = true;
 };
 
-const openEdit = (d) => {
-  editing.value = d;
+const openEdit = async (d) => {
+  let detail = d;
+  try {
+    detail = await attendanceDeviceService.getById(d.id);
+  } catch {
+    // The list payload remains a safe fallback if the detail request fails.
+  }
+  editing.value = detail;
   formError.value = '';
   Object.assign(form, {
-    name: d.name, brand: d.brand, protocol: d.protocol, location: d.location || '',
-    ip: d.meta?.ip || '', port: d.meta?.port || '4370', serial: d.meta?.serial || '', api_key: d.meta?.api_key || '',
+    name: detail.name, brand: detail.brand, protocol: detail.protocol, location: detail.location || '',
+    ip: detail.meta?.ip || '', port: detail.meta?.port || '4370', serial: detail.meta?.serial || '', api_key: detail.meta?.api_key || '',
   });
   showModal.value = true;
 };

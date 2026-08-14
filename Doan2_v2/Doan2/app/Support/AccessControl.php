@@ -32,16 +32,69 @@ class AccessControl
     public const CAPABILITIES = [
         'payslip_issues.view' => 'Xem danh sách phiếu lương chưa phát hành',
         'org_chart.view' => 'Xem sơ đồ tổ chức theo đơn vị',
+        'requests.types.manage' => 'Quản lý loại yêu cầu',
+        'requests.flows.manage' => 'Quản lý luồng phê duyệt',
+        'requests.approve' => 'Duyệt yêu cầu trong phạm vi',
+        'payroll.periods.manage' => 'Quản lý kỳ lương',
+        'payroll.inputs.manage' => 'Quản lý dữ liệu đầu vào tính lương',
+        'payroll.adjustments.create' => 'Tạo điều chỉnh lương',
+        'payroll.adjustments.approve' => 'Duyệt điều chỉnh lương',
+        'payroll.run' => 'Chạy tính lương',
+        'payroll.amounts.view' => 'Xem số tiền lương',
+        'employee.records.manage' => 'Quản lý hồ sơ chi tiết nhân viên',
+        'assets.manage' => 'Quản lý tài sản',
+        'leave.manage' => 'Quản lý nghỉ phép',
+        'leave.advance.manager' => 'Duyệt tạm ứng phép cấp quản lý',
+        'leave.advance.hr' => 'Duyệt tạm ứng phép cấp nhân sự',
+        'insurance.review' => 'Thẩm định hồ sơ bảo hiểm',
+        'insurance.pay' => 'Xác nhận thanh toán bảo hiểm',
+        'communications.manage' => 'Quản lý truyền thông và helpdesk',
+        'reports.templates.manage' => 'Quản lý mẫu báo cáo',
+        'settings.catalogs.manage' => 'Quản lý danh mục dùng chung',
+        'roles.permissions.manage' => 'Quản lý quyền chi tiết của vai trò',
+        'recruitment.positions.manage' => 'Quản lý vị trí tuyển dụng',
     ];
 
     private const ROLE_CAPABILITIES = [
-        'ADMIN' => ['payslip_issues.view', 'org_chart.view'],
-        'TENANT_ADMIN' => ['payslip_issues.view', 'org_chart.view'],
-        'ACCOUNTANT' => ['payslip_issues.view'],
-        'HR' => ['payslip_issues.view', 'org_chart.view'],
-        'MANAGER' => ['org_chart.view'],
-        'DEPT_HEAD' => ['org_chart.view'],
+        'TENANT_ADMIN' => ['*'],
+        'ACCOUNTANT' => [
+            'payslip_issues.view', 'payroll.periods.manage', 'payroll.inputs.manage',
+            'payroll.adjustments.create', 'payroll.adjustments.approve', 'payroll.run',
+            'payroll.amounts.view', 'insurance.pay', 'reports.templates.manage',
+        ],
+        'HR' => [
+            'payslip_issues.view', 'org_chart.view', 'requests.types.manage',
+            'requests.flows.manage', 'requests.approve', 'employee.records.manage',
+            'assets.manage', 'leave.manage', 'leave.advance.hr', 'insurance.review',
+            'communications.manage', 'settings.catalogs.manage',
+            'recruitment.positions.manage',
+        ],
+        'MANAGER' => ['org_chart.view', 'requests.approve', 'leave.advance.manager'],
+        'DEPT_HEAD' => ['org_chart.view', 'requests.approve', 'leave.advance.manager'],
     ];
+
+    public static function defaultCapabilitiesForRole(string $roleCode): array
+    {
+        $configured = self::ROLE_CAPABILITIES[strtoupper($roleCode)] ?? [];
+
+        return in_array('*', $configured, true) ? array_keys(self::CAPABILITIES) : $configured;
+    }
+
+    public static function capabilityModule(string $capability): string
+    {
+        return match (true) {
+            str_starts_with($capability, 'payroll.'),
+            str_starts_with($capability, 'reports.'),
+            str_starts_with($capability, 'insurance.') => 'payroll',
+            str_starts_with($capability, 'requests.'),
+            str_starts_with($capability, 'leave.') => 'time',
+            str_starts_with($capability, 'recruitment.') => 'recruitment',
+            str_starts_with($capability, 'communications.') => 'communications',
+            str_starts_with($capability, 'settings.'),
+            str_starts_with($capability, 'roles.') => 'settings',
+            default => 'hr',
+        };
+    }
 
     /**
      * API path-prefix (first segment) → required module. Anything not listed is
@@ -54,6 +107,7 @@ class AccessControl
         'contract-change-logs' => 'hr', 'contract-histories' => 'hr',
         'personnel-decisions' => 'hr',   // quyết định nhân sự: tăng lương/điều chuyển/thôi việc
         'employment-histories' => 'hr', 'dependents' => 'hr',
+        'employee-record-files' => 'hr',
         'onboarding-checklists' => 'hr', 'profile-change-requests' => 'hr',
         'asset-assignments' => 'hr', 'asset-categories' => 'hr',
         'asset-incidents' => 'hr', 'asset-locations' => 'hr',
@@ -74,7 +128,7 @@ class AccessControl
         'leave-advancement-config' => 'time', 'leave-advancement-requests' => 'time',
         'leave-carryover-tracking' => 'time', 'leave-transactions' => 'time',
         'seniority-leave-history' => 'time', 'holidays' => 'time',
-        'requests' => 'time', 'approval-flows' => 'time',
+        'requests' => 'time', 'request-types' => 'time', 'approval-flows' => 'time',
         'approval-histories' => 'time', 'approval-roles' => 'time',
         'approval-steps' => 'time',
 
@@ -107,12 +161,53 @@ class AccessControl
         'permissions' => 'settings', 'role-permissions' => 'settings',
         'settings' => 'settings', 'banks' => 'settings',
         'nationalities' => 'settings', 'notification-configs' => 'settings',
-        'request-attachments' => 'settings', 'request-types' => 'settings',
-        'suppliers' => 'settings', 'users' => 'settings',
+        'request-attachments' => 'settings',
+        'suppliers' => 'hr', 'users' => 'settings',
     ];
 
     /** Authenticated endpoints that are self-scoped by their controllers. */
-    private const ALWAYS_ALLOWED = ['auth', 'ai', 'notifications'];
+    private const ALWAYS_ALLOWED = [
+        'auth', 'ai', 'notifications', 'requests', 'leave-requests', 'leave-advancement-requests',
+        'leave-transactions', 'leave-carryover-tracking', 'seniority-leave-history',
+        'service-tickets', 'insurance-claims', 'profile-change-requests',
+    ];
+
+    private const WRITE_CAPABILITY_BY_PATH = [
+        'request-types' => 'requests.types.manage',
+        'approval-flows' => 'requests.flows.manage',
+        'approval-steps' => 'requests.flows.manage',
+        'holidays' => 'leave.manage',
+        'allowances' => 'payroll.inputs.manage',
+        'deductions' => 'payroll.inputs.manage',
+        'employee-allowances' => 'payroll.inputs.manage',
+        'employee-deductions' => 'payroll.inputs.manage',
+        'salary-components' => 'payroll.inputs.manage',
+        'insurance-types' => 'payroll.inputs.manage',
+        'report-templates' => 'reports.templates.manage',
+        'asset-categories' => 'assets.manage',
+        'asset-incidents' => 'assets.manage',
+        'asset-locations' => 'assets.manage',
+        'asset-maintenance' => 'assets.manage',
+        'assets' => 'assets.manage',
+        'suppliers' => 'assets.manage',
+        'document-types' => 'employee.records.manage',
+        'identity-documents' => 'employee.records.manage',
+        'qualification-types' => 'employee.records.manage',
+        'qualifications' => 'employee.records.manage',
+        'social-insurance-info' => 'employee.records.manage',
+        'news' => 'communications.manage',
+        'news-categories' => 'communications.manage',
+        'policies' => 'communications.manage',
+        'service-categories' => 'communications.manage',
+        'recruitment-positions' => 'recruitment.positions.manage',
+        'banks' => 'settings.catalogs.manage',
+        'nationalities' => 'settings.catalogs.manage',
+        'job-families' => 'settings.catalogs.manage',
+        'positions' => 'settings.catalogs.manage',
+        'permissions' => 'roles.permissions.manage',
+        'role-permissions' => 'roles.permissions.manage',
+        'roles' => 'roles.permissions.manage',
+    ];
 
     /**
      * GET requests to these prefixes are always allowed for any authenticated
@@ -121,7 +216,7 @@ class AccessControl
     private const SHARED_READ = [
         'employees', 'departments', 'positions', 'job-titles', 'job-families',
         'nationalities', 'banks', 'contract-types', 'leave-types', 'roles',
-        'notifications', 'shift-types',
+        'notifications', 'shift-types', 'request-types', 'service-categories',
         // Tin nội bộ + chính sách công ty: MỌI nhân viên phải ĐỌC được (để nắm
         // thông báo + xác nhận nội quy). Chỉ GET mở; tạo/sửa/xóa vẫn cần module
         // communications (SHARED_READ chỉ nới GET).
@@ -172,7 +267,7 @@ class AccessControl
                 $q->whereNull('employee_roles.expiry_date')->orWhere('employee_roles.expiry_date', '>=', now());
             })
             ->orderBy('roles.id')
-            ->get(['roles.id', 'roles.role_code', 'roles.role_name', 'roles.meta']);
+            ->get(['roles.id', 'roles.role_code', 'roles.role_name', 'roles.meta', 'roles.tenant_id']);
 
         $roleSummaries = $roles->map(fn ($role) => [
             'id' => (int) $role->id,
@@ -209,7 +304,6 @@ class AccessControl
             $meta = is_string($role->meta ?? null) ? json_decode($role->meta, true) : (array) ($role->meta ?? []);
             $meta = is_array($meta) ? $meta : [];
             $roleCode = strtoupper((string) $role->role_code);
-            $capabilities = array_merge($capabilities, self::ROLE_CAPABILITIES[$roleCode] ?? []);
 
             if (! empty($meta['is_admin']) || $roleCode === 'ADMIN') {
                 return [
@@ -228,6 +322,35 @@ class AccessControl
             if (is_array($meta['modules'])) {
                 $modules = array_merge($modules, $meta['modules']);
             }
+        }
+
+        $roleIds = $roles->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if ($roleIds !== []) {
+            $tenantIds = $roles->pluck('tenant_id')->filter()->unique()->values()->all();
+            $expectedCapabilityCount = count(self::CAPABILITIES);
+            $capabilityCatalogReady = $tenantIds !== []
+                && collect($tenantIds)->every(function ($tenantId) use ($expectedCapabilityCount): bool {
+                    return DB::table('permissions')
+                        ->where('tenant_id', $tenantId)
+                        ->whereIn('permission_code', array_keys(self::CAPABILITIES))
+                        ->distinct()
+                        ->count('permission_code') === $expectedCapabilityCount;
+                });
+            if (! $capabilityCatalogReady) {
+                foreach ($roles as $role) {
+                    $capabilities = array_merge(
+                        $capabilities,
+                        self::defaultCapabilitiesForRole((string) $role->role_code),
+                    );
+                }
+            }
+            $assigned = DB::table('role_permissions as rp')
+                ->join('permissions as p', 'p.id', '=', 'rp.permission_id')
+                ->whereIn('rp.role_id', $roleIds)
+                ->whereColumn('rp.tenant_id', 'p.tenant_id')
+                ->pluck('p.permission_code')
+                ->all();
+            $capabilities = array_merge($capabilities, $assigned);
         }
 
         $modules = array_values(array_unique(array_filter($modules, fn ($m) => isset(self::MODULES[$m]))));
@@ -255,6 +378,12 @@ class AccessControl
         $access = self::forEmployee($employeeId, $isSuperAdmin);
 
         return ! empty($access['full']) || in_array($capability, $access['capabilities'] ?? [], true);
+    }
+
+    public static function accessHasCapability(array $access, string $capability): bool
+    {
+        return ! empty($access['full'])
+            || in_array($capability, $access['capabilities'] ?? [], true);
     }
 
     /** Check an employee's active roles for sensitive actions within a module. */
@@ -323,6 +452,13 @@ class AccessControl
 
         if (in_array($segment, self::ALWAYS_ALLOWED, true)) {
             return true;
+        }
+
+        if (strtoupper($method) !== 'GET') {
+            $writeCapability = self::WRITE_CAPABILITY_BY_PATH[$segment] ?? null;
+            if ($writeCapability && self::accessHasCapability($access, $writeCapability)) {
+                return true;
+            }
         }
 
         if ($segment === 'payroll' && str_starts_with(strtolower($path), 'payroll/payslip-issues')) {

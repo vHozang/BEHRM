@@ -70,6 +70,11 @@ export const leaveService = {
     return normalizeLeaveList(response.data);
   },
 
+  getRequest: async (id) => {
+    const response = await axiosClient.get(`/leave-requests/${id}`);
+    return normalizeLeaveRequest(response.data);
+  },
+
   createRequest: async (data) => {
     const response = await axiosClient.post('/leave-requests', leavePayload({
       employee_id: data.employee_id,

@@ -35,6 +35,7 @@
           <div v-else class="flex flex-wrap gap-1">
             <span v-for="m in moduleList(item)" :key="m" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">{{ MODULES[m] || m }}</span>
             <span v-if="moduleList(item).length === 0" class="text-xs text-muted-foreground">Chỉ Portal nhân viên</span>
+            <span v-if="capabilityCounts[item.id]" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-primary/10 text-primary">{{ capabilityCounts[item.id] }} capability</span>
           </div>
         </template>
         <template #cell-members="{ item }">
@@ -78,6 +79,21 @@
             </label>
           </div>
           <p class="text-xs text-muted-foreground mt-2">Không chọn khu vực nào = vai trò chỉ dùng cho Portal nhân viên (và duyệt đơn nếu được gán bước duyệt).</p>
+        </div>
+        <div :class="accessForm.is_admin ? 'opacity-40 pointer-events-none' : ''" class="border-t border-border pt-4">
+          <p class="text-sm font-medium text-foreground mb-2">Capability thao tác chi tiết</p>
+          <div class="max-h-[320px] space-y-4 overflow-y-auto pr-1">
+            <div v-for="group in permissionGroups" :key="group.module">
+              <p class="mb-1.5 text-xs font-semibold uppercase text-muted-foreground">{{ MODULES[group.module] || group.module }}</p>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label v-for="permission in group.items" :key="permission.id" class="flex items-start gap-2 rounded-lg border border-border p-2">
+                  <input v-model="accessForm.permission_ids" type="checkbox" :value="String(permission.id)" class="mt-0.5 h-4 w-4 rounded" />
+                  <span><span class="block text-sm">{{ permission.permission_name }}</span><span class="block font-mono text-[10px] text-muted-foreground">{{ permission.permission_code }}</span></span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <p class="mt-2 text-xs text-muted-foreground">Module chỉ quyết định khu vực/sidebar; capability mới là quyền thao tác được backend kiểm tra.</p>
         </div>
       </div>
       <template #footer>
@@ -143,6 +159,9 @@ const error = ref('');
 const roles = ref([]);
 const employees = ref([]);
 const memberCounts = ref({});
+const capabilityCounts = ref({});
+const permissions = ref([]);
+const currentAssignments = ref([]);
 
 const showCreate = ref(false);
 const showAccess = ref(false);
@@ -150,7 +169,7 @@ const showMembers = ref(false);
 const current = ref(null);
 
 const createForm = ref({ role_name: '', role_code: '' });
-const accessForm = ref({ is_admin: false, modules: [] });
+const accessForm = ref({ is_admin: false, modules: [], permission_ids: [] });
 
 const members = ref([]);
 const membersLoading = ref(false);
@@ -178,6 +197,15 @@ const assignableEmployees = computed(() => {
   const held = new Set(members.value.map((m) => String(m.employee_id)));
   return employees.value.filter((e) => !held.has(String(e.id)));
 });
+const permissionGroups = computed(() => {
+  const groups = new Map();
+  for (const permission of permissions.value) {
+    const module = permission.module || 'other';
+    if (!groups.has(module)) groups.set(module, []);
+    groups.get(module).push(permission);
+  }
+  return [...groups.entries()].map(([module, items]) => ({ module, items }));
+});
 
 const apiErr = (err, fb) => err?.response?.data?.message || err?.response?.data?.error || err?.message || fb;
 
@@ -187,10 +215,13 @@ const loadRoles = async () => {
   try {
     roles.value = asArray(await roleService.getAll());
     const counts = {};
+    const permissionCounts = {};
     await Promise.all(roles.value.map(async (r) => {
       try { counts[r.id] = (await roleService.getMembers(r.id)).length; } catch { counts[r.id] = 0; }
+      try { permissionCounts[r.id] = asArray(await roleService.getRolePermissions(r.id)).length; } catch { permissionCounts[r.id] = 0; }
     }));
     memberCounts.value = counts;
+    capabilityCounts.value = permissionCounts;
   } catch (err) {
     error.value = apiErr(err, 'Không thể tải danh sách vai trò');
   } finally {
@@ -200,6 +231,10 @@ const loadRoles = async () => {
 
 const loadEmployees = async () => {
   try { employees.value = asArray(await employeeService.getLookup()); } catch { /* ignore */ }
+};
+const loadPermissions = async () => {
+  try { permissions.value = asArray(await roleService.getPermissions()).sort((a, b) => String(a.module).localeCompare(String(b.module)) || String(a.permission_code).localeCompare(String(b.permission_code))); }
+  catch { permissions.value = []; }
 };
 
 const openCreate = () => { createForm.value = { role_name: '', role_code: '' }; showCreate.value = true; };
@@ -214,9 +249,14 @@ const createRole = async () => {
   } catch (err) { toast.error(apiErr(err, 'Lỗi khi tạo vai trò')); } finally { saving.value = false; }
 };
 
-const openAccess = (role) => {
+const openAccess = async (role) => {
   current.value = role;
-  accessForm.value = { is_admin: isAdminRole(role), modules: [...moduleList(role)] };
+  currentAssignments.value = asArray(await roleService.getRolePermissions(role.id));
+  accessForm.value = {
+    is_admin: isAdminRole(role),
+    modules: [...moduleList(role)],
+    permission_ids: currentAssignments.value.map((item) => String(item.permission_id)),
+  };
   showAccess.value = true;
 };
 const saveAccess = async () => {
@@ -224,6 +264,16 @@ const saveAccess = async () => {
   try {
     const meta = accessForm.value.is_admin ? { is_admin: true } : { modules: accessForm.value.modules };
     await roleService.update(current.value.id, { meta });
+    if (!accessForm.value.is_admin) {
+      const desired = new Set(accessForm.value.permission_ids.map(String));
+      const existing = new Map(currentAssignments.value.map((item) => [String(item.permission_id), item]));
+      for (const permissionId of desired) {
+        if (!existing.has(permissionId)) await roleService.assignPermission({ role_id: current.value.id, permission_id: Number(permissionId) });
+      }
+      for (const [permissionId, assignment] of existing) {
+        if (!desired.has(permissionId)) await roleService.removePermission(assignment.id);
+      }
+    }
     toast.success('Đã cập nhật phân quyền');
     showAccess.value = false;
     await loadRoles();
@@ -272,5 +322,5 @@ const removeRole = async (role) => {
   }
 };
 
-onMounted(() => { loadRoles(); loadEmployees(); });
+onMounted(() => { loadRoles(); loadEmployees(); loadPermissions(); });
 </script>

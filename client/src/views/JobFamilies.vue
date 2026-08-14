@@ -51,6 +51,7 @@
             >
               Kích hoạt
             </button>
+            <button @click="deleteItem(item)" class="px-3 py-1.5 text-xs font-medium rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20">Xóa</button>
           </div>
         </template>
       </BaseTable>
@@ -156,6 +157,18 @@ const activateItem = async (item) => {
   } catch (err) {
     console.error('Error activating job family:', err);
     toast.error('Có lỗi xảy ra khi kích hoạt nhóm chức danh');
+  }
+};
+
+const deleteItem = async (item) => {
+  if (!confirm(`Xóa nhóm chức danh "${item.name}"?`)) return;
+  try {
+    await jobFamilyService.delete(item.id);
+    toast.success('Đã xóa nhóm chức danh');
+    await loadData();
+  } catch (err) {
+    const violations = err.response?.data?.data?.violations;
+    toast.error(Array.isArray(violations) && violations.length ? violations[0] : (err.response?.data?.message || 'Không thể xóa nhóm chức danh'));
   }
 };
 

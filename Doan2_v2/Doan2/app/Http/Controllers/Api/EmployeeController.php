@@ -7,7 +7,9 @@ use App\Models\Employee;
 use App\Models\LegalEntity;
 use App\Repositories\OrganizationChartRepository;
 use App\Services\LeavePolicyService;
+use App\Services\RefreshTokenService;
 use App\Support\AccessControl;
+use App\Support\AuditLogger;
 use App\Support\EmployeeStatus;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -376,6 +378,8 @@ class EmployeeController extends Controller
             'department_id' => 'nullable|exists:departments,id',
             'position_id' => 'nullable|exists:positions,id',
             'profile' => 'nullable|array',
+            'profile.bank_id' => ['nullable', 'integer', Rule::exists('banks', 'id')->where('tenant_id', TenantContext::id())],
+            'profile.nationality_id' => ['nullable', 'integer', Rule::exists('nationalities', 'id')->where('tenant_id', TenantContext::id())],
             'hire_date' => 'nullable|date',
             'date_of_birth' => 'nullable|date',
             'gender' => 'nullable|string|max:50',
@@ -414,6 +418,11 @@ class EmployeeController extends Controller
         }
 
         $data = $validator->validated();
+        // Nested catalog validation must not discard unrelated profile keys
+        // such as skills, emergency contacts or legacy metadata.
+        if ($request->has('profile')) {
+            $data['profile'] = $request->input('profile');
+        }
 
         if ($request->filled('legal_entity_id')) {
             $data['legal_entity_id'] = (int) $request->input('legal_entity_id');
@@ -540,6 +549,8 @@ class EmployeeController extends Controller
             'department_id' => 'nullable|exists:departments,id',
             'position_id' => 'nullable|exists:positions,id',
             'profile' => 'nullable|array',
+            'profile.bank_id' => ['nullable', 'integer', Rule::exists('banks', 'id')->where('tenant_id', TenantContext::id())],
+            'profile.nationality_id' => ['nullable', 'integer', Rule::exists('nationalities', 'id')->where('tenant_id', TenantContext::id())],
             'hire_date' => 'nullable|date',
             'date_of_birth' => 'nullable|date',
             'gender' => 'nullable|string|max:50',
@@ -607,8 +618,19 @@ class EmployeeController extends Controller
 
         $oldDept = $employee->department_id;
         $oldPos = $employee->position_id;
+        $oldStatus = strtoupper((string) $employee->status);
 
         $employee->update($data);
+
+        $newStatus = strtoupper((string) $employee->fresh()->status);
+        if (! in_array($oldStatus, ['TERMINATED', 'RESIGNED'], true)
+            && in_array($newStatus, ['TERMINATED', 'RESIGNED'], true)) {
+            if (Schema::hasTable('api_refresh_tokens')) {
+                app(RefreshTokenService::class)->revokeEmployee((int) $employee->id);
+            } elseif (Schema::hasTable('api_tokens')) {
+                DB::table('api_tokens')->where('employee_id', $employee->id)->delete();
+            }
+        }
 
         // Auto-record a job-history entry when the department or position changed
         // (đúng nghiệp vụ: lịch sử công tác tự ghi nhận khi điều chuyển).
@@ -639,11 +661,12 @@ class EmployeeController extends Controller
         }
 
         $today = now()->toDateString();
+        $previousEndDate = now()->subDay()->toDateString();
 
         DB::table('employment_histories')
             ->where('employee_id', $employee->id)
             ->whereRaw('is_current = true')
-            ->update(['is_current' => DB::raw('false'), 'end_date' => $today, 'updated_at' => now()]);
+            ->update(['is_current' => DB::raw('false'), 'end_date' => $previousEndDate, 'updated_at' => now()]);
 
         DB::table('employment_histories')->insert(TenantContext::stamp([
             'employee_id' => $employee->id,
@@ -684,15 +707,34 @@ class EmployeeController extends Controller
      */
     public function detachFromOrg(Request $request, int $id): JsonResponse
     {
-        $employee = Employee::find($id);
+        abort_unless(AccessControl::accessHasCapability(
+            (array) $request->attributes->get('access', []),
+            'employee.records.manage'
+        ), 403, 'Bạn không có quyền gỡ nhân viên khỏi cơ cấu');
+
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:3', 'max:2000'],
+        ]);
+
+        $employee = Employee::query()->where('id', $id)->first();
 
         if (! $employee) {
             return $this->notFound();
         }
 
-        $newManagerId = $employee->manager_id; // có thể null → cấp dưới lên gốc
+        $access = (array) $request->attributes->get('access', []);
+        if (empty($access['full'])
+            && (int) $employee->legal_entity_id !== (int) TenantContext::legalEntityId()) {
+            abort(403, 'Bạn chỉ được thao tác nhân viên trong pháp nhân hiện tại');
+        }
+        if (in_array(strtoupper((string) $employee->status), ['TERMINATED', 'RESIGNED'], true)) {
+            return $this->conflict(['Nhân viên đã ở trạng thái nghỉ việc'], 'Nhân viên');
+        }
 
-        DB::transaction(function () use ($employee, $newManagerId) {
+        $newManagerId = $employee->manager_id; // có thể null → cấp dưới lên gốc
+        $before = $employee->toArray();
+
+        DB::transaction(function () use ($employee, $newManagerId, $data): void {
             // Reparent cấp dưới trực tiếp (chỉ trong cùng tenant nhờ global scope).
             Employee::where('manager_id', $employee->id)
                 ->update(['manager_id' => $newManagerId]);
@@ -701,10 +743,33 @@ class EmployeeController extends Controller
             DB::table('employment_histories')
                 ->where('employee_id', $employee->id)
                 ->whereRaw('is_current = true')
-                ->update(['is_current' => DB::raw('false'), 'end_date' => now()->toDateString(), 'updated_at' => now()]);
+                ->update([
+                    'is_current' => DB::raw('false'),
+                    'end_date' => now()->toDateString(),
+                    'notes' => trim($data['reason']),
+                    'updated_at' => now(),
+                ]);
 
             $employee->update(['status' => 'TERMINATED']);
+
+            if (Schema::hasTable('api_tokens')) {
+                DB::table('api_tokens')->where('employee_id', $employee->id)->delete();
+            }
+            if (Schema::hasTable('api_refresh_tokens')) {
+                app(RefreshTokenService::class)->revokeEmployee((int) $employee->id);
+            }
+
+            DB::table('leave_requests')
+                ->where('tenant_id', TenantContext::id())
+                ->where('employee_id', $employee->id)
+                ->whereIn('status', ['PENDING', 'IN_PROGRESS', 'CHỜ_DUYỆT', 'ĐANG_XỬ_LÝ'])
+                ->update(['status' => 'CANCELLED', 'updated_at' => now()]);
         });
+
+        AuditLogger::log('detach_from_org', 'employees', $id, $before, [
+            ...($employee->fresh()?->toArray() ?? []),
+            'detach_reason' => trim($data['reason']),
+        ]);
 
         return $this->ok([
             'id' => $id,

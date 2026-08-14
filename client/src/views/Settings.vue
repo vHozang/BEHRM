@@ -146,6 +146,8 @@
       </BaseCard>
     </template>
 
+    <SettingsCatalogPanel v-else-if="activeTab === 'catalogs'" />
+
     <template v-else>
       <BaseCard title="Mẫu thông báo toàn công ty">
         <div class="space-y-4">
@@ -184,6 +186,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import BaseButton from '../components/BaseButton.vue';
 import BaseCard from '../components/BaseCard.vue';
 import BaseMoneyInput from '../components/BaseMoneyInput.vue';
+import SettingsCatalogPanel from '../components/SettingsCatalogPanel.vue';
 import { useToast } from '../composables/useToast';
 import { setMoneyGroupSeparator } from '../composables/useMoneyPreferences';
 import { settingsService } from '../services/settingsService';
@@ -193,6 +196,7 @@ const toast = useToast();
 const tabs = [
   { id: 'business', label: 'Nghiệp vụ' },
   { id: 'integrations', label: 'Tích hợp' },
+  { id: 'catalogs', label: 'Danh mục chuẩn' },
   { id: 'notifications', label: 'Thông báo & Email' }
 ];
 const activeTab = ref('business');

@@ -1,5 +1,9 @@
 
-import axiosClient from './axiosClient';
+import axiosClient, {
+  clearStoredSession,
+  refreshAccessToken,
+  storeAccessToken,
+} from './axiosClient';
 
 const normalizeUser = (user) => {
   if (!user || typeof user !== 'object') return null;
@@ -15,15 +19,6 @@ const storeUser = (user) => {
   localStorage.setItem('user', JSON.stringify(normalized));
   localStorage.setItem('user_email', normalized.company_email || '');
   return normalized;
-};
-
-const clearStoredSession = () => {
-  localStorage.removeItem('auth_token');
-  localStorage.removeItem('user');
-  localStorage.removeItem('user_email');
-  localStorage.removeItem('role');
-  localStorage.removeItem('user_role');
-  localStorage.removeItem('access');
 };
 
 export const authService = {
@@ -46,7 +41,11 @@ export const authService = {
     const normalizedUser = normalizeUser(user);
 
     if (token) {
-      localStorage.setItem('auth_token', token);
+      storeAccessToken({
+        access_token: token,
+        expires_at: response.data?.data?.expires_at || response.data?.expires_at,
+        expires_in: response.data?.data?.expires_in || response.data?.expires_in,
+      });
       localStorage.setItem('user', JSON.stringify(normalizedUser || {}));
       localStorage.setItem('access', JSON.stringify(access));
 
@@ -74,12 +73,8 @@ export const authService = {
 
   // Refresh the access token
   refresh: async () => {
-    const response = await axiosClient.post('/auth/refresh');
-    const token = response.data?.data?.access_token || response.data?.access_token || response.data?.token;
-    if (token) {
-      localStorage.setItem('auth_token', token);
-    }
-    return response.data;
+    const token = await refreshAccessToken();
+    return { access_token: token };
   },
 
   // Change password for logged-in user
@@ -108,12 +103,17 @@ export const authService = {
     return response.data;
   },
 
-  clearSession: clearStoredSession,
+  clearSession: () => clearStoredSession({ broadcast: true }),
 
   // Logout
-  logout: () => {
-    clearStoredSession();
-    window.location.href = '/login';
+  logout: async () => {
+    try {
+      await axiosClient.post('/auth/logout', null, { skipAuthRefresh: true });
+    } catch {
+      // Logout remains local-first if the network is unavailable.
+    } finally {
+      clearStoredSession({ broadcast: true, redirect: true });
+    }
   },
 
   // Effective module access ({ full, modules, enabled }) stored at login.
@@ -153,12 +153,6 @@ export const authService = {
   // Health check (GET)
   healthCheck: async () => {
     const response = await axiosClient.get('/health');
-    return response.data;
-  },
-
-  // Health check (POST)
-  healthCheckPost: async () => {
-    const response = await axiosClient.post('/health');
     return response.data;
   },
 

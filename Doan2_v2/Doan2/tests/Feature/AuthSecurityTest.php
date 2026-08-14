@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class AuthSecurityTest extends TestCase
@@ -209,6 +210,153 @@ class AuthSecurityTest extends TestCase
         $this->assertTrue(Hash::check('OldPassword123', $passwordHash));
     }
 
+    public function test_refresh_rotation_grace_avoids_revoking_the_family_then_detects_late_reuse(): void
+    {
+        config([
+            'hrm.auth.refresh_cookie_secure' => false,
+            'hrm.auth.refresh_rotation_grace_seconds' => 5,
+            'hrm.auth.trusted_origins' => ['https://app.example.test'],
+        ]);
+        $this->createEmployee('auth.rotate@example.test', 'OldPassword123');
+        $login = $this->postJson('/api/v1/auth/login', [
+            'company_email' => 'auth.rotate@example.test',
+            'password' => 'OldPassword123',
+        ])->assertOk();
+        $oldRefresh = $this->cookieValue($login, 'hrm_refresh');
+        $this->assertNotNull($oldRefresh);
+
+        $refreshed = $this->withCredentials()
+            ->withHeader('Origin', 'https://app.example.test')
+            ->withUnencryptedCookie('hrm_refresh', $oldRefresh)
+            ->postJson('/api/v1/auth/refresh')
+            ->assertOk();
+        $newRefresh = $this->cookieValue($refreshed, 'hrm_refresh');
+        $this->assertNotNull($newRefresh);
+        $this->assertNotSame($oldRefresh, $newRefresh);
+        $this->assertDatabaseCount('api_refresh_tokens', 2);
+        $this->assertNotNull(DB::table('api_refresh_tokens')->where('token_hash', hash('sha256', $oldRefresh))->value('rotated_at'));
+        $this->assertSame(0, (int) DB::table('api_refresh_tokens')->where('token_hash', hash('sha256', $oldRefresh))->value('rotation_number'));
+        $this->assertSame(1, (int) DB::table('api_refresh_tokens')->where('token_hash', hash('sha256', $newRefresh))->value('rotation_number'));
+
+        $inProgress = $this->withCredentials()
+            ->withHeader('Origin', 'https://app.example.test')
+            ->withUnencryptedCookie('hrm_refresh', $oldRefresh)
+            ->postJson('/api/v1/auth/refresh')
+            ->assertConflict()
+            ->assertJsonPath('code', 'REFRESH_IN_PROGRESS');
+
+        $this->assertSame([], $inProgress->headers->getCookies());
+        $this->assertSame(2, DB::table('api_refresh_tokens')->whereNull('revoked_at')->count());
+        $this->assertNull(DB::table('api_refresh_tokens')->where('token_hash', hash('sha256', $oldRefresh))->value('reuse_detected_at'));
+        $this->assertDatabaseCount('api_tokens', 2);
+
+        DB::table('api_refresh_tokens')
+            ->where('token_hash', hash('sha256', $oldRefresh))
+            ->update(['rotated_at' => now()->subSeconds(6)]);
+
+        $this->withCredentials()
+            ->withHeader('Origin', 'https://app.example.test')
+            ->withUnencryptedCookie('hrm_refresh', $oldRefresh)
+            ->postJson('/api/v1/auth/refresh')
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Refresh token reuse detected; session revoked');
+
+        $this->assertSame(0, DB::table('api_refresh_tokens')->whereNull('revoked_at')->count());
+        $this->assertNotNull(DB::table('api_refresh_tokens')->where('token_hash', hash('sha256', $oldRefresh))->value('reuse_detected_at'));
+        $this->assertDatabaseCount('api_tokens', 0);
+    }
+
+    public function test_revoked_refresh_token_never_uses_rotation_grace(): void
+    {
+        config([
+            'hrm.auth.refresh_cookie_secure' => false,
+            'hrm.auth.refresh_rotation_grace_seconds' => 5,
+            'hrm.auth.trusted_origins' => ['https://app.example.test'],
+        ]);
+        $this->createEmployee('auth.revoked@example.test', 'OldPassword123');
+        $login = $this->postJson('/api/v1/auth/login', [
+            'company_email' => 'auth.revoked@example.test',
+            'password' => 'OldPassword123',
+        ])->assertOk();
+        $refresh = $this->cookieValue($login, 'hrm_refresh');
+        $familyId = DB::table('api_refresh_tokens')
+            ->where('token_hash', hash('sha256', $refresh))
+            ->value('family_id');
+        app(\App\Services\RefreshTokenService::class)->revokeFamily($familyId);
+
+        $this->withCredentials()
+            ->withHeader('Origin', 'https://app.example.test')
+            ->withUnencryptedCookie('hrm_refresh', $refresh)
+            ->postJson('/api/v1/auth/refresh')
+            ->assertUnauthorized()
+            ->assertJsonMissing(['code' => 'REFRESH_IN_PROGRESS']);
+
+        $this->assertNull(DB::table('api_refresh_tokens')->where('family_id', $familyId)->value('reuse_detected_at'));
+    }
+
+    public function test_logout_revokes_access_and_refresh_tokens_and_checks_origin(): void
+    {
+        config([
+            'hrm.auth.refresh_cookie_secure' => false,
+            'hrm.auth.trusted_origins' => ['https://app.example.test'],
+        ]);
+        $this->createEmployee('auth.logout@example.test', 'OldPassword123');
+        $login = $this->postJson('/api/v1/auth/login', [
+            'company_email' => 'auth.logout@example.test',
+            'password' => 'OldPassword123',
+        ])->assertOk();
+        $access = $login->json('data.access_token');
+        $refresh = $this->cookieValue($login, 'hrm_refresh');
+
+        $this->withCredentials()
+            ->withHeader('Origin', 'https://evil.example.test')
+            ->withToken($access)
+            ->withUnencryptedCookie('hrm_refresh', $refresh)
+            ->postJson('/api/v1/auth/logout')
+            ->assertForbidden();
+        $this->assertDatabaseCount('api_tokens', 1);
+
+        $this->withCredentials()
+            ->withHeader('Origin', 'https://app.example.test')
+            ->withToken($access)
+            ->withUnencryptedCookie('hrm_refresh', $refresh)
+            ->postJson('/api/v1/auth/logout')
+            ->assertOk();
+        $this->assertDatabaseCount('api_tokens', 0);
+        $this->assertSame(0, DB::table('api_refresh_tokens')->whereNull('revoked_at')->count());
+    }
+
+    public function test_legacy_access_token_can_bootstrap_only_one_refresh_family(): void
+    {
+        config([
+            'hrm.auth.refresh_cookie_secure' => false,
+            'hrm.auth.trusted_origins' => ['https://app.example.test'],
+        ]);
+        $employeeId = $this->createEmployee('auth.legacy@example.test', 'OldPassword123');
+        $token = Str::random(64);
+        DB::table('api_tokens')->insert([
+            'employee_id' => $employeeId,
+            'token_hash' => hash('sha256', $token),
+            'expires_at' => now()->addHour(),
+            'family_id' => null,
+            'tenant_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->withHeader('Origin', 'https://app.example.test')
+            ->withToken($token)
+            ->postJson('/api/v1/auth/refresh')
+            ->assertOk();
+        $this->assertNotNull($this->cookieValue($response, 'hrm_refresh'));
+        $this->assertNotNull(DB::table('api_tokens')->where('token_hash', hash('sha256', $token))->value('family_id'));
+
+        $this->withHeader('Origin', 'https://app.example.test')
+            ->withToken($token)
+            ->postJson('/api/v1/auth/refresh')
+            ->assertUnauthorized();
+    }
+
     private function createEmployee(string $email, string $password): int
     {
         return DB::table('employees')->insertGetId([
@@ -231,5 +379,16 @@ class AuthSecurityTest extends TestCase
             'company_email' => $email,
             'password' => $password,
         ])->assertOk()->json('data.access_token');
+    }
+
+    private function cookieValue($response, string $name): ?string
+    {
+        foreach ($response->headers->getCookies() as $cookie) {
+            if ($cookie->getName() === $name) {
+                return $cookie->getValue();
+            }
+        }
+
+        return null;
     }
 }

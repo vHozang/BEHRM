@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Support\AccessControl;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -10,6 +11,9 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class AnalyticsController extends Controller
 {
@@ -475,8 +479,25 @@ class AnalyticsController extends Controller
      */
     public function generateReport(Request $request): JsonResponse
     {
-        $type = $request->input('type');
-        $filters = $request->input('filters', []);
+        $template = null;
+        $selectedColumns = [];
+        if ($request->filled('template_id')) {
+            $template = DB::table('report_templates')
+                ->where('tenant_id', TenantContext::id())
+                ->where('id', $request->integer('template_id'))
+                ->where('status', 'ACTIVE')
+                ->first();
+            if (! $template || trim((string) ($template->sql_query ?? '')) !== '') {
+                throw ValidationException::withMessages(['template_id' => ['Mẫu báo cáo không hợp lệ hoặc đã bị vô hiệu hóa']]);
+            }
+            $type = $template->report_type;
+            $templateFilters = $this->decodeJson($template->filters_config ?? null);
+            $filters = array_merge($templateFilters, is_array($request->input('filters')) ? $request->input('filters') : []);
+            $selectedColumns = array_values(array_filter($this->decodeJson($template->columns_config ?? null), 'is_string'));
+        } else {
+            $type = $request->input('type');
+            $filters = $request->input('filters', []);
+        }
         if (! is_array($filters)) {
             $filters = [];
         }
@@ -488,6 +509,27 @@ class AnalyticsController extends Controller
             return $this->validationError([
                 'type' => ['Unknown report type. Supported: '.implode(', ', $supported)],
             ]);
+        }
+
+        if (in_array($type, ['payroll-summary', 'leave-liability', 'labor-cost', 'bhxh-declaration', 'pit-finalization'], true)) {
+            abort_unless(AccessControl::accessHasCapability(
+                (array) $request->attributes->get('access', []),
+                'payroll.amounts.view'
+            ), 403, 'Bạn không có quyền xem số tiền trong báo cáo');
+        }
+
+        $definition = ReportTemplateController::DEFINITIONS[$type] ?? null;
+        if ($definition) {
+            $invalidFilters = array_values(array_diff(array_keys($filters), $definition['filters']));
+            if ($invalidFilters !== []) {
+                throw ValidationException::withMessages(['filters' => ['Bộ lọc không được phép: '.implode(', ', $invalidFilters)]]);
+            }
+            if ($selectedColumns !== []) {
+                $invalidColumns = array_values(array_diff($selectedColumns, $definition['columns']));
+                if ($invalidColumns !== []) {
+                    throw ValidationException::withMessages(['columns' => ['Mẫu chứa cột không được phép']]);
+                }
+            }
         }
 
         // Period-scoped VN compliance reports require a period_id filter.
@@ -513,14 +555,20 @@ class AnalyticsController extends Controller
             'hr-metrics' => $this->hrMetricsRows($filters),
         };
 
+        if ($selectedColumns !== []) {
+            $rows = $this->selectReportColumns($rows, $selectedColumns);
+        }
+
         $authEmployeeId = $request->attributes->get('auth_employee_id');
         $now = now();
 
+        $filePath = $this->storeReportCsv($type, $rows, $selectedColumns);
         $historyId = DB::table('report_histories')->insertGetId(TenantContext::stamp([
-            'template_id' => null,
+            'template_id' => $template?->id,
             'executed_by' => $authEmployeeId,
             'executed_at' => $now,
             'parameters' => json_encode(['type' => $type, 'filters' => $filters], JSON_UNESCAPED_UNICODE),
+            'file_url' => $filePath,
             'status' => 'DONE',
             'created_at' => $now,
             'updated_at' => $now,
@@ -531,6 +579,66 @@ class AnalyticsController extends Controller
             'rows' => $rows,
             'history_id' => (int) $historyId,
         ], 'Report generated');
+    }
+
+    /** @return array<string, mixed> */
+    private function decodeJson(mixed $value): array
+    {
+        if (is_array($value)) return $value;
+        $decoded = is_string($value) ? json_decode($value, true) : null;
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function selectReportColumns(mixed $rows, array $columns): mixed
+    {
+        $select = static fn ($row): array => collect((array) $row)->only($columns)->all();
+        if ($rows instanceof Collection) {
+            return $rows->map($select);
+        }
+        if (is_array($rows) && isset($rows['rows'])) {
+            $rows['rows'] = collect($rows['rows'])->map($select)->all();
+            return $rows;
+        }
+
+        return collect(is_array($rows) ? $rows : [])->map($select);
+    }
+
+    private function storeReportCsv(string $type, mixed $rows, array $selectedColumns): string
+    {
+        $dataRows = $rows instanceof Collection ? $rows->map(fn ($row) => (array) $row)->all() : $rows;
+        if (is_array($dataRows) && isset($dataRows['rows'])) {
+            $dataRows = $dataRows['rows'];
+        }
+        $dataRows = collect(is_array($dataRows) ? $dataRows : [])->map(fn ($row) => (array) $row)->all();
+        $columns = $selectedColumns;
+        if ($columns === []) {
+            foreach ($dataRows as $row) {
+                foreach (array_keys($row) as $column) {
+                    if (! in_array($column, $columns, true)) $columns[] = $column;
+                }
+            }
+        }
+
+        $stream = fopen('php://temp', 'w+b');
+        if ($stream === false) throw new \RuntimeException('Không thể tạo file báo cáo');
+        fwrite($stream, "\xEF\xBB\xBF");
+        fputcsv($stream, $columns);
+        foreach ($dataRows as $row) {
+            fputcsv($stream, array_map(static function ($column) use ($row) {
+                $value = $row[$column] ?? null;
+                return is_scalar($value) || $value === null ? $value : json_encode($value, JSON_UNESCAPED_UNICODE);
+            }, $columns));
+        }
+        rewind($stream);
+        $contents = stream_get_contents($stream);
+        fclose($stream);
+        if ($contents === false) throw new \RuntimeException('Không thể đọc file báo cáo');
+
+        $path = 'private/reports/'.TenantContext::id().'/'.now()->format('Y/m').'/'.Str::slug($type).'-'.Str::uuid().'.csv';
+        Storage::disk('local')->put($path, $contents);
+
+        return $path;
     }
 
     // ── Report builders ──────────────────────────────────────

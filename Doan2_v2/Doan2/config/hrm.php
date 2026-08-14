@@ -17,6 +17,17 @@ return [
 
     'default_legal_entity_id' => env('HRM_DEFAULT_LEGAL_ENTITY_ID', 1),
 
+    'auth' => [
+        'refresh_cookie' => env('HRM_REFRESH_COOKIE', 'hrm_refresh'),
+        'refresh_days' => (int) env('HRM_REFRESH_DAYS', 30),
+        'refresh_rotation_grace_seconds' => (int) env('HRM_REFRESH_ROTATION_GRACE_SECONDS', 5),
+        'refresh_cookie_secure' => env('HRM_REFRESH_COOKIE_SECURE'),
+        'trusted_origins' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('HRM_AUTH_TRUSTED_ORIGINS', ''))
+        ))),
+    ],
+
     // Tenant-wide display preferences consumed by authenticated web clients.
     'display' => [
         'money_group_separator' => env('HRM_MONEY_GROUP_SEPARATOR', '.'),

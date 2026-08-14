@@ -14,6 +14,9 @@
       <BaseButton :variant="mode === 'client' ? 'primary' : 'outline'" @click="mode = 'client'">
         Tự thiết kế (nâng cao)
       </BaseButton>
+      <BaseButton :variant="mode === 'templates' ? 'primary' : 'outline'" @click="mode = 'templates'">
+        Mẫu & lịch sử
+      </BaseButton>
     </BaseCard>
 
     <!-- Server-side report engine (primary) -->
@@ -105,6 +108,8 @@
         </div>
       </BaseCard>
     </div>
+
+    <ReportTemplatesPanel v-else-if="mode === 'templates'" />
 
     <div v-else class="grid grid-cols-1 lg:grid-cols-4 gap-6">
       <!-- Sidebar Filters and Fields Configuration -->
@@ -245,6 +250,7 @@
 import { ref, computed, onMounted } from 'vue';
 import BaseButton from '../components/BaseButton.vue';
 import BaseCard from '../components/BaseCard.vue';
+import ReportTemplatesPanel from '../components/ReportTemplatesPanel.vue';
 import { employeeService } from '../services/employeeService';
 import { departmentService } from '../services/departmentService';
 import { leaveService } from '../services/leaveService';

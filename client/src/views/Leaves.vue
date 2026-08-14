@@ -6,10 +6,16 @@
         <p class="text-muted-foreground mt-1">{{ pageSubtitle }}</p>
       </div>
       <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-        <BaseButton v-if="orgLens && canRunAccrual" variant="outline" data-testid="button-run-leave-accrual" @click="openAccrualModal">Đối soát phép năm</BaseButton>
-        <BaseButton data-testid="button-create-leave" @click="openCreateModal">+ Tạo đơn xin nghỉ</BaseButton>
+        <BaseButton v-if="activeSection === 'requests' && orgLens && canRunAccrual" variant="outline" data-testid="button-run-leave-accrual" @click="openAccrualModal">Đối soát phép năm</BaseButton>
+        <BaseButton v-if="activeSection === 'requests'" data-testid="button-create-leave" @click="openCreateModal">+ Tạo đơn xin nghỉ</BaseButton>
       </div>
     </div>
+
+    <div class="flex gap-2 overflow-x-auto rounded-xl border border-border bg-card p-2">
+      <button v-for="tab in sectionTabs" :key="tab.value" class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold" :class="activeSection === tab.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'" @click="activeSection = tab.value">{{ tab.label }}</button>
+    </div>
+
+    <template v-if="activeSection === 'requests'">
 
     <!-- Dual-lens tabs (admins only): toàn công ty vs của tôi -->
     <div v-if="isAdmin" class="flex gap-1 border-b border-border -mt-2">
@@ -179,6 +185,17 @@
                 </button>
               </template>
               <button
+                v-if="canEdit(item)"
+                @click="openEditModal(item)"
+                class="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-600 dark:text-blue-400"
+                title="Sửa đơn"
+                :disabled="processing"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+              <button
                 v-if="canCancel(item)"
                 @click="cancelRequest(item)"
                 class="p-1.5 rounded hover:bg-orange-100 dark:hover:bg-orange-900 text-orange-600 dark:text-orange-400"
@@ -207,11 +224,11 @@
 
     <BaseModal
       v-model="showCreateModal"
-      title="Tạo đơn xin nghỉ"
+      :title="editingId ? 'Sửa đơn xin nghỉ' : 'Tạo đơn xin nghỉ'"
       data-testid="modal-create-leave"
     >
       <div class="space-y-4">
-        <template v-if="orgLens">
+        <template v-if="orgLens && !editingId">
           <RemoteEmployeeSelect
             v-model="form.employee_id"
             label="Nhân viên"
@@ -222,7 +239,7 @@
         <template v-else>
           <div class="p-3 bg-muted rounded-lg">
             <p class="text-sm text-muted-foreground">Nhân viên</p>
-            <p class="font-medium">{{ currentUser?.full_name || currentUser?.email || 'Bạn' }}</p>
+            <p class="font-medium">{{ editingEmployeeName || currentUser?.full_name || currentUser?.email || 'Bạn' }}</p>
           </div>
         </template>
         <BaseSelect
@@ -307,7 +324,7 @@
       <template #footer>
         <BaseButton variant="outline" @click="closeCreateModal" :disabled="saving">Hủy</BaseButton>
         <BaseButton @click="handleCreate" :disabled="saving">
-          {{ saving ? 'Đang tạo...' : 'Tạo đơn' }}
+          {{ saving ? 'Đang lưu...' : (editingId ? 'Lưu thay đổi' : 'Tạo đơn') }}
         </BaseButton>
       </template>
     </BaseModal>
@@ -383,6 +400,9 @@
         <BaseButton variant="outline" @click="showDetailModal = false">Đóng</BaseButton>
       </template>
     </BaseModal>
+    </template>
+
+    <LeaveOperationsPanel v-else />
   </div>
 </template>
 
@@ -397,6 +417,7 @@ import BaseTable from '../components/BaseTable.vue';
 import BaseModal from '../components/BaseModal.vue';
 import ApprovalTimeline from '../components/ApprovalTimeline.vue';
 import RemoteEmployeeSelect from '../components/RemoteEmployeeSelect.vue';
+import LeaveOperationsPanel from '../components/LeaveOperationsPanel.vue';
 import { buildApprovalSteps, statusVN, statusVariant } from '../utils/approvalSteps';
 import { leaveService } from '../services/leaveService';
 import { authService } from '../services/authService';
@@ -407,6 +428,8 @@ const canRunAccrual = computed(() => {
   const access = authService.getAccess();
   return access.full || access.modules.includes('hr');
 });
+const activeSection = ref('requests');
+const sectionTabs = [{ value: 'requests', label: 'Đơn nghỉ' }, { value: 'operations', label: 'Tạm ứng & sổ phép' }];
 
 // Dual-lens: admins toggle between the company-wide view and their own ("My Space").
 const viewMode = ref('org'); // 'org' = toàn công ty | 'mine' = của tôi
@@ -441,6 +464,9 @@ const approvalSteps = computed(() => {
 });
 
 const showCreateModal = ref(false);
+const editingId = ref(null);
+const editingEmployeeId = ref(null);
+const editingEmployeeName = ref('');
 const showDetailModal = ref(false);
 const showAccrualModal = ref(false);
 const accrualLoading = ref(false);
@@ -686,6 +712,9 @@ const resetForm = () => {
 };
 
 const openCreateModal = () => {
+  editingId.value = null;
+  editingEmployeeId.value = null;
+  editingEmployeeName.value = '';
   resetForm();
   showCreateModal.value = true;
   const empId = orgLens.value ? form.value.employee_id : myEmployeeId.value;
@@ -701,16 +730,52 @@ watch(() => form.value.employee_id, (id) => {
 
 const closeCreateModal = () => {
   showCreateModal.value = false;
+  editingId.value = null;
+  editingEmployeeId.value = null;
+  editingEmployeeName.value = '';
   resetForm();
 };
 
-const viewDetail = (request) => {
+const canEdit = (request) => {
+  if (request?.can_edit === true) return true;
+  return request?.status === 'pending'
+    && String(request.employee_id) === String(myEmployeeId.value);
+};
+
+const openEditModal = (request) => {
+  if (!canEdit(request)) return;
+  editingId.value = request.id;
+  editingEmployeeId.value = request.employee_id;
+  editingEmployeeName.value = request.employee?.full_name || empNameById(request.employee_id) || currentUser.value?.full_name || '';
+  form.value = {
+    employee_id: String(request.employee_id || ''),
+    leave_type_id: String(request.leave_type_id || ''),
+    start_date: String(request.start_date || '').slice(0, 10),
+    end_date: String(request.end_date || '').slice(0, 10),
+    reason: request.reason || '',
+    duration_type: request.duration_type || 'full_day',
+    half_session: request.half_session || 'morning',
+    hours: request.hours || ''
+  };
+  formError.value = '';
+  showCreateModal.value = true;
+  loadBalances(request.employee_id);
+};
+
+const viewDetail = async (request) => {
   selectedRequest.value = request;
   showDetailModal.value = true;
+  try {
+    selectedRequest.value = await leaveService.getRequest(request.id);
+  } catch {
+    // Keep the lightweight row visible if the detail endpoint is unavailable.
+  }
 };
 
 const handleCreate = async () => {
-  const employeeId = orgLens.value ? form.value.employee_id : (myEmployeeId.value ? String(myEmployeeId.value) : '');
+  const employeeId = editingId.value
+    ? String(editingEmployeeId.value || '')
+    : (orgLens.value ? form.value.employee_id : (myEmployeeId.value ? String(myEmployeeId.value) : ''));
 
   if (!employeeId) {
     formError.value = 'Không thể xác định nhân viên. Vui lòng thử lại.';
@@ -745,8 +810,7 @@ const handleCreate = async () => {
     const diffTime = Math.abs(endDate - startDate);
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
-    await leaveService.createRequest({
-      employee_id: parseInt(employeeId),
+    const payload = {
       leave_type_id: parseInt(form.value.leave_type_id),
       start_date: form.value.start_date,
       end_date: endDateVal,
@@ -757,7 +821,12 @@ const handleCreate = async () => {
       half_session: form.value.half_session,
       hours: form.value.duration_type === 'hourly' ? parseFloat(form.value.hours) : undefined,
       status: 'pending'
-    });
+    };
+    if (editingId.value) {
+      await leaveService.updateRequest(editingId.value, payload);
+    } else {
+      await leaveService.createRequest({ employee_id: parseInt(employeeId), ...payload });
+    }
     
     closeCreateModal();
     await loadRequests();

@@ -8,11 +8,11 @@
         </p>
       </div>
       <div class="flex flex-wrap gap-2 w-full sm:w-auto">
-        <BaseButton variant="outline" @click="openCreateModal" data-testid="button-add-holiday">
+        <BaseButton v-if="canManage" variant="outline" @click="openCreateModal" data-testid="button-add-holiday">
           + Thêm ngày lễ
         </BaseButton>
-        <BaseButton @click="seedYear" :disabled="seeding" data-testid="button-seed-vn">
-          {{ seeding ? 'Đang tạo...' : `Tạo lịch lễ chuẩn VN ${year}` }}
+        <BaseButton v-if="canManage" @click="previewYear" :disabled="previewing || seeding" data-testid="button-seed-vn">
+          {{ previewing ? 'Đang xem trước...' : `Xem & áp dụng lịch lễ VN ${year}` }}
         </BaseButton>
       </div>
     </div>
@@ -46,7 +46,7 @@
       <div v-else-if="holidaysForYear.length === 0" class="text-center py-10">
         <p class="text-muted-foreground">Chưa có ngày nghỉ lễ nào cho năm {{ year }}.</p>
         <p class="text-sm text-muted-foreground mt-1">
-          Bấm <span class="font-medium text-foreground">"Tạo lịch lễ chuẩn VN {{ year }}"</span> để tạo nhanh các ngày lễ theo luật.
+          Bấm <span class="font-medium text-foreground">"Xem & áp dụng lịch lễ VN {{ year }}"</span> để xem trước rồi tạo các ngày lễ theo luật.
         </p>
       </div>
       <BaseTable
@@ -83,6 +83,7 @@
         <template #actions="{ item }">
           <div class="flex items-center gap-2">
             <button
+              v-if="canManage"
               @click="openEditModal(item)"
               class="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
               title="Sửa"
@@ -93,6 +94,7 @@
               </svg>
             </button>
             <button
+              v-if="canManage"
               @click="remove(item)"
               class="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900 text-red-600 dark:text-red-400 disabled:opacity-50"
               title="Xóa"
@@ -170,6 +172,39 @@
         </BaseButton>
       </template>
     </BaseModal>
+
+    <BaseModal v-model="showPreviewModal" :title="`Xem trước lịch lễ chuẩn VN ${year}`" size="lg">
+      <div class="space-y-4">
+        <div class="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
+          Đây chỉ là bản xem trước, chưa ghi dữ liệu. Hệ thống sẽ giữ nguyên ngày đã tồn tại và chỉ thêm các ngày còn thiếu khi bạn xác nhận.
+        </div>
+        <div v-if="previewHolidays.length" class="max-h-[420px] overflow-auto rounded-lg border border-border">
+          <table class="w-full text-sm">
+            <thead class="sticky top-0 bg-muted text-left text-xs uppercase text-muted-foreground">
+              <tr><th class="px-3 py-2">Ngày</th><th class="px-3 py-2">Tên ngày lễ</th><th class="px-3 py-2">Trạng thái</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in previewHolidays" :key="`${item.holiday_date}-${item.holiday_name}`" class="border-t border-border">
+                <td class="px-3 py-2 font-medium">{{ formatDate(item.holiday_date) }}</td>
+                <td class="px-3 py-2">{{ item.holiday_name }}</td>
+                <td class="px-3 py-2">
+                  <span :class="previewExists(item) ? 'text-muted-foreground' : 'font-medium text-emerald-600'">
+                    {{ previewExists(item) ? 'Đã có - giữ nguyên' : 'Sẽ thêm mới' }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="py-8 text-center text-sm text-muted-foreground">Không có dữ liệu ngày lễ để áp dụng.</p>
+      </div>
+      <template #footer>
+        <BaseButton variant="outline" :disabled="seeding" @click="showPreviewModal = false">Đóng</BaseButton>
+        <BaseButton :disabled="seeding || !previewHolidays.length" @click="applyPreview">
+          {{ seeding ? 'Đang áp dụng...' : 'Xác nhận áp dụng' }}
+        </BaseButton>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -180,6 +215,7 @@ import BaseButton from '../components/BaseButton.vue';
 import BaseTable from '../components/BaseTable.vue';
 import BaseModal from '../components/BaseModal.vue';
 import { holidayService } from '../services/holidayService';
+import { authService } from '../services/authService';
 import { useToast } from '../composables/useToast';
 
 const toast = useToast();
@@ -187,9 +223,13 @@ const toast = useToast();
 const loading = ref(false);
 const saving = ref(false);
 const seeding = ref(false);
+const previewing = ref(false);
 const processing = ref(false);
 const error = ref('');
 const formError = ref('');
+const showPreviewModal = ref(false);
+const previewHolidays = ref([]);
+const canManage = computed(() => authService.hasCapability('leave.manage'));
 
 const holidays = ref([]);
 const year = ref(new Date().getFullYear());
@@ -354,8 +394,26 @@ const remove = async (item) => {
   }
 };
 
-const seedYear = async () => {
-  if (seeding.value) return;
+const previewExists = (item) => holidays.value.some((holiday) =>
+  String(holiday.holiday_date || '').slice(0, 10) === String(item.holiday_date || '').slice(0, 10)
+);
+
+const previewYear = async () => {
+  if (previewing.value || !canManage.value) return;
+  previewing.value = true;
+  try {
+    const result = await holidayService.preview(year.value);
+    previewHolidays.value = Array.isArray(result?.holidays) ? result.holidays : [];
+    showPreviewModal.value = true;
+  } catch (err) {
+    toast.error(apiErrorMessage(err, 'Không thể xem trước lịch nghỉ lễ'));
+  } finally {
+    previewing.value = false;
+  }
+};
+
+const applyPreview = async () => {
+  if (seeding.value || !canManage.value) return;
   seeding.value = true;
   try {
     const result = await holidayService.seedVn(year.value);
@@ -366,6 +424,7 @@ const seedYear = async () => {
     } else {
       toast.info(`Năm ${year.value} đã có đủ ${skipped} ngày lễ luật định`);
     }
+    showPreviewModal.value = false;
     await loadHolidays();
   } catch (err) {
     console.error('Error seeding holidays:', err);

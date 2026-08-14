@@ -7,6 +7,7 @@ use App\Models\Contract;
 use App\Models\ContractTemplate;
 use App\Models\Employee;
 use App\Models\LegalEntity;
+use App\Services\RefreshTokenService;
 use App\Support\ContractRenderer;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -421,6 +422,9 @@ class ContractController extends Controller
                 // Revoke outstanding sessions so the ex-employee loses API access.
                 if (Schema::hasTable('api_tokens')) {
                     DB::table('api_tokens')->where('employee_id', $employeeId)->delete();
+                }
+                if (Schema::hasTable('api_refresh_tokens')) {
+                    app(RefreshTokenService::class)->revokeEmployee((int) $employeeId);
                 }
 
                 // Cancel pending/in-progress leave (no balance was deducted yet,

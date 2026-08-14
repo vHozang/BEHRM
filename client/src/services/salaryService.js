@@ -67,6 +67,16 @@ export const salaryService = {
     const response = await axiosClient.put(`/salary-periods/${id}`, data);
     return response.data;
   },
+  deletePeriod: async (id) => {
+    const response = await axiosClient.delete(`/salary-periods/${id}`);
+    return response.data;
+  },
+  suggestPeriod: async (month, legalEntityId) => {
+    const response = await axiosClient.get('/salary-periods/suggestion', {
+      params: { month, legal_entity_id: legalEntityId || undefined }
+    });
+    return response.data;
+  },
   closePeriod: async (id, allowPartial = false) => {
     const response = await axiosClient.post(`/salary-periods/${id}/close`, { allow_partial: allowPartial });
     return response.data;
@@ -137,46 +147,17 @@ export const salaryService = {
     return acceptedPayload(response);
   },
 
-  // --- Details ---
+  // Salary details and breakdowns are engine outputs. FE only reads them;
+  // corrections go through payroll adjustments and a payroll rerun.
   getDetails: async (params) => {
     const response = await axiosClient.get('/salary-details', { params });
-    return response.data;
-  },
-  saveDetail: async (data) => {
-    const response = await axiosClient.post('/salary-details', data);
-    return response.data;
-  },
-  updateDetail: async (id, data) => {
-    const response = await axiosClient.put(`/salary-details/${id}`, data);
-    return response.data;
-  },
-  deleteDetail: async (id) => {
-    const response = await axiosClient.delete(`/salary-details/${id}`);
-    return response.data;
-  },
-
-  // --- Breakdowns ---
-  getBreakdowns: async (params) => {
-    const response = await axiosClient.get('/salary-breakdowns', { params });
-    return response.data;
-  },
-  saveBreakdown: async (data) => {
-    const response = await axiosClient.post('/salary-breakdowns', data);
-    return response.data;
-  },
-  updateBreakdown: async (id, data) => {
-    const response = await axiosClient.put(`/salary-breakdowns/${id}`, data);
-    return response.data;
-  },
-  deleteBreakdown: async (id) => {
-    const response = await axiosClient.delete(`/salary-breakdowns/${id}`);
     return response.data;
   },
 
   // --- Adjustments ---
   getAdjustments: async (params) => {
     const response = await axiosClient.get('/payroll-adjustments', { params });
-    return response.data;
+    return { items: Array.isArray(response.data) ? response.data : [], pagination: response.pagination || null };
   },
   saveAdjustment: async (data) => {
     const response = await axiosClient.post('/payroll-adjustments', data);
@@ -184,6 +165,22 @@ export const salaryService = {
   },
   updateAdjustment: async (id, data) => {
     const response = await axiosClient.put(`/payroll-adjustments/${id}`, data);
+    return response.data;
+  },
+  deleteAdjustment: async (id) => {
+    const response = await axiosClient.delete(`/payroll-adjustments/${id}`);
+    return response.data;
+  },
+  submitAdjustment: async (id) => {
+    const response = await axiosClient.post(`/payroll-adjustments/${id}/submit`);
+    return response.data;
+  },
+  approveAdjustment: async (id) => {
+    const response = await axiosClient.post(`/payroll-adjustments/${id}/approve`);
+    return response.data;
+  },
+  rejectAdjustment: async (id, reason) => {
+    const response = await axiosClient.post(`/payroll-adjustments/${id}/reject`, { reason });
     return response.data;
   }
 };

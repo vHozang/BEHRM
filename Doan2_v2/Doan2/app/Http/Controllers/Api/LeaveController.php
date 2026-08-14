@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
+use App\Services\AttendanceAccess;
 use App\Services\LeavePolicyService;
 use App\Services\ShiftResolver;
 use App\Support\AccessControl;
@@ -21,6 +22,7 @@ class LeaveController extends Controller
     public function __construct(
         private LeavePolicyService $leavePolicy,
         private ShiftResolver $shiftResolver,
+        private readonly AttendanceAccess $access,
     ) {}
     public function index(Request $request): JsonResponse
     {
@@ -28,6 +30,7 @@ class LeaveController extends Controller
 
         $query = LeaveRequest::with(['employee:id,full_name,employee_code'])
             ->orderByDesc('id');
+        $this->access->scopeEmployeeResource($query, $request, 'leave_requests');
 
         foreach (['employee_id', 'leave_type_id', 'status'] as $field) {
             if ($request->filled($field)) {
@@ -52,6 +55,10 @@ class LeaveController extends Controller
             } else {
                 $item->can_approve = false;
             }
+            $this->appendLeaveMeta($item);
+            $item->can_edit = $pending
+                && (int) $item->employee_id === $this->access->actorId($request)
+                && ApprovalFlow::progress((array) ($item->decoded_meta ?? []))['done'] === 0;
         }
 
         return $this->ok([
@@ -88,6 +95,20 @@ class LeaveController extends Controller
 
         $employeeId = $request->input('employee_id');
         $leaveTypeId = $request->input('leave_type_id');
+
+        $actorId = $this->access->actorId($request);
+        $canManage = AccessControl::accessHasCapability(
+            (array) $request->attributes->get('access', []),
+            'leave.manage',
+        );
+        if ((int) $employeeId !== $actorId
+            && (! $canManage || ! $this->access->canAccessEmployee($request, (int) $employeeId, true))) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Bạn chỉ được tạo đơn nghỉ cho chính mình hoặc nhân viên trong phạm vi được quản lý',
+                'data' => null,
+            ], 403);
+        }
 
         // Reject cross-tenant employee/leave-type (bare `exists` is unscoped).
         if (! TenantContext::ownsRow('employees', $employeeId)) {
@@ -188,8 +209,12 @@ class LeaveController extends Controller
             }
         }
 
-        $columns = Schema::getColumnListing('leave_requests');
-        $data = collect($request->all())->only($columns)->toArray();
+        $data = [
+            'employee_id' => (int) $employeeId,
+            'leave_type_id' => (int) $leaveTypeId,
+            'start_date' => $request->input('start_date'),
+            'end_date' => $request->input('end_date'),
+        ];
         $data['total_days'] = $totalDays;
         // Đơn tạo mới LUÔN ở PENDING — không cho client tự set APPROVED để bỏ qua
         // duyệt + né trừ số dư phép (chỉ approve() mới chuyển trạng thái + trừ quota).
@@ -228,13 +253,18 @@ class LeaveController extends Controller
         ], 201);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
         $leave = LeaveRequest::with(['employee:id,full_name,employee_code'])->find($id);
 
         if (! $leave) {
             return $this->notFound();
         }
+        if (! $this->access->canAccessEmployee($request, (int) $leave->employee_id)) {
+            return $this->notFound();
+        }
+
+        $this->appendLeaveMeta($leave);
 
         return $this->ok($leave, 'Leave request detail');
     }
@@ -247,40 +277,160 @@ class LeaveController extends Controller
             return $this->notFound();
         }
 
+        if ((int) $leave->employee_id !== $this->access->actorId($request)) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Chỉ nhân viên tạo đơn mới được sửa đơn nghỉ phép',
+                'data' => null,
+            ], 403);
+        }
+
         if (! in_array($leave->status, ['PENDING', 'CHỜ_DUYỆT'])) {
             return $this->validationError([
                 'status' => ['Chỉ có thể sửa đơn đang chờ duyệt'],
             ]);
         }
 
-        // 'status' bị loại: sửa đơn KHÔNG được đổi trạng thái (duyệt/từ chối/hủy
-        // đi qua approve/reject/cancel riêng) — tránh tự duyệt qua PATCH.
-        $columns = Schema::getColumnListing('leave_requests');
-        $data = collect($request->except(['id', 'created_at', 'updated_at', 'status']))->only($columns)->toArray();
+        $existingMeta = $this->decodeMeta($leave->meta);
+        if (ApprovalFlow::progress($existingMeta)['done'] > 0) {
+            return $this->validationError([
+                'status' => ['Đơn đã có cấp duyệt hoàn tất; hãy hủy và tạo đơn mới để thay đổi nội dung'],
+            ]);
+        }
 
-        $leave->update($data);
+        $input = [
+            'leave_type_id' => $request->input('leave_type_id', $leave->leave_type_id),
+            'start_date' => $request->input('start_date', optional($leave->start_date)->format('Y-m-d')),
+            'end_date' => $request->input('end_date', optional($leave->end_date)->format('Y-m-d')),
+            'duration_type' => $request->input('duration_type', $existingMeta['duration_type'] ?? 'full_day'),
+            'half_session' => $request->input('half_session', $existingMeta['half_session'] ?? 'morning'),
+            'hours' => $request->input('hours', $existingMeta['hours'] ?? null),
+            'reason' => $request->input('reason', $existingMeta['reason'] ?? null),
+        ];
+        $validator = Validator::make($input, [
+            'leave_type_id' => ['required', 'integer'],
+            'start_date' => ['required', 'date', 'after_or_equal:today'],
+            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            'duration_type' => ['required', 'in:full_day,half_day,hourly'],
+            'half_session' => ['nullable', 'in:morning,afternoon'],
+            'hours' => ['nullable', 'numeric', 'gt:0'],
+            'reason' => ['nullable', 'string', 'max:5000'],
+        ]);
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
+        }
+        if (! TenantContext::ownsRow('leave_types', (int) $input['leave_type_id'])) {
+            return $this->validationError(['leave_type_id' => ['Loại nghỉ phép không thuộc công ty hiện tại']]);
+        }
 
-        return $this->ok($leave->fresh(), 'Đơn nghỉ phép đã được cập nhật');
+        $overlap = LeaveRequest::where('employee_id', $leave->employee_id)
+            ->where('id', '<>', $leave->id)
+            ->whereNotIn('status', ['REJECTED', 'CANCELLED', 'TỪ_CHỐI', 'ĐÃ_HỦY'])
+            ->where(function ($query) use ($input): void {
+                $query->whereBetween('start_date', [$input['start_date'], $input['end_date']])
+                    ->orWhereBetween('end_date', [$input['start_date'], $input['end_date']])
+                    ->orWhere(function ($covered) use ($input): void {
+                        $covered->where('start_date', '<=', $input['start_date'])
+                            ->where('end_date', '>=', $input['end_date']);
+                    });
+            })->exists();
+        if ($overlap) {
+            return $this->validationError(['start_date' => ['Đã có đơn nghỉ phép trùng thời gian']]);
+        }
+
+        $leaveType = DB::table('leave_types')
+            ->where('tenant_id', TenantContext::id())
+            ->where('id', $input['leave_type_id'])
+            ->first();
+        $cfg = $this->leavePolicy->typeConfig($leaveType);
+        $durationType = (string) $input['duration_type'];
+        if ($durationType === 'half_day') {
+            if ($input['start_date'] !== $input['end_date']) {
+                return $this->validationError(['end_date' => ['Nghỉ nửa ngày chỉ áp dụng trong cùng một ngày']]);
+            }
+            $totalDays = 0.5;
+        } elseif ($durationType === 'hourly') {
+            if ($input['start_date'] !== $input['end_date']) {
+                return $this->validationError(['end_date' => ['Nghỉ theo giờ chỉ áp dụng trong cùng một ngày']]);
+            }
+            $standardHours = (float) \App\Support\HrmConfig::get('attendance.standard_hours_per_day', 8);
+            $totalDays = round((float) $input['hours'] / max($standardHours, 0.01), 4);
+        } else {
+            $totalDays = $this->leavePolicy->workingDays(
+                $input['start_date'],
+                $input['end_date'],
+                TenantContext::id(),
+                TenantContext::legalEntityId(),
+            );
+            if ($totalDays < 1) {
+                return $this->validationError(['start_date' => ['Khoảng thời gian không có ngày làm việc nào']]);
+            }
+        }
+
+        $year = (string) date('Y', strtotime((string) $input['start_date']));
+        if ($cfg['requires_balance']) {
+            $balance = LeaveBalance::where('employee_id', $leave->employee_id)
+                ->where('leave_type_id', $input['leave_type_id'])
+                ->where('year', $year)
+                ->first();
+            if (! $balance || (float) $balance->remaining_days < $totalDays) {
+                return $this->validationError(['total_days' => ['Số dư phép không đủ cho nội dung đã sửa']]);
+            }
+        } elseif ($cfg['accrual'] === 'per_event'
+            && $cfg['max_days_per_event'] !== null
+            && $totalDays > $cfg['max_days_per_event']) {
+            return $this->validationError([
+                'total_days' => ["Loại nghỉ này tối đa {$cfg['max_days_per_event']} ngày/lần"],
+            ]);
+        }
+
+        $meta = array_merge($existingMeta, [
+            'paid' => $cfg['paid'],
+            'accrual' => $cfg['accrual'],
+            'leave_type_code' => $leaveType->leave_type_code ?? null,
+            'statutory_ref' => $cfg['statutory_ref'],
+            'duration_type' => $durationType,
+            'reason' => $input['reason'],
+        ]);
+        if ($durationType === 'half_day') {
+            $meta['half_session'] = $input['half_session'] ?: 'morning';
+            unset($meta['hours']);
+        } elseif ($durationType === 'hourly') {
+            $meta['hours'] = (float) $input['hours'];
+            unset($meta['half_session']);
+        } else {
+            unset($meta['half_session'], $meta['hours']);
+        }
+
+        $leave->update([
+            'leave_type_id' => (int) $input['leave_type_id'],
+            'start_date' => $input['start_date'],
+            'end_date' => $input['end_date'],
+            'total_days' => $totalDays,
+            'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE),
+        ]);
+
+        $updated = $leave->fresh()->load('employee:id,full_name,employee_code');
+        $this->appendLeaveMeta($updated);
+
+        return $this->ok($updated, 'Đơn nghỉ phép đã được cập nhật');
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
         $leave = LeaveRequest::find($id);
 
         if (! $leave) {
             return $this->notFound();
         }
-
-        if (! in_array($leave->status, ['PENDING', 'CHỜ_DUYỆT'])) {
-            return $this->conflict(
-                ['Chỉ có thể xóa đơn nghỉ phép đang chờ duyệt'],
-                'Đơn nghỉ phép'
-            );
+        if (! $this->access->canAccessEmployee($request, (int) $leave->employee_id)) {
+            return $this->notFound();
         }
 
-        $leave->delete();
-
-        return $this->ok(['id' => $id], 'Đơn nghỉ phép đã được xóa');
+        return $this->conflict(
+            ['Đơn nghỉ phép đã vào workflow không được xóa cứng; hãy dùng thao tác Hủy đơn'],
+            'Đơn nghỉ phép'
+        );
     }
 
     /**
@@ -292,6 +442,9 @@ class LeaveController extends Controller
 
         if (! $leave) {
             return $this->notFound();
+        }
+        if (! $this->access->canAccessEmployee($request, (int) $leave->employee_id, true)) {
+            return response()->json(['status' => 403, 'message' => 'Bạn không có quyền duyệt đơn này', 'data' => null], 403);
         }
 
         if (! in_array($leave->status, ['PENDING', 'CHỜ_DUYỆT'])) {
@@ -462,6 +615,9 @@ class LeaveController extends Controller
         if (! $leave) {
             return $this->notFound();
         }
+        if (! $this->access->canAccessEmployee($request, (int) $leave->employee_id, true)) {
+            return response()->json(['status' => 403, 'message' => 'Bạn không có quyền từ chối đơn này', 'data' => null], 403);
+        }
 
         if (! in_array($leave->status, ['PENDING', 'CHỜ_DUYỆT'])) {
             return $this->validationError(['status' => ['Đơn không ở trạng thái chờ duyệt']]);
@@ -509,11 +665,13 @@ class LeaveController extends Controller
 
         // Authorization: only the requesting employee may cancel their own leave.
         // (HR/admin override would go through a dedicated admin path.)
-        $currentUserId = $request->attributes->get('auth_employee_id');
-        if ($currentUserId !== null && (int) $leave->employee_id !== (int) $currentUserId) {
-            return $this->validationError([
-                'employee_id' => ['Chỉ nhân viên tạo đơn mới có thể hủy đơn nghỉ phép'],
-            ]);
+        $currentUserId = $this->access->actorId($request);
+        if ((int) $leave->employee_id !== $currentUserId) {
+            return response()->json([
+                'status' => 403,
+                'message' => 'Chỉ nhân viên tạo đơn mới có thể hủy đơn nghỉ phép',
+                'data' => null,
+            ], 403);
         }
 
         // Status guard — only un-finalized leave can be cancelled.
@@ -547,6 +705,9 @@ class LeaveController extends Controller
      */
     public function balance(Request $request, int $employeeId): JsonResponse
     {
+        if (! $this->access->canAccessEmployee($request, $employeeId)) {
+            return $this->notFound();
+        }
         $query = LeaveBalance::where('employee_id', $employeeId);
 
         if ($request->filled('year')) {
@@ -583,9 +744,9 @@ class LeaveController extends Controller
      */
     public function accrualRun(Request $request): JsonResponse
     {
-        if (! AccessControl::hasAnyRole(
-            (int) $request->attributes->get('auth_employee_id'),
-            ['ADMIN', 'TENANT_ADMIN', 'HR']
+        if (! AccessControl::accessHasCapability(
+            (array) $request->attributes->get('access', []),
+            'leave.manage',
         )) {
             return response()->json([
                 'status' => 403,
@@ -605,6 +766,22 @@ class LeaveController extends Controller
     }
 
     // ── Internal Helpers ─────────────────────────────────
+
+    private function decodeMeta(mixed $value): array
+    {
+        $meta = is_string($value) ? json_decode($value, true) : (array) ($value ?? []);
+
+        return is_array($meta) ? $meta : [];
+    }
+
+    private function appendLeaveMeta(LeaveRequest $leave): void
+    {
+        $meta = $this->decodeMeta($leave->meta);
+        $leave->setAttribute('decoded_meta', $meta);
+        foreach (['reason', 'paid', 'accrual', 'leave_type_code', 'statutory_ref', 'duration_type', 'half_session', 'hours'] as $key) {
+            $leave->setAttribute($key, $meta[$key] ?? null);
+        }
+    }
 
     /**
      * Does this leave request's type draw down a quota balance (e.g. ANNUAL)?

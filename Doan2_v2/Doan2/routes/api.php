@@ -16,15 +16,19 @@ use App\Http\Controllers\Api\ContractTemplateController;
 use App\Http\Controllers\Api\DepartmentController;
 use App\Http\Controllers\Api\DeviceAttendanceController;
 use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\EmployeeRecordFileController;
 use App\Http\Controllers\Api\GenericResourceController;
 use App\Http\Controllers\Api\HolidayController;
+use App\Http\Controllers\Api\InsuranceClaimController;
 use App\Http\Controllers\Api\LeaveController;
+use App\Http\Controllers\Api\LeaveAdvancementController;
 use App\Http\Controllers\Api\LegalEntityController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OnboardingController;
 use App\Http\Controllers\Api\OrganizationChartController;
 use App\Http\Controllers\Api\OvertimeTicketController;
 use App\Http\Controllers\Api\PayrollController;
+use App\Http\Controllers\Api\PayrollAdjustmentController;
 use App\Http\Controllers\Api\PayslipController;
 use App\Http\Controllers\Api\PersonnelDecisionController;
 use App\Http\Controllers\Api\PieceRateController;
@@ -32,8 +36,11 @@ use App\Http\Controllers\Api\PlatformController;
 use App\Http\Controllers\Api\ProfileChangeRequestController;
 use App\Http\Controllers\Api\RecruitmentController;
 use App\Http\Controllers\Api\RecruitmentPostController;
+use App\Http\Controllers\Api\ReportTemplateController;
 use App\Http\Controllers\Api\RequestApprovalController;
+use App\Http\Controllers\Api\RequestConfigurationController;
 use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\ServiceTicketController;
 use App\Http\Controllers\Api\ShiftCoverageController;
 use App\Http\Controllers\Api\ShiftRosterController;
 use App\Services\RecruitmentScoringService;
@@ -49,6 +56,8 @@ Route::prefix('v1')->group(function (): void {
     // Rate-limit các endpoint xác thực (chống brute-force mật khẩu / dò token).
     Route::middleware('throttle:10,1')->group(function (): void {
         Route::post('/auth/login', [AuthController::class, 'login']);
+        Route::post('/auth/refresh', [AuthController::class, 'refresh']);
+        Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
         Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
     });
@@ -150,7 +159,6 @@ Route::prefix('v1')->group(function (): void {
     // ═══════════════════════════════════════════════════════
     Route::middleware(['hrm.auth', 'module.access'])->group(function (): void {
         Route::get('/auth/me', [AuthController::class, 'me']);
-        Route::post('/auth/refresh', [AuthController::class, 'refresh']);
         Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
         Route::get('/auth/hierarchy', [AuthController::class, 'hierarchy']);
         Route::get('/auth/ui-preferences', [AuthController::class, 'uiPreferences']);
@@ -193,6 +201,8 @@ Route::prefix('v1')->group(function (): void {
         Route::delete('/employees/{id}/certificates/{certId}', [EmployeeController::class, 'destroyCertificate'])->whereNumber('id');
         Route::post('/employees/import-probation', [EmployeeController::class, 'importProbation']);
         Route::get('/employees/{id}/leave-balances', [LeaveController::class, 'balance'])->whereNumber('id');
+        Route::post('/employee-record-files/{resource}/{id}/{slot}', [EmployeeRecordFileController::class, 'upload'])->whereNumber('id');
+        Route::get('/employee-record-files/{resource}/{id}/{slot}', [EmployeeRecordFileController::class, 'download'])->whereNumber('id');
 
         // ─── Contracts ───────────────────────────────────
         Route::get('/contracts/lookup', [ContractController::class, 'lookup']);
@@ -230,6 +240,12 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/leave-requests/{id}/reject', [LeaveController::class, 'reject'])->whereNumber('id');
         Route::post('/leave-requests/{id}/cancel', [LeaveController::class, 'cancel'])->whereNumber('id');
         Route::post('/leave/accrual/run', [LeaveController::class, 'accrualRun']);
+        Route::get('/leave-advancement-requests', [LeaveAdvancementController::class, 'index']);
+        Route::post('/leave-advancement-requests', [LeaveAdvancementController::class, 'store']);
+        Route::get('/leave-advancement-requests/{id}', [LeaveAdvancementController::class, 'show'])->whereNumber('id');
+        Route::post('/leave-advancement-requests/{id}/manager-decision', [LeaveAdvancementController::class, 'managerDecision'])->whereNumber('id');
+        Route::post('/leave-advancement-requests/{id}/hr-decision', [LeaveAdvancementController::class, 'hrDecision'])->whereNumber('id');
+        Route::post('/leave-advancement-requests/{id}/cancel', [LeaveAdvancementController::class, 'cancel'])->whereNumber('id');
 
         // ─── Attendance & Shifts ─────────────────────────
         Route::get('/attendances', [AttendanceController::class, 'index']);
@@ -310,6 +326,7 @@ Route::prefix('v1')->group(function (): void {
 
         // ─── Payroll ─────────────────────────────────────
         Route::get('/salary-periods', [PayrollController::class, 'index']);
+        Route::get('/salary-periods/suggestion', [PayrollController::class, 'suggestion']);
         Route::post('/salary-periods', [PayrollController::class, 'store']);
         Route::get('/salary-periods/{id}', [PayrollController::class, 'show'])->whereNumber('id');
         Route::put('/salary-periods/{id}', [PayrollController::class, 'update'])->whereNumber('id');
@@ -326,6 +343,14 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/payroll/run', [PayrollController::class, 'run']);
         Route::post('/payroll/bonus-run', [PayrollController::class, 'bonusRun']);
         Route::get('/payroll/run-status', [PayrollController::class, 'runStatus']);
+        Route::get('/payroll-adjustments', [PayrollAdjustmentController::class, 'index']);
+        Route::post('/payroll-adjustments', [PayrollAdjustmentController::class, 'store']);
+        Route::put('/payroll-adjustments/{id}', [PayrollAdjustmentController::class, 'update'])->whereNumber('id');
+        Route::patch('/payroll-adjustments/{id}', [PayrollAdjustmentController::class, 'update'])->whereNumber('id');
+        Route::delete('/payroll-adjustments/{id}', [PayrollAdjustmentController::class, 'destroy'])->whereNumber('id');
+        Route::post('/payroll-adjustments/{id}/submit', [PayrollAdjustmentController::class, 'submit'])->whereNumber('id');
+        Route::post('/payroll-adjustments/{id}/approve', [PayrollAdjustmentController::class, 'approve'])->whereNumber('id');
+        Route::post('/payroll-adjustments/{id}/reject', [PayrollAdjustmentController::class, 'reject'])->whereNumber('id');
         // Công khoán theo sản phẩm (piece-rate).
         Route::get('/piece-rate-entries', [PieceRateController::class, 'index']);
         Route::post('/piece-rate-entries', [PieceRateController::class, 'store']);
@@ -376,6 +401,16 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/recruitment-posts/{id}/close', [RecruitmentPostController::class, 'close'])->whereNumber('id');
 
         // ─── Request Approval ────────────────────────────
+        Route::get('/request-types', [RequestConfigurationController::class, 'requestTypes']);
+        Route::post('/request-types', [RequestConfigurationController::class, 'storeRequestType']);
+        Route::put('/request-types/{id}', [RequestConfigurationController::class, 'updateRequestType'])->whereNumber('id');
+        Route::patch('/request-types/{id}', [RequestConfigurationController::class, 'updateRequestType'])->whereNumber('id');
+        Route::delete('/request-types/{id}', [RequestConfigurationController::class, 'destroyRequestType'])->whereNumber('id');
+        Route::get('/approval-flows', [RequestConfigurationController::class, 'approvalFlows']);
+        Route::post('/approval-flows', [RequestConfigurationController::class, 'storeApprovalFlow']);
+        Route::put('/approval-flows/{id}', [RequestConfigurationController::class, 'updateApprovalFlow'])->whereNumber('id');
+        Route::patch('/approval-flows/{id}', [RequestConfigurationController::class, 'updateApprovalFlow'])->whereNumber('id');
+        Route::delete('/approval-flows/{id}', [RequestConfigurationController::class, 'destroyApprovalFlow'])->whereNumber('id');
         Route::get('/requests', [RequestApprovalController::class, 'index']);
         Route::post('/requests', [RequestApprovalController::class, 'store']);
         Route::get('/requests/{id}', [RequestApprovalController::class, 'show'])->whereNumber('id');
@@ -389,6 +424,28 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/requests/{id}/attachments', [RequestApprovalController::class, 'attachments'])->whereNumber('id');
         Route::post('/requests/{id}/attachments', [RequestApprovalController::class, 'uploadAttachment'])->whereNumber('id');
         Route::get('/requests/{id}/attachments/{attachmentId}', [RequestApprovalController::class, 'downloadAttachment'])->whereNumber('id')->whereNumber('attachmentId');
+
+        // ─── Helpdesk tickets (self-service + managed workflow) ─
+        Route::get('/service-tickets', [ServiceTicketController::class, 'index']);
+        Route::post('/service-tickets', [ServiceTicketController::class, 'store']);
+        Route::get('/service-tickets/{id}', [ServiceTicketController::class, 'show'])->whereNumber('id');
+        Route::patch('/service-tickets/{id}', [ServiceTicketController::class, 'update'])->whereNumber('id');
+        Route::put('/service-tickets/{id}', [ServiceTicketController::class, 'update'])->whereNumber('id');
+        Route::post('/service-tickets/{id}/updates', [ServiceTicketController::class, 'addUpdate'])->whereNumber('id');
+        Route::post('/service-tickets/{id}/cancel', [ServiceTicketController::class, 'cancel'])->whereNumber('id');
+        Route::delete('/service-tickets/{id}', [ServiceTicketController::class, 'destroy'])->whereNumber('id');
+
+        // ─── Insurance claims (employee → HR review → Accountant payment) ─
+        Route::get('/insurance-claims', [InsuranceClaimController::class, 'index']);
+        Route::post('/insurance-claims', [InsuranceClaimController::class, 'store']);
+        Route::get('/insurance-claims/{id}', [InsuranceClaimController::class, 'show'])->whereNumber('id');
+        Route::patch('/insurance-claims/{id}', [InsuranceClaimController::class, 'update'])->whereNumber('id');
+        Route::post('/insurance-claims/{id}/submit', [InsuranceClaimController::class, 'submit'])->whereNumber('id');
+        Route::post('/insurance-claims/{id}/review', [InsuranceClaimController::class, 'review'])->whereNumber('id');
+        Route::post('/insurance-claims/{id}/payment', [InsuranceClaimController::class, 'payment'])->whereNumber('id');
+        Route::post('/insurance-claims/{id}/certificate', [InsuranceClaimController::class, 'uploadCertificate'])->whereNumber('id');
+        Route::get('/insurance-claims/{id}/certificate', [InsuranceClaimController::class, 'downloadCertificate'])->whereNumber('id');
+        Route::delete('/insurance-claims/{id}', [InsuranceClaimController::class, 'destroy'])->whereNumber('id');
 
         // ─── Policies (special actions, CRUD via generic) ─
         Route::post('/policies/{id}/acknowledge', [GenericResourceController::class, 'update'])->defaults('resource', 'policies')->defaults('child', 'acknowledge');
@@ -433,6 +490,15 @@ Route::prefix('v1')->group(function (): void {
         // ─── Analytics / Reports ─────────────────────────
         Route::get('/dashboard/stats', [AnalyticsController::class, 'stats']);
         Route::post('/reports/generate', [AnalyticsController::class, 'generateReport']);
+        Route::get('/reports/catalog', [ReportTemplateController::class, 'catalog']);
+        Route::get('/reports/templates', [ReportTemplateController::class, 'index']);
+        Route::post('/reports/templates', [ReportTemplateController::class, 'store']);
+        Route::get('/reports/templates/{id}', [ReportTemplateController::class, 'show'])->whereNumber('id');
+        Route::put('/reports/templates/{id}', [ReportTemplateController::class, 'update'])->whereNumber('id');
+        Route::patch('/reports/templates/{id}', [ReportTemplateController::class, 'update'])->whereNumber('id');
+        Route::delete('/reports/templates/{id}', [ReportTemplateController::class, 'destroy'])->whereNumber('id');
+        Route::get('/reports/history', [ReportTemplateController::class, 'histories']);
+        Route::get('/reports/history/{id}/download', [ReportTemplateController::class, 'download'])->whereNumber('id');
 
         // ─── AI HR Assistant ─────────────────────────────
         Route::post('/ai/ask', [AiAssistantController::class, 'ask']);

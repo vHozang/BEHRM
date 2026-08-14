@@ -26,6 +26,46 @@ export const requestService = {
     return response.data;
   },
 
+  getTypes: async (params = {}) => {
+    const response = await axiosClient.get('/request-types', { params: { per_page: 100, ...params } });
+    return response.data;
+  },
+
+  createType: async (data) => {
+    const response = await axiosClient.post('/request-types', data);
+    return response.data;
+  },
+
+  updateType: async (id, data) => {
+    const response = await axiosClient.patch(`/request-types/${id}`, data);
+    return response.data;
+  },
+
+  deleteType: async (id) => {
+    const response = await axiosClient.delete(`/request-types/${id}`);
+    return response.data;
+  },
+
+  getFlows: async (params = {}) => {
+    const response = await axiosClient.get('/approval-flows', { params: { per_page: 100, ...params } });
+    return response.data;
+  },
+
+  createFlow: async (data) => {
+    const response = await axiosClient.post('/approval-flows', data);
+    return response.data;
+  },
+
+  updateFlow: async (id, data) => {
+    const response = await axiosClient.patch(`/approval-flows/${id}`, data);
+    return response.data;
+  },
+
+  deleteFlow: async (id) => {
+    const response = await axiosClient.delete(`/approval-flows/${id}`);
+    return response.data;
+  },
+
   approve: async (id, payload) => {
     const response = await axiosClient.post(`/requests/${id}/approve`, payload || {});
     return response.data;

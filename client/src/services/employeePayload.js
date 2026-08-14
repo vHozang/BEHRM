@@ -17,6 +17,7 @@ export const buildEmployeeCreatePayload = (data = {}) => {
     address: data.address || '',
     personal_phone: data.personal_phone || data.phone || '',
     bank_name: data.bank_name || '',
+    bank_id: data.bank_id || null,
     bank_account: data.bank_account || '',
     personal_email: data.personal_email || '',
     id_number: data.id_number || '',
@@ -34,6 +35,7 @@ export const buildEmployeeCreatePayload = (data = {}) => {
     permanent_address: data.permanent_address || '',
     education_level: data.education_level || '',
     nationality_name: data.nationality_name || '',
+    nationality_id: data.nationality_id || null,
     probation_end_date: data.probation_end_date || '',
   };
 

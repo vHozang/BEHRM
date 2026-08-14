@@ -5,11 +5,13 @@
         <h1 class="text-3xl font-bold text-foreground">Tin Tức Nội Bộ</h1>
         <p class="text-muted-foreground mt-1">Thông báo, tin tức và hoạt động nội bộ của công ty</p>
       </div>
-      <BaseButton v-if="isAdmin" @click="openCreateModal">+ Đăng tin tức</BaseButton>
+      <BaseButton v-if="isAdmin && activeTab === 'news'" @click="openCreateModal">+ Đăng tin tức</BaseButton>
     </div>
 
+    <div v-if="isAdmin" class="flex gap-2 rounded-xl border border-border bg-card p-2"><button class="rounded-lg px-3 py-2 text-sm font-semibold" :class="activeTab === 'news' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'" @click="activeTab = 'news'">Tin tức</button><button class="rounded-lg px-3 py-2 text-sm font-semibold" :class="activeTab === 'categories' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'" @click="activeTab = 'categories'">Danh mục tin</button></div>
+
     <!-- Articles Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div v-if="activeTab === 'news'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <BaseCard 
         v-for="item in newsList" 
         :key="item.id" 
@@ -62,6 +64,7 @@
         Chưa có tin tức nội bộ nào được đăng.
       </div>
     </div>
+    <ResourceCrudPanel v-else resource="news-categories" title="Danh mục tin tức" :columns="categoryColumns" :fields="categoryFields" :defaults="{ status: 'ACTIVE' }" />
 
     <!-- Read Detail Modal -->
     <BaseModal v-model="showReadModal" :title="currentArticle?.title || 'Chi tiết thông báo'" size="lg">
@@ -84,6 +87,7 @@
     <BaseModal v-model="showEditModal" :title="form.id ? 'Sửa tin tức' : 'Đăng tin tức mới'" size="lg">
       <div class="space-y-4">
         <BaseInput v-model="form.title" label="Tiêu đề thông báo / Tin tức" required />
+        <label class="block text-sm font-medium">Danh mục<ResourceSelect v-model="form.category_id" resource="news-categories" label-key="category_name" code-key="category_code" /></label>
         
         <div>
           <label class="block text-sm font-medium text-foreground mb-1">Nội dung tin tức <span class="text-destructive">*</span></label>
@@ -123,6 +127,8 @@ import BaseCard from '../components/BaseCard.vue';
 import BaseModal from '../components/BaseModal.vue';
 import BaseInput from '../components/BaseInput.vue';
 import BaseBadge from '../components/BaseBadge.vue';
+import ResourceCrudPanel from '../components/ResourceCrudPanel.vue';
+import ResourceSelect from '../components/ResourceSelect.vue';
 import { communicationService } from '../services/communicationService';
 import { useToast } from '../composables/useToast';
 
@@ -130,7 +136,10 @@ const toast = useToast();
 const newsList = ref([]);
 // isAdmin phải theo authService (user_role) — user.is_admin KHÔNG tồn tại trên
 // bản ghi employee (chỉ có is_super_admin) nên admin không bao giờ thấy nút quản lý.
-const isAdmin = computed(() => authService.canAccessModule('communications'));
+const isAdmin = computed(() => authService.hasCapability('communications.manage'));
+const activeTab = ref('news');
+const categoryColumns = [{ key: 'category_code', label: 'Mã', mono: true }, { key: 'category_name', label: 'Tên danh mục' }, { key: 'description', label: 'Mô tả' }, { key: 'status', label: 'Trạng thái' }];
+const categoryFields = [{ key: 'category_code', label: 'Mã', required: true }, { key: 'category_name', label: 'Tên danh mục', required: true }, { key: 'description', label: 'Mô tả', type: 'textarea', full: true, nullable: true }, { key: 'status', label: 'Trạng thái', type: 'select', options: [{ value: 'ACTIVE', label: 'Hoạt động' }, { value: 'INACTIVE', label: 'Ngừng dùng' }] }];
 
 const showReadModal = ref(false);
 const showEditModal = ref(false);
@@ -138,6 +147,7 @@ const currentArticle = ref(null);
 
 const form = ref({
   title: '',
+  category_id: '',
   content: '',
   status: 'published'
 });
@@ -179,6 +189,7 @@ const readMore = async (item) => {
 const openCreateModal = () => {
   form.value = {
     title: '',
+    category_id: '',
     content: '',
     status: 'published'
   };

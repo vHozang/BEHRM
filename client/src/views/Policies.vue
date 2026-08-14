@@ -62,8 +62,18 @@
             </button>
             <button 
               v-if="isAdmin" 
+              @click="editItem(item)"
+              :disabled="isIssued(item)"
+              :title="isIssued(item) ? 'Bản đã ban hành là bất biến' : 'Sửa bản nháp'"
+              class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Sửa
+            </button>
+            <button
+              v-if="isAdmin"
               @click="deleteItem(item.id)" 
-              class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+              :disabled="isIssued(item)"
+              class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
             >
               Xóa
             </button>
@@ -113,12 +123,19 @@
     </BaseModal>
 
     <!-- Create Policy Modal (Admin only) -->
-    <BaseModal v-model="showCreateModal" title="Thêm chính sách mới">
+    <BaseModal v-model="showCreateModal" :title="form.id ? 'Sửa bản nháp chính sách' : 'Thêm chính sách mới'">
       <div class="space-y-4">
         <BaseInput v-model="form.policy_code" label="Mã chính sách" placeholder="POL-001" required />
         <BaseInput v-model="form.title" label="Tiêu đề chính sách" required />
         <BaseInput v-model="form.version" label="Phiên bản (Ví dụ: 1.0, 1.2)" placeholder="1.0" required />
         <BaseInput v-model="form.description" label="Tóm tắt ngắn gọn" />
+        <label class="block text-sm font-medium">
+          Trạng thái
+          <select v-model="form.status" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 font-normal">
+            <option value="DRAFT">Lưu bản nháp</option>
+            <option value="PUBLISHED">Ban hành ngay (không thể sửa/xóa)</option>
+          </select>
+        </label>
         
         <div>
           <label class="block text-sm font-medium text-foreground mb-1">Nội dung văn bản chính sách <span class="text-destructive">*</span></label>
@@ -133,7 +150,7 @@
       </div>
       <template #footer>
         <BaseButton variant="outline" @click="showCreateModal = false">Hủy</BaseButton>
-        <BaseButton @click="submitForm">Lưu & Ban hành</BaseButton>
+        <BaseButton @click="submitForm">{{ form.status === 'PUBLISHED' ? 'Lưu & Ban hành' : 'Lưu bản nháp' }}</BaseButton>
       </template>
     </BaseModal>
   </div>
@@ -163,12 +180,15 @@ const currentPolicy = ref(null);
 const signLoading = ref(false);
 
 const form = ref({
+  id: null,
   policy_code: '',
   title: '',
   version: '1.0',
   description: '',
-  content: ''
+  content: '',
+  status: 'DRAFT'
 });
+const isIssued = (item) => ['ACTIVE', 'PUBLISHED', 'ISSUED', 'ĐÃ_BAN_HÀNH'].includes(String(item?.status || '').toUpperCase());
 
 const loadData = async () => {
   try {
@@ -211,11 +231,27 @@ const signPolicy = async (signatureBase64) => {
 
 const openCreateModal = () => {
   form.value = {
+    id: null,
     policy_code: '',
     title: '',
     version: '1.0',
     description: '',
-    content: ''
+    content: '',
+    status: 'DRAFT'
+  };
+  showCreateModal.value = true;
+};
+
+const editItem = (item) => {
+  if (isIssued(item)) return toast.error('Bản đã ban hành là bất biến; hãy tạo phiên bản mới');
+  form.value = {
+    id: item.id,
+    policy_code: item.policy_code || '',
+    title: item.title || item.policy_name || '',
+    version: item.version || '1.0',
+    description: item.description || '',
+    content: item.content || '',
+    status: item.status || 'DRAFT',
   };
   showCreateModal.value = true;
 };
@@ -226,17 +262,20 @@ const submitForm = async () => {
     return;
   }
   try {
-    await communicationService.createPolicy({
+    const payload = {
       ...form.value,
       policy_code: form.value.policy_code.trim().toUpperCase(),
       policy_name: form.value.title.trim(),
-    });
-    toast.success('Ban hành chính sách mới thành công');
+    };
+    delete payload.id;
+    if (form.value.id) await communicationService.updatePolicy(form.value.id, payload);
+    else await communicationService.createPolicy(payload);
+    toast.success(form.value.status === 'PUBLISHED' ? 'Đã ban hành chính sách' : 'Đã lưu bản nháp chính sách');
     showCreateModal.value = false;
     await loadData();
   } catch (err) {
     console.error('Error creating policy:', err);
-    toast.error('Có lỗi xảy ra khi lưu chính sách');
+    toast.error(err.response?.data?.message || 'Có lỗi xảy ra khi lưu chính sách');
   }
 };
 
@@ -248,7 +287,8 @@ const deleteItem = async (id) => {
     await loadData();
   } catch (err) {
     console.error('Error deleting policy:', err);
-    toast.error('Có lỗi xảy ra khi xóa');
+    const violations = err.response?.data?.data?.violations;
+    toast.error(Array.isArray(violations) ? violations[0] : (err.response?.data?.message || 'Có lỗi xảy ra khi xóa'));
   }
 };
 

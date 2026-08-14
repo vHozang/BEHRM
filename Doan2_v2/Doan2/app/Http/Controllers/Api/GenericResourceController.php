@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\DepartmentManagerRoleService;
+use App\Services\AttendanceAccess;
 use App\Services\ShiftRosterAccess;
 use App\Support\AuditLogger;
 use App\Support\HrmTables;
 use App\Support\ResourceBusinessRules;
+use App\Support\ResourceAccess;
 use App\Support\TenantContext;
 use Illuminate\Database\Query\Expression;
 use Illuminate\Http\JsonResponse;
@@ -28,6 +30,7 @@ class GenericResourceController extends Controller
     public function __construct(
         private readonly ShiftRosterAccess $shiftRosterAccess,
         private readonly DepartmentManagerRoleService $departmentManagerRoles,
+        private readonly AttendanceAccess $attendanceAccess,
     ) {}
 
     public function root(): JsonResponse
@@ -52,6 +55,7 @@ class GenericResourceController extends Controller
 
     public function index(Request $request, string $resource): JsonResponse
     {
+        ResourceAccess::assertAllowed($request, $resource, 'read');
         $table = $this->tableOrFail($resource);
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
         $query = DB::table($table)->orderByDesc('id');
@@ -59,6 +63,7 @@ class GenericResourceController extends Controller
         if (TenantContext::hasTenant() && Schema::hasColumn($table, 'tenant_id')) {
             $query->where($table.'.tenant_id', TenantContext::id());
         }
+        $query = $this->applyResourceScope($query, $request, $table);
 
         if ($table === 'shift_assignments') {
             $query = $this->shiftRosterAccess->scopeAssignments($query, $request, $table);
@@ -92,6 +97,7 @@ class GenericResourceController extends Controller
                 $item->employee_name = $employee->full_name ?? null;
             }
         }
+        $items = $this->enrichResourceItems($table, $items);
 
         // Policies: đính trạng thái ĐÃ KÝ của chính người xem + số lượt ký THẬT.
         // Thiếu cái này thì NV ký xong (POST acknowledge 200) list vẫn "Chưa xác
@@ -134,12 +140,14 @@ class GenericResourceController extends Controller
 
     public function show(Request $request, string $resource, int $id): JsonResponse
     {
+        ResourceAccess::assertAllowed($request, $resource, 'read');
         $table = $this->tableOrFail($resource);
         $query = DB::table($table)->where('id', $id);
 
         if (TenantContext::hasTenant() && Schema::hasColumn($table, 'tenant_id')) {
             $query->where('tenant_id', TenantContext::id());
         }
+        $query = $this->applyResourceScope($query, $request, $table);
 
         if ($table === 'shift_assignments') {
             $query = $this->shiftRosterAccess->scopeAssignments($query, $request, $table);
@@ -166,7 +174,10 @@ class GenericResourceController extends Controller
             $record->employee_name = $employee->full_name ?? null;
         }
 
-        return $this->ok($this->unpackMeta($record, $table), Str::headline($resource).' detail');
+        $detail = $this->unpackMeta($record, $table);
+        $detail = $this->enrichResourceItems($table, [$detail])[0] ?? $detail;
+
+        return $this->ok($detail, Str::headline($resource).' detail');
     }
 
     public function store(Request $request, string $resource, int|string|null $id = null, ?string $child = null): JsonResponse
@@ -192,11 +203,15 @@ class GenericResourceController extends Controller
             return $this->ok(['news_id' => $id, 'read' => true], 'News marked as read');
         }
 
+        ResourceAccess::assertAllowed($request, $resource, 'write');
         $table = $this->tableOrFail($resource);
         if ($table === 'shift_types' && ! $this->shiftRosterAccess->canManageShiftTypes($request)) {
             abort(403, 'Chỉ Admin hoặc HR được quản lý định nghĩa ca');
         }
         $payload = $this->payloadFor($request, $table);
+        if (($scopeErrors = $this->payloadScopeErrors($request, $table, $payload)) !== []) {
+            return $this->validationError($scopeErrors);
+        }
 
         if ($table === 'departments' && ($errors = $this->departmentReferenceErrors($payload)) !== []) {
             return $this->validationError($errors);
@@ -230,7 +245,47 @@ class GenericResourceController extends Controller
             $payload = TenantContext::stamp($payload, $this->isEntityScoped($table));
         }
 
-        $newId = DB::table($table)->insertGetId($payload);
+        if ($table === 'employment_histories') {
+            $newId = DB::transaction(function () use ($payload): int {
+                $employeeId = (int) $payload['employee_id'];
+                $isCurrent = $this->databaseBoolean($payload['is_current'] ?? false);
+                if (! empty($payload['end_date'])) {
+                    $isCurrent = false;
+                    $payload['is_current'] = DB::raw('false');
+                }
+
+                if ($isCurrent) {
+                    $previousEndDate = \Carbon\Carbon::parse((string) $payload['start_date'])
+                        ->subDay()
+                        ->toDateString();
+                    DB::table('employment_histories')
+                        ->where('tenant_id', TenantContext::id())
+                        ->where('employee_id', $employeeId)
+                        ->whereRaw('is_current IS TRUE')
+                        ->update([
+                            'is_current' => DB::raw('false'),
+                            'end_date' => $previousEndDate,
+                            'updated_at' => now(),
+                        ]);
+                }
+
+                $newId = (int) DB::table('employment_histories')->insertGetId($payload);
+                if ($isCurrent) {
+                    DB::table('employees')
+                        ->where('tenant_id', TenantContext::id())
+                        ->where('id', $employeeId)
+                        ->update([
+                            'department_id' => $payload['department_id'] ?? null,
+                            'position_id' => $payload['position_id'] ?? null,
+                            'updated_at' => now(),
+                        ]);
+                }
+
+                return $newId;
+            });
+        } else {
+            $newId = DB::table($table)->insertGetId($payload);
+        }
 
         if ($table === 'departments') {
             $this->departmentManagerRoles->syncTenant((int) TenantContext::id());
@@ -257,6 +312,12 @@ class GenericResourceController extends Controller
         // Policy acknowledgment (kept for simple resource)
         if ($child === 'acknowledge') {
             $empId = $request->attributes->get('auth_employee_id');
+            $policyExists = DB::table('policies')->where('id', $id)
+                ->when(TenantContext::hasTenant(), fn ($query) => $query->where('tenant_id', TenantContext::id()))
+                ->exists();
+            if (! $policyExists) {
+                return $this->notFound('Không tìm thấy chính sách');
+            }
 
             if ($empId !== null) {
                 $now = now();
@@ -269,6 +330,7 @@ class GenericResourceController extends Controller
             return $this->ok(['id' => $id, 'acknowledged' => true], 'Policy acknowledged');
         }
 
+        ResourceAccess::assertAllowed($request, $resource, 'write');
         $table = $this->tableOrFail($resource);
 
         if ($table === 'shift_types' && ! $this->shiftRosterAccess->canManageShiftTypes($request)) {
@@ -278,6 +340,18 @@ class GenericResourceController extends Controller
             $this->shiftRosterAccess->assertAssignment($request, $id);
             if ($request->filled('employee_id')) {
                 $this->shiftRosterAccess->assertEmployee($request, (int) $request->input('employee_id'));
+            }
+        }
+
+        if ($table === 'policies') {
+            $policy = DB::table('policies')->where('id', $id)
+                ->where('tenant_id', TenantContext::id())
+                ->first(['status']);
+            if ($policy && in_array(strtoupper((string) $policy->status), ['ACTIVE', 'PUBLISHED', 'ISSUED', 'ĐÃ_BAN_HÀNH'], true)) {
+                return $this->conflict(
+                    ['Chính sách đã ban hành là bất biến; hãy tạo phiên bản mới'],
+                    'Chính sách'
+                );
             }
         }
 
@@ -309,6 +383,9 @@ class GenericResourceController extends Controller
     {
 
         $payload = $this->payloadFor($request, $table, $id);
+        if (($scopeErrors = $this->payloadScopeErrors($request, $table, $payload)) !== []) {
+            return $this->validationError($scopeErrors);
+        }
 
         if ($table === 'shift_assignments') {
             $payload['assigned_by'] = $this->shiftRosterAccess->actorId($request);
@@ -342,12 +419,12 @@ class GenericResourceController extends Controller
         $scoped = TenantContext::hasTenant() && Schema::hasColumn($table, 'tenant_id');
         $tenantId = TenantContext::id();
 
-        $applyScope = function ($query) use ($scoped, $tenantId) {
+        $applyScope = function ($query) use ($scoped, $tenantId, $request, $table) {
             if ($scoped) {
                 $query->where('tenant_id', $tenantId);
             }
 
-            return $query;
+            return $this->applyResourceScope($query, $request, $table);
         };
 
         $beforeRow = $applyScope(DB::table($table)->where('id', $id))->first();
@@ -374,6 +451,7 @@ class GenericResourceController extends Controller
 
     public function destroy(Request $request, string $resource, int $id): JsonResponse
     {
+        ResourceAccess::assertAllowed($request, $resource, 'write');
         $table = $this->tableOrFail($resource);
 
         if ($table === 'shift_types' && ! $this->shiftRosterAccess->canManageShiftTypes($request)) {
@@ -390,12 +468,12 @@ class GenericResourceController extends Controller
         $scoped = TenantContext::hasTenant() && Schema::hasColumn($table, 'tenant_id');
         $tenantId = TenantContext::id();
 
-        $applyScope = function ($query) use ($scoped, $tenantId) {
+        $applyScope = function ($query) use ($scoped, $tenantId, $request, $table) {
             if ($scoped) {
                 $query->where('tenant_id', $tenantId);
             }
 
-            return $query;
+            return $this->applyResourceScope($query, $request, $table);
         };
 
         if (! $applyScope(DB::table($table)->where('id', $id))->exists()) {
@@ -458,6 +536,15 @@ class GenericResourceController extends Controller
         return $payload;
     }
 
+    private function databaseBoolean(mixed $value): bool
+    {
+        if ($value instanceof Expression) {
+            $value = $value->getValue(DB::connection()->getQueryGrammar());
+        }
+
+        return in_array($value, [true, 1, '1', 't', 'true', 'TRUE'], true);
+    }
+
     private function payloadFor(Request $request, string $table, ?int $id = null): array
     {
         $columns = Schema::getColumnListing($table);
@@ -482,6 +569,26 @@ class GenericResourceController extends Controller
         }
         if ($table === 'policies' && $request->filled('title') && ! $request->filled('policy_name')) {
             $payload['policy_name'] = $request->input('title');
+        }
+
+        $codeColumns = [
+            'allowances' => 'allowance_code',
+            'deductions' => 'deduction_code',
+            'asset_categories' => 'category_code',
+            'asset_locations' => 'location_code',
+            'suppliers' => 'supplier_code',
+            'service_categories' => 'category_code',
+            'news_categories' => 'category_code',
+            'document_types' => 'document_type_code',
+            'qualification_types' => 'qualification_type_code',
+            'insurance_types' => 'insurance_type_code',
+            'banks' => 'bank_code',
+            'nationalities' => 'nationality_code',
+            'salary_components' => 'code',
+        ];
+        $codeColumn = $codeColumns[$table] ?? null;
+        if ($codeColumn && array_key_exists($codeColumn, $payload)) {
+            $payload[$codeColumn] = Str::upper(trim((string) $payload[$codeColumn]));
         }
 
         if (in_array('meta', $columns, true)) {
@@ -764,6 +871,184 @@ class GenericResourceController extends Controller
     private function isEntityScoped(string $table): bool
     {
         return in_array($table, self::ENTITY_SCOPED_TABLES, true);
+    }
+
+    private function applyResourceScope($query, Request $request, string $table)
+    {
+        if ($this->attendanceAccess->isAdmin($request)) {
+            return $query;
+        }
+
+        if (Schema::hasColumn($table, 'legal_entity_id')) {
+            $query->where($table.'.legal_entity_id', TenantContext::legalEntityId());
+        }
+
+        $employeeColumns = [
+            'asset_assignments' => 'employee_id',
+            'certificates' => 'employee_id',
+            'dependents' => 'employee_id',
+            'employee_allowances' => 'employee_id',
+            'employee_deductions' => 'employee_id',
+            'employment_histories' => 'employee_id',
+            'identity_documents' => 'employee_id',
+            'insurance_claims' => 'employee_id',
+            'leave_advancement_requests' => 'employee_id',
+            'leave_balances' => 'employee_id',
+            'qualifications' => 'employee_id',
+            'service_tickets' => 'requester_id',
+            'social_insurance_info' => 'employee_id',
+        ];
+        $employeeColumn = $employeeColumns[$table] ?? null;
+        if (! $employeeColumn) {
+            return $query;
+        }
+
+        if ($this->attendanceAccess->isHr($request) || $this->attendanceAccess->isAccountant($request)) {
+            return $query->whereIn($table.'.'.$employeeColumn, function ($employees): void {
+                $employees->select('id')->from('employees')
+                    ->where('tenant_id', TenantContext::id())
+                    ->where('legal_entity_id', TenantContext::legalEntityId());
+            });
+        }
+
+        if ($this->attendanceAccess->isDepartmentManager($request)) {
+            $departmentIds = $this->attendanceAccess->managedDepartmentIds($request);
+            $actorId = $this->attendanceAccess->actorId($request);
+
+            return $query->whereIn($table.'.'.$employeeColumn, function ($employees) use ($departmentIds, $actorId): void {
+                $employees->select('id')->from('employees')
+                    ->where('tenant_id', TenantContext::id())
+                    ->where('legal_entity_id', TenantContext::legalEntityId())
+                    ->where(function ($managed) use ($departmentIds, $actorId): void {
+                        $managed->where('id', $actorId)->orWhere('manager_id', $actorId);
+                        if ($departmentIds !== []) {
+                            $managed->orWhereIn('department_id', $departmentIds);
+                        }
+                    });
+            });
+        }
+
+        return $query->where($table.'.'.$employeeColumn, $this->attendanceAccess->actorId($request));
+    }
+
+    /** @return array<string, array<int, string>> */
+    private function payloadScopeErrors(Request $request, string $table, array &$payload): array
+    {
+        if ($this->attendanceAccess->isAdmin($request)) {
+            return [];
+        }
+
+        $errors = [];
+        if (Schema::hasColumn($table, 'legal_entity_id')) {
+            $entityId = (int) ($payload['legal_entity_id'] ?? TenantContext::legalEntityId());
+            if ($entityId !== (int) TenantContext::legalEntityId()) {
+                $errors['legal_entity_id'][] = 'Bạn chỉ được thao tác trong pháp nhân hiện tại';
+            } else {
+                $payload['legal_entity_id'] = $entityId;
+            }
+        }
+
+        if (array_key_exists('employee_id', $payload) && $payload['employee_id'] !== null) {
+            $employee = DB::table('employees')
+                ->where('tenant_id', TenantContext::id())
+                ->where('id', $payload['employee_id'])
+                ->first(['legal_entity_id']);
+            if (! $employee || (int) $employee->legal_entity_id !== (int) TenantContext::legalEntityId()) {
+                $errors['employee_id'][] = 'Nhân viên không thuộc pháp nhân hiện tại';
+            }
+        }
+
+        return $errors;
+    }
+
+    /** @param array<int, mixed> $items @return array<int, mixed> */
+    private function enrichResourceItems(string $table, array $items): array
+    {
+        if ($items === []) {
+            return $items;
+        }
+
+        $employeeColumns = [
+            'asset_assignments' => 'employee_id',
+            'certificates' => 'employee_id',
+            'dependents' => 'employee_id',
+            'employee_allowances' => 'employee_id',
+            'employee_deductions' => 'employee_id',
+            'employment_histories' => 'employee_id',
+            'identity_documents' => 'employee_id',
+            'insurance_claims' => 'employee_id',
+            'leave_advancement_requests' => 'employee_id',
+            'leave_balances' => 'employee_id',
+            'qualifications' => 'employee_id',
+            'service_tickets' => 'requester_id',
+            'social_insurance_info' => 'employee_id',
+        ];
+        $employeeColumn = $employeeColumns[$table] ?? null;
+        if ($employeeColumn) {
+            $ids = collect($items)->map(fn ($item) => (int) ($item->{$employeeColumn} ?? 0))->filter()->unique();
+            $employees = DB::table('employees')->where('tenant_id', TenantContext::id())
+                ->whereIn('id', $ids)->get(['id', 'employee_code', 'full_name'])->keyBy('id');
+            foreach ($items as $item) {
+                $employee = $employees->get((int) ($item->{$employeeColumn} ?? 0));
+                $item->employee_code = $employee->employee_code ?? null;
+                $item->employee_name = $employee->full_name ?? null;
+                $item->employee_label = $employee
+                    ? trim(($employee->employee_code ? $employee->employee_code.' · ' : '').$employee->full_name)
+                    : null;
+            }
+        }
+
+        $catalogs = [
+            'employee_allowances' => [['allowance_id', 'allowances', 'allowance_code', 'allowance_name', 'component']],
+            'employee_deductions' => [['deduction_id', 'deductions', 'deduction_code', 'deduction_name', 'component']],
+            'service_tickets' => [['category_id', 'service_categories', 'category_code', 'category_name', 'category']],
+            'assets' => [
+                ['category_id', 'asset_categories', 'category_code', 'category_name', 'category'],
+                ['location_id', 'asset_locations', 'location_code', 'location_name', 'location'],
+                ['supplier_id', 'suppliers', 'supplier_code', 'supplier_name', 'supplier'],
+            ],
+            'identity_documents' => [['document_type_id', 'document_types', 'document_type_code', 'document_type_name', 'document_type']],
+            'qualifications' => [['qualification_type_id', 'qualification_types', 'qualification_type_code', 'qualification_type_name', 'qualification_type']],
+            'insurance_claims' => [
+                ['insurance_type_id', 'insurance_types', 'insurance_type_code', 'insurance_type_name', 'insurance_type'],
+                ['bank_id', 'banks', 'bank_code', 'bank_name', 'bank'],
+            ],
+        ];
+        foreach ($catalogs[$table] ?? [] as [$foreignKey, $catalogTable, $codeColumn, $nameColumn, $prefix]) {
+            $ids = collect($items)->map(fn ($item) => (int) ($item->{$foreignKey} ?? 0))->filter()->unique();
+            $catalog = DB::table($catalogTable)->where('tenant_id', TenantContext::id())
+                ->whereIn('id', $ids)->get(['id', $codeColumn, $nameColumn])->keyBy('id');
+            foreach ($items as $item) {
+                $row = $catalog->get((int) ($item->{$foreignKey} ?? 0));
+                $item->{$prefix.'_code'} = $row->{$codeColumn} ?? null;
+                $item->{$prefix.'_name'} = $row->{$nameColumn} ?? null;
+                $item->{$prefix} = $row->{$nameColumn} ?? ($item->{$prefix} ?? null);
+            }
+        }
+
+        if (in_array($table, ['asset_incidents', 'asset_maintenance'], true)) {
+            $assetIds = collect($items)->map(fn ($item) => (int) ($item->asset_id ?? 0))->filter()->unique();
+            $assets = DB::table('assets')->where('tenant_id', TenantContext::id())
+                ->whereIn('id', $assetIds)->get(['id', 'asset_code', 'asset_name'])->keyBy('id');
+            foreach ($items as $item) {
+                $asset = $assets->get((int) ($item->asset_id ?? 0));
+                $item->asset_code = $asset->asset_code ?? null;
+                $item->asset_name = $asset->asset_name ?? null;
+            }
+        }
+
+        if ($table === 'recruitment_positions') {
+            $departmentIds = collect($items)->map(fn ($item) => (int) ($item->department_id ?? 0))->filter()->unique();
+            $departments = DB::table('departments')->where('tenant_id', TenantContext::id())
+                ->whereIn('id', $departmentIds)->get(['id', 'department_code', 'department_name'])->keyBy('id');
+            foreach ($items as $item) {
+                $department = $departments->get((int) ($item->department_id ?? 0));
+                $item->department_code = $department->department_code ?? null;
+                $item->department_name = $department->department_name ?? null;
+            }
+        }
+
+        return $items;
     }
 
     private function ok(mixed $data, string $message): JsonResponse

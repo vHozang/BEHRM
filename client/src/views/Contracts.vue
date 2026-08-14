@@ -596,16 +596,22 @@ const openCreateModal = () => {
   showModal.value = true;
 };
 
-const editItem = (item) => {
+const editItem = async (item) => {
+  let detail = item;
+  try {
+    detail = await contractService.getById(item.id);
+  } catch {
+    // Keep the lightweight list row as fallback so the user can still inspect it.
+  }
   form.value = {
-    ...item,
-    sign_date: item.sign_date ? item.sign_date.substring(0, 10) : '',
-    start_date: item.start_date ? item.start_date.substring(0, 10) : '',
-    end_date: item.end_date ? item.end_date.substring(0, 10) : '',
-    signature: item.signature || ''
+    ...detail,
+    sign_date: detail.sign_date ? detail.sign_date.substring(0, 10) : '',
+    start_date: detail.start_date ? detail.start_date.substring(0, 10) : '',
+    end_date: detail.end_date ? detail.end_date.substring(0, 10) : '',
+    signature: detail.signature || ''
   };
   showModal.value = true;
-  loadChangeLogs(item.id);
+  loadChangeLogs(detail.id);
 };
 
 const submitForm = async () => {

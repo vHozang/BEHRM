@@ -297,7 +297,7 @@
           <BaseInput v-model="form.ethnicity" label="Dân tộc" />
           <BaseInput v-model="form.religion" label="Tôn giáo" />
           <BaseSelect v-model="form.marital_status" label="Tình trạng hôn nhân" :options="maritalStatusOptions" />
-          <BaseInput v-model="form.nationality_name" label="Quốc tịch" />
+          <label class="block text-sm font-medium">Quốc tịch<ResourceSelect v-model="form.nationality_id" resource="nationalities" label-key="nationality_name" code-key="nationality_code" /></label>
           <BaseInput v-model="form.hometown" label="Quê quán" />
           <BaseInput v-model="form.education_level" label="Trình độ học vấn" />
           <div class="md:col-span-2">
@@ -335,7 +335,7 @@
           <div>
             <p class="text-sm font-semibold mb-3">Tài khoản ngân hàng</p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <BaseInput v-model="form.bank_name" label="Ngân hàng" />
+              <label class="block text-sm font-medium">Ngân hàng<ResourceSelect v-model="form.bank_id" resource="banks" label-key="bank_name" code-key="bank_code" /></label>
               <BaseInput v-model="form.bank_account" label="Số tài khoản" />
             </div>
           </div>
@@ -423,6 +423,7 @@ import BaseSelect from '../components/BaseSelect.vue';
 import BaseBadge from '../components/BaseBadge.vue';
 import BaseTable from '../components/BaseTable.vue';
 import BaseModal from '../components/BaseModal.vue';
+import ResourceSelect from '../components/ResourceSelect.vue';
 import IconUser from '../components/IconUser.vue';
 import { employeeService } from '../services/employeeService';
 import { departmentService } from '../services/departmentService';
@@ -561,6 +562,7 @@ const form = ref({
   religion: '',
   marital_status: '',
   nationality_name: '',
+  nationality_id: '',
   hometown: '',
   education_level: '',
   address: '',
@@ -578,6 +580,7 @@ const form = ref({
   tax_number: '',
   insurance_number: '',
   bank_name: '',
+  bank_id: '',
   bank_account: '',
   emergency_contact_name: '',
   emergency_contact_relationship: '',
@@ -722,6 +725,7 @@ const resetForm = () => {
     religion: '',
     marital_status: '',
     nationality_name: '',
+    nationality_id: '',
     hometown: '',
     education_level: '',
     address: '',
@@ -739,6 +743,7 @@ const resetForm = () => {
     tax_number: '',
     insurance_number: '',
     bank_name: '',
+    bank_id: '',
     bank_account: '',
     emergency_contact_name: '',
     emergency_contact_relationship: '',
@@ -801,6 +806,7 @@ const openEditModal = (employee) => {
     religion: employee.religion || '',
     marital_status: (employee.marital_status || '').toUpperCase(),
     nationality_name: employee.nationality_name || '',
+    nationality_id: employee.nationality_id ? String(employee.nationality_id) : '',
     hometown: employee.hometown || '',
     education_level: employee.education_level || '',
     address: employee.address || '',
@@ -818,6 +824,7 @@ const openEditModal = (employee) => {
     tax_number: employee.tax_number || '',
     insurance_number: employee.insurance_number || '',
     bank_name: employee.bank_name || '',
+    bank_id: employee.bank_id ? String(employee.bank_id) : '',
     bank_account: employee.bank_account || '',
     emergency_contact_name: employee.emergency_contact_name || '',
     emergency_contact_relationship: employee.emergency_contact_relationship || '',
@@ -880,6 +887,7 @@ const handleSubmit = async () => {
       religion: form.value.religion || null,
       marital_status: form.value.marital_status || null,
       nationality_name: form.value.nationality_name || null,
+      nationality_id: form.value.nationality_id ? Number(form.value.nationality_id) : null,
       hometown: form.value.hometown || null,
       education_level: form.value.education_level || null,
       permanent_address: form.value.permanent_address || null,
@@ -890,6 +898,7 @@ const handleSubmit = async () => {
       tax_number: form.value.tax_number || null,
       insurance_number: form.value.insurance_number || null,
       bank_name: form.value.bank_name || null,
+      bank_id: form.value.bank_id ? Number(form.value.bank_id) : null,
       bank_account: form.value.bank_account || null,
       emergency_contact_name: form.value.emergency_contact_name || null,
       emergency_contact_relationship: form.value.emergency_contact_relationship || null,

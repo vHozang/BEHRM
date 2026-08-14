@@ -337,7 +337,15 @@ const empNameById = (id) => {
   const e = employees.value.find((x) => String(x.id) === String(id));
   return e ? (e.full_name || e.employee_code) : null;
 };
-const openDetail = (item) => { selectedRequest.value = item; showDetailModal.value = true; };
+const openDetail = async (item) => {
+  showDetailModal.value = true;
+  selectedRequest.value = item;
+  try {
+    selectedRequest.value = await regularizationService.get(item.id);
+  } catch (err) {
+    toast.error(err.response?.data?.message || 'Không tải được chi tiết đơn điều chỉnh công');
+  }
+};
 const approvalSteps = computed(() => {
   const req = selectedRequest.value;
   if (!req) return [];

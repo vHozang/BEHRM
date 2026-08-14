@@ -5,6 +5,7 @@
         <h1 class="text-3xl font-bold text-foreground">Lịch sử công tác</h1>
         <p class="text-muted-foreground mt-1">Quá trình giữ vị trí / phòng ban của nhân viên (tự ghi nhận khi điều chuyển).</p>
       </div>
+      <BaseButton @click="openCreate">+ Thêm sự kiện thủ công</BaseButton>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -67,6 +68,40 @@
         </template>
       </BaseTable>
     </BaseCard>
+
+    <BaseModal v-model="showCreate" title="Thêm sự kiện công tác" size="lg">
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label class="block text-sm font-medium sm:col-span-2">
+          Nhân viên <span class="text-destructive">*</span>
+          <RemoteEmployeeSelect v-model="form.employee_id" />
+        </label>
+        <label class="block text-sm font-medium">
+          Phòng ban
+          <ResourceSelect v-model="form.department_id" resource="departments" label-key="department_name" code-key="department_code" />
+        </label>
+        <label class="block text-sm font-medium">
+          Chức danh
+          <ResourceSelect v-model="form.position_id" resource="positions" label-key="position_name" code-key="position_code" />
+        </label>
+        <BaseInput v-model="form.start_date" type="date" label="Ngày bắt đầu" required />
+        <BaseInput v-model="form.end_date" type="date" label="Ngày kết thúc" />
+        <BaseInput v-model="form.decision_number" label="Số quyết định" />
+        <BaseInput v-model="form.decision_date" type="date" label="Ngày quyết định" />
+        <label class="flex items-center gap-2 rounded-lg border border-input px-3 py-2 text-sm sm:col-span-2">
+          <input v-model="form.is_current" type="checkbox" class="h-4 w-4 rounded" />
+          Đặt làm vị trí hiện tại và kết thúc bản ghi hiện tại cũ
+        </label>
+        <label class="block text-sm font-medium sm:col-span-2">
+          Ghi chú / căn cứ
+          <textarea v-model="form.notes" rows="3" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 font-normal" />
+        </label>
+      </div>
+      <p v-if="formError" class="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{{ formError }}</p>
+      <template #footer>
+        <BaseButton variant="outline" :disabled="saving" @click="showCreate = false">Hủy</BaseButton>
+        <BaseButton :disabled="saving" @click="saveHistory">{{ saving ? 'Đang lưu...' : 'Lưu sự kiện' }}</BaseButton>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -78,14 +113,24 @@ import BaseTable from '../components/BaseTable.vue';
 import BaseInput from '../components/BaseInput.vue';
 import BaseSelect from '../components/BaseSelect.vue';
 import BaseBadge from '../components/BaseBadge.vue';
+import BaseModal from '../components/BaseModal.vue';
+import RemoteEmployeeSelect from '../components/RemoteEmployeeSelect.vue';
+import ResourceSelect from '../components/ResourceSelect.vue';
 import { employeeService } from '../services/employeeService';
 import { departmentService } from '../services/departmentService';
 import { jobTitleService } from '../services/jobTitleService';
+import { useToast } from '../composables/useToast';
 
+const toast = useToast();
 const loading = ref(true);
+const saving = ref(false);
+const showCreate = ref(false);
+const formError = ref('');
 const histories = ref([]);
 const employeeOptions = ref([{ label: 'Tất cả nhân viên', value: '' }]);
 const filters = ref({ employee: '', search: '' });
+const emptyForm = () => ({ employee_id: '', department_id: '', position_id: '', start_date: new Date().toISOString().slice(0, 10), end_date: '', decision_number: '', decision_date: '', is_current: false, notes: '' });
+const form = ref(emptyForm());
 
 const getInitials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : '';
 const formatDate = (date) => date ? new Date(date).toLocaleDateString('vi-VN') : '-';
@@ -112,6 +157,45 @@ const filteredHistory = computed(() => {
 });
 
 const asArray = (data) => Array.isArray(data) ? data : (data?.items || data?.data || []);
+
+const openCreate = () => {
+  form.value = emptyForm();
+  formError.value = '';
+  showCreate.value = true;
+};
+
+const saveHistory = async () => {
+  if (!form.value.employee_id || !form.value.start_date) {
+    formError.value = 'Vui lòng chọn nhân viên và ngày bắt đầu';
+    return;
+  }
+  if (form.value.end_date && form.value.end_date < form.value.start_date) {
+    formError.value = 'Ngày kết thúc không được trước ngày bắt đầu';
+    return;
+  }
+  saving.value = true;
+  formError.value = '';
+  try {
+    await employeeService.createHistory(Number(form.value.employee_id), {
+      department_id: form.value.department_id ? Number(form.value.department_id) : null,
+      position_id: form.value.position_id ? Number(form.value.position_id) : null,
+      start_date: form.value.start_date,
+      end_date: form.value.end_date || null,
+      decision_number: form.value.decision_number || null,
+      decision_date: form.value.decision_date || null,
+      is_current: Boolean(form.value.is_current && !form.value.end_date),
+      notes: form.value.notes || null,
+    });
+    showCreate.value = false;
+    toast.success('Đã thêm sự kiện công tác');
+    await loadData();
+  } catch (err) {
+    const errors = err.response?.data?.data?.errors;
+    formError.value = errors ? Object.values(errors).flat().join(' ') : (err.response?.data?.message || 'Không thể lưu sự kiện công tác');
+  } finally {
+    saving.value = false;
+  }
+};
 
 const loadData = async () => {
   loading.value = true;

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApprovalRequest;
+use App\Services\AttendanceAccess;
+use App\Support\AccessControl;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,12 +15,15 @@ use Illuminate\Support\Facades\Validator;
 
 class RequestApprovalController extends Controller
 {
+    public function __construct(private readonly AttendanceAccess $access) {}
+
     public function index(Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
 
         $query = ApprovalRequest::with(['requester:id,full_name,employee_code'])
             ->orderByDesc('id');
+        $this->access->scopeEmployeeResource($query, $request, 'requests', 'requester_id');
 
         foreach (['requester_id', 'request_type_id', 'status', 'priority'] as $field) {
             if ($request->filled($field)) {
@@ -33,10 +38,28 @@ class RequestApprovalController extends Controller
         // không phải hot path); gom query nếu về sau danh sách duyệt phình to.
         $approverId = $request->attributes->get('auth_employee_id');
         $items = $page->items();
+        $typeMap = DB::table('request_types')
+            ->where('tenant_id', TenantContext::id())
+            ->whereIn('id', collect($items)->pluck('request_type_id')->filter()->unique())
+            ->get(['id', 'request_type_code', 'request_type_name', 'category'])
+            ->keyBy('id');
+        $stepMap = DB::table('approval_steps')
+            ->where('tenant_id', TenantContext::id())
+            ->whereIn('id', collect($items)->pluck('current_step_id')->filter()->unique())
+            ->get(['id', 'step_order', 'approver_role_id', 'approver_user_id'])
+            ->keyBy('id');
         foreach ($items as $item) {
-            $pending = in_array($item->status, ['CHỜ_DUYỆT', 'ĐANG_XỬ_LÝ', 'pending'], true);
+            $type = $typeMap->get((int) $item->request_type_id);
+            $item->request_type = $type;
+            $item->request_type_code = $type->request_type_code ?? null;
+            $item->request_type_name = $type->request_type_name ?? null;
+            $step = $stepMap->get((int) $item->current_step_id);
+            $item->current_step = $step ? (int) $step->step_order : null;
+            $pending = in_array($item->status, ['PENDING', 'IN_PROGRESS', 'CHỜ_DUYỆT', 'ĐANG_XỬ_LÝ', 'pending'], true);
             $notSelf = $approverId !== null && (int) $item->requester_id !== (int) $approverId;
             $item->can_approve = $pending && $notSelf
+                && AccessControl::accessHasCapability((array) $request->attributes->get('access', []), 'requests.approve')
+                && $this->access->canAccessEmployee($request, (int) $item->requester_id, true)
                 && $this->approverHoldsStepRole($item->current_step_id, $approverId);
         }
 
@@ -69,7 +92,8 @@ class RequestApprovalController extends Controller
         // Không dùng approverHoldsStepRole ở đây: nó chỉ đúng cho người duyệt ĐÚNG BƯỚC
         // hiện tại — đơn đã duyệt xong thì HR vẫn cần bổ sung chứng từ vào hồ sơ.
         $callerId = (int) $request->attributes->get('auth_employee_id');
-        if ((int) $req->requester_id !== $callerId && ! $this->canManageRequests($callerId)) {
+        if (! $this->access->canAccessEmployee($request, (int) $req->requester_id)
+            || ((int) $req->requester_id !== $callerId && ! $this->canManageRequests($request))) {
             return response()->json(['status' => 403, 'message' => 'Bạn không có quyền đính kèm cho đơn này', 'data' => null], 403);
         }
 
@@ -89,24 +113,21 @@ class RequestApprovalController extends Controller
     }
 
     /** Người xử lý hồ sơ đơn từ: ADMIN / HR (hoặc super-admin). */
-    private function canManageRequests(?int $employeeId): bool
+    private function canManageRequests(Request $request): bool
     {
-        if (! $employeeId) {
-            return false;
-        }
-        if (DB::table('employees')->where('id', $employeeId)->value('is_super_admin')) {
-            return true;
-        }
-
-        return DB::table('employee_roles as er')->join('roles as r', 'r.id', '=', 'er.role_id')
-            ->where('er.employee_id', $employeeId)->whereRaw('er.is_active = true')
-            ->where(fn ($q) => $q->whereIn('r.role_code', ['ADMIN', 'HR'])->orWhereRaw("r.meta->>'is_admin' = 'true'"))
-            ->exists();
+        return AccessControl::accessHasCapability(
+            (array) $request->attributes->get('access', []),
+            'requests.approve',
+        );
     }
 
     /** GET /requests/{id}/attachments — danh sách chứng từ của đơn. */
-    public function attachments(int $id): JsonResponse
+    public function attachments(Request $request, int $id): JsonResponse
     {
+        $approvalRequest = ApprovalRequest::find($id);
+        if (! $approvalRequest || ! $this->access->canAccessEmployee($request, (int) $approvalRequest->requester_id)) {
+            return $this->notFound();
+        }
         $rows = DB::table('request_attachments')
             ->where('request_id', $id)
             ->when(TenantContext::hasTenant(), fn ($q) => $q->where('tenant_id', TenantContext::id()))
@@ -116,8 +137,12 @@ class RequestApprovalController extends Controller
     }
 
     /** GET /requests/{id}/attachments/{attachmentId} — tải chứng từ. */
-    public function downloadAttachment(int $id, int $attachmentId)
+    public function downloadAttachment(Request $request, int $id, int $attachmentId)
     {
+        $approvalRequest = ApprovalRequest::find($id);
+        if (! $approvalRequest || ! $this->access->canAccessEmployee($request, (int) $approvalRequest->requester_id)) {
+            return $this->notFound();
+        }
         $att = DB::table('request_attachments')->where('id', $attachmentId)->where('request_id', $id)
             ->when(TenantContext::hasTenant(), fn ($q) => $q->where('tenant_id', TenantContext::id()))
             ->first();
@@ -146,6 +171,7 @@ class RequestApprovalController extends Controller
         $requestType = DB::table('request_types')
             ->where('id', $request->input('request_type_id'))
             ->when(TenantContext::hasTenant(), fn ($q) => $q->where('request_types.tenant_id', TenantContext::id()))
+            ->whereIn('status', ['ACTIVE', 'active', '1'])
             ->first();
 
         if (! $requestType) {
@@ -156,11 +182,18 @@ class RequestApprovalController extends Controller
 
         $columns = Schema::getColumnListing('requests');
         $data = collect($request->all())->only($columns)->toArray();
-        $data['requester_id'] = $data['requester_id'] ?? $request->attributes->get('auth_employee_id');
-        $data['status'] = 'PENDING';
+        $data['requester_id'] = (int) $request->attributes->get('auth_employee_id');
+        $data['status'] = $request->boolean('save_as_draft') ? 'DRAFT' : 'PENDING';
         // Point current_step_id at the first approval step of the resolved flow
         // (the `requests` table has current_step_id, NOT current_step / approval_flow_id).
-        $data['current_step_id'] = $this->firstStepId($requestType->approval_flow_id ?? null);
+        $flowId = $requestType->approval_flow_id ?: DB::table('approval_flows')
+            ->where('tenant_id', TenantContext::id())
+            ->where('request_type_id', $requestType->id)
+            ->orderBy('id')
+            ->value('id');
+        $data['current_step_id'] = $data['status'] === 'DRAFT'
+            ? null
+            : $this->firstStepId($flowId);
         $data['created_at'] = now();
         $data['updated_at'] = now();
 
@@ -173,7 +206,7 @@ class RequestApprovalController extends Controller
         ], 201);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
         $approvalRequest = ApprovalRequest::with([
             'requester:id,full_name,employee_code',
@@ -183,6 +216,11 @@ class RequestApprovalController extends Controller
         if (! $approvalRequest) {
             return $this->notFound();
         }
+        if (! $this->access->canAccessEmployee($request, (int) $approvalRequest->requester_id)) {
+            return $this->notFound();
+        }
+
+        $this->appendRequestType($approvalRequest);
 
         return $this->ok($approvalRequest, 'Request detail');
     }
@@ -195,23 +233,49 @@ class RequestApprovalController extends Controller
             return $this->notFound();
         }
 
+        $actorId = (int) $request->attributes->get('auth_employee_id');
+        if ((int) $approvalRequest->requester_id !== $actorId) {
+            return response()->json(['status' => 403, 'message' => 'Chỉ người tạo được sửa yêu cầu', 'data' => null], 403);
+        }
+
         if (! in_array($approvalRequest->status, ['PENDING', 'CHỜ_DUYỆT'])) {
             return $this->validationError([
                 'status' => ['Chỉ có thể sửa yêu cầu đang chờ duyệt'],
             ]);
         }
 
-        $columns = Schema::getColumnListing('requests');
-        $data = collect($request->except(['id', 'created_at', 'updated_at', 'status', 'current_step', 'current_step_id']))
-            ->only($columns)
-            ->toArray();
+        if (DB::table('approval_histories')->where('request_id', $id)->exists()) {
+            return $this->validationError(['status' => ['Yêu cầu đã có lịch sử duyệt nên không thể sửa']]);
+        }
+
+        $data = $request->validate([
+            'request_type_id' => ['sometimes', 'integer'],
+            'title' => ['sometimes', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'priority' => ['nullable', 'string', 'max:50'],
+        ]);
+        if (array_key_exists('request_type_id', $data)) {
+            $type = DB::table('request_types')
+                ->where('tenant_id', TenantContext::id())
+                ->where('id', $data['request_type_id'])
+                ->first();
+            if (! $type) {
+                return $this->validationError(['request_type_id' => ['Loại yêu cầu không tồn tại']]);
+            }
+            $flowId = $type->approval_flow_id ?: DB::table('approval_flows')
+                ->where('tenant_id', TenantContext::id())
+                ->where('request_type_id', $type->id)
+                ->orderBy('id')
+                ->value('id');
+            $data['current_step_id'] = $this->firstStepId($flowId);
+        }
 
         $approvalRequest->update($data);
 
         return $this->ok($approvalRequest->fresh(), 'Yêu cầu đã được cập nhật');
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
         $approvalRequest = ApprovalRequest::find($id);
 
@@ -219,9 +283,14 @@ class RequestApprovalController extends Controller
             return $this->notFound();
         }
 
-        if (! in_array($approvalRequest->status, ['PENDING', 'CHỜ_DUYỆT'])) {
+        if ((int) $approvalRequest->requester_id !== (int) $request->attributes->get('auth_employee_id')) {
+            return response()->json(['status' => 403, 'message' => 'Chỉ người tạo được xóa bản nháp', 'data' => null], 403);
+        }
+
+        if ((string) $approvalRequest->status !== 'DRAFT'
+            || DB::table('approval_histories')->where('request_id', $id)->exists()) {
             return $this->conflict(
-                ['Chỉ có thể xóa yêu cầu đang chờ duyệt'],
+                ['Chỉ có thể xóa bản nháp chưa có lịch sử duyệt'],
                 'Yêu cầu'
             );
         }
@@ -247,6 +316,11 @@ class RequestApprovalController extends Controller
         }
 
         $approverId = $request->attributes->get('auth_employee_id');
+
+        if (! AccessControl::accessHasCapability((array) $request->attributes->get('access', []), 'requests.approve')
+            || ! $this->access->canAccessEmployee($request, (int) $approvalRequest->requester_id, true)) {
+            return response()->json(['status' => 403, 'message' => 'Bạn không có quyền duyệt yêu cầu này', 'data' => null], 403);
+        }
 
         // Self-approval guard — a requester cannot approve their own request.
         if ($approverId !== null && (int) $approvalRequest->requester_id === (int) $approverId) {
@@ -312,6 +386,11 @@ class RequestApprovalController extends Controller
         }
 
         $approverId = $request->attributes->get('auth_employee_id');
+
+        if (! AccessControl::accessHasCapability((array) $request->attributes->get('access', []), 'requests.approve')
+            || ! $this->access->canAccessEmployee($request, (int) $approvalRequest->requester_id, true)) {
+            return response()->json(['status' => 403, 'message' => 'Bạn không có quyền từ chối yêu cầu này', 'data' => null], 403);
+        }
 
         if ($approverId !== null && (int) $approvalRequest->requester_id === (int) $approverId) {
             return $this->validationError([
@@ -394,7 +473,17 @@ class RequestApprovalController extends Controller
             return true;
         }
 
-        $roleId = DB::table('approval_steps')->where('id', $currentStepId)->value('approver_role_id');
+        $step = DB::table('approval_steps')
+            ->where('id', $currentStepId)
+            ->where('tenant_id', TenantContext::id())
+            ->first(['approver_role_id', 'approver_user_id']);
+        if (! $step) {
+            return false;
+        }
+        if ($step->approver_user_id !== null) {
+            return (int) $step->approver_user_id === (int) $approverId;
+        }
+        $roleId = $step->approver_role_id;
 
         // No role pinned on this step → preserve existing behavior.
         if (empty($roleId)) {
@@ -433,7 +522,7 @@ class RequestApprovalController extends Controller
         $step = DB::table('approval_steps')
             ->where('approval_flow_id', $flowId)
             ->when(TenantContext::hasTenant(), fn ($q) => $q->where('approval_steps.tenant_id', TenantContext::id()))
-            ->orderByRaw('(step_order)::int ASC')
+            ->orderBy('step_order')
             ->first(['id']);
 
         return $step ? (int) $step->id : null;
@@ -457,12 +546,23 @@ class RequestApprovalController extends Controller
 
         $next = DB::table('approval_steps')
             ->where('approval_flow_id', $current->approval_flow_id)
-            ->whereRaw('(step_order)::int > ?', [(int) $current->step_order])
+            ->where('step_order', '>', (int) $current->step_order)
             ->when(TenantContext::hasTenant(), fn ($q) => $q->where('approval_steps.tenant_id', TenantContext::id()))
-            ->orderByRaw('(step_order)::int ASC')
+            ->orderBy('step_order')
             ->first(['id']);
 
         return $next ? (int) $next->id : null;
+    }
+
+    private function appendRequestType(ApprovalRequest $approvalRequest): void
+    {
+        $type = DB::table('request_types')
+            ->where('tenant_id', TenantContext::id())
+            ->where('id', $approvalRequest->request_type_id)
+            ->first(['id', 'request_type_code', 'request_type_name', 'category']);
+        $approvalRequest->setAttribute('request_type', $type);
+        $approvalRequest->setAttribute('request_type_code', $type->request_type_code ?? null);
+        $approvalRequest->setAttribute('request_type_name', $type->request_type_name ?? null);
     }
 
     // ── Response Helpers ─────────────────────────────────

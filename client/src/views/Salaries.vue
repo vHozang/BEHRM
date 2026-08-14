@@ -52,7 +52,7 @@
           {{ isAdmin ? 'Bảng lương theo kỳ — engine lương luật Việt Nam' : 'Xem chi tiết lương theo kỳ' }}
         </p>
       </div>
-      <div v-if="isAdmin && details.length" class="flex flex-wrap gap-2 items-center">
+      <div v-if="isAdmin && activeSalaryTab === 'payroll' && details.length" class="flex flex-wrap gap-2 items-center">
         <button
           @click="bulkExportCsv"
           class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200 bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition-colors"
@@ -76,6 +76,18 @@
         </button>
       </div>
     </div>
+
+    <div v-if="salaryTabs.length > 1" class="flex gap-2 overflow-x-auto rounded-xl border border-border bg-card p-2">
+      <button
+        v-for="tab in salaryTabs"
+        :key="tab.value"
+        class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors"
+        :class="activeSalaryTab === tab.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
+        @click="activeSalaryTab = tab.value"
+      >{{ tab.label }}</button>
+    </div>
+
+    <template v-if="activeSalaryTab === 'payroll'">
 
     <!-- ═══ Chọn kỳ + hành động ═══ -->
     <BaseCard>
@@ -457,6 +469,18 @@
       </template>
     </BaseModal>
     </template>
+
+    <SalaryPeriodsPanel
+      v-else-if="activeSalaryTab === 'periods'"
+      :periods="periods"
+      @reload="loadPeriods"
+    />
+    <PayrollAdjustmentsPanel
+      v-else-if="activeSalaryTab === 'adjustments'"
+      :periods="periods"
+    />
+    <InsuranceClaimsPanel v-else-if="activeSalaryTab === 'insurance'" />
+    </template>
   </div>
 </template>
 
@@ -468,6 +492,9 @@ import BaseSelect from '../components/BaseSelect.vue';
 import BaseTable from '../components/BaseTable.vue';
 import BaseModal from '../components/BaseModal.vue';
 import BaseSkeleton from '../components/BaseSkeleton.vue';
+import SalaryPeriodsPanel from '../components/SalaryPeriodsPanel.vue';
+import PayrollAdjustmentsPanel from '../components/PayrollAdjustmentsPanel.vue';
+import InsuranceClaimsPanel from '../components/InsuranceClaimsPanel.vue';
 import { salaryService } from '../services/salaryService';
 import { authService } from '../services/authService';
 import { useNotificationStore } from '../stores/notificationStore';
@@ -504,6 +531,7 @@ const publicationBusy = ref(false);
 const publicationStatus = ref(null);
 const payslipIssues = ref([]);
 const issuesLoading = ref(false);
+const activeSalaryTab = ref('payroll');
 
 // Trạng thái kỳ khóa tính lại (đồng bộ với PayrollRunService::LOCKED_PERIOD_STATUSES)
 const LOCKED_STATUSES = ['CLOSED', 'LOCKED', 'PAID', 'ĐÃ_ĐÓNG', 'DA_DONG', 'ĐÃ_TRẢ', 'DA_TRA', 'CHỜ_DUYỆT'];
@@ -514,6 +542,15 @@ const periodLocked = computed(() => selectedPeriod.value && LOCKED_STATUSES.incl
 const periodPendingClose = computed(() => String(selectedPeriod.value?.status) === 'CHỜ_DUYỆT');
 const periodClosed = computed(() => ['CLOSED', 'LOCKED', 'PAID', 'ĐÃ_ĐÓNG', 'DA_DONG', 'ĐÃ_TRẢ', 'DA_TRA'].includes(String(selectedPeriod.value?.status)));
 const isFullAdmin = computed(() => authService.getAccess().full === true);
+const salaryTabs = computed(() => {
+  const rows = [{ value: 'payroll', label: 'Bảng lương' }];
+  if (authService.hasCapability('payroll.periods.manage')) rows.push({ value: 'periods', label: 'Kỳ lương' });
+  if (authService.hasCapability('payroll.adjustments.create') || authService.hasCapability('payroll.adjustments.approve')) {
+    rows.push({ value: 'adjustments', label: 'Điều chỉnh lương' });
+  }
+  if (authService.hasCapability('insurance.review') || authService.hasCapability('insurance.pay')) rows.push({ value: 'insurance', label: 'Claim bảo hiểm' });
+  return rows;
+});
 
 const periodOptions = computed(() => {
   // Đa pháp nhân: cùng mã kỳ lặp theo pháp nhân → chỉ thêm tên pháp nhân khi có nhiều pháp nhân.

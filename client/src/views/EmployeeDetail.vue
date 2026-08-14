@@ -24,7 +24,10 @@
           <h1 class="text-3xl font-bold text-foreground">{{ employee?.full_name }}</h1>
           <p class="text-muted-foreground mt-1">{{ employee?.code || employee?.employee_code }}</p>
         </div>
-        <BaseButton @click="openEditModal" data-testid="button-edit-profile">Chỉnh sửa hồ sơ</BaseButton>
+        <div class="flex items-center gap-2">
+          <BaseButton v-if="canManageRecords" variant="outline" @click="openDetachModal">Gỡ khỏi cơ cấu</BaseButton>
+          <BaseButton @click="openEditModal" data-testid="button-edit-profile">Chỉnh sửa hồ sơ</BaseButton>
+        </div>
       </div>
       
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -186,6 +189,25 @@
               </div>
             </div>
           </template>
+
+          <div class="mt-8 space-y-5">
+            <ResourceCrudPanel
+              resource="identity-documents"
+              title="Giấy tờ định danh chuẩn"
+              :params="{ employee_id: Number(route.params.id) }"
+              :defaults="{ employee_id: Number(route.params.id), has_chip: false }"
+              :columns="identityDocumentColumns"
+              :fields="identityDocumentFields"
+            />
+            <ResourceCrudPanel
+              resource="social-insurance-info"
+              title="Thông tin BHXH/BHYT"
+              :params="{ employee_id: Number(route.params.id) }"
+              :defaults="{ employee_id: Number(route.params.id), status: 'ACTIVE' }"
+              :columns="socialInsuranceColumns"
+              :fields="socialInsuranceFields"
+            />
+          </div>
         </div>
 
         <div v-if="activeTab === 'emergency'">
@@ -345,6 +367,14 @@
               </p>
             </div>
           </div>
+          <ResourceCrudPanel
+            resource="qualifications"
+            title="Quản lý bằng cấp chuẩn"
+            :params="{ employee_id: Number(route.params.id) }"
+            :defaults="{ employee_id: Number(route.params.id), is_highest: false }"
+            :columns="qualificationColumns"
+            :fields="qualificationFields"
+          />
           <div class="mb-4 flex items-center justify-between gap-3">
             <h4 class="font-semibold">Chứng chỉ</h4>
             <BaseButton size="sm" @click="openCertificateModal">+ Thêm chứng chỉ</BaseButton>
@@ -366,6 +396,10 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <div v-if="activeTab === 'insurance'">
+          <InsuranceClaimsPanel :employee-id="Number(route.params.id)" />
         </div>
       </BaseCard>
 
@@ -390,6 +424,23 @@
         <template #footer>
           <BaseButton variant="outline" :disabled="certificateSaving" @click="showCertificateModal = false">Hủy</BaseButton>
           <BaseButton :disabled="certificateSaving" @click="saveCertificate">{{ certificateSaving ? 'Đang lưu...' : 'Thêm chứng chỉ' }}</BaseButton>
+        </template>
+      </BaseModal>
+
+      <BaseModal v-model="showDetachModal" title="Gỡ nhân viên khỏi cơ cấu" size="md">
+        <div class="space-y-4">
+          <div class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm">
+            Nhân viên sẽ chuyển sang trạng thái nghỉ việc, các phiên đăng nhập bị thu hồi và cấp dưới trực tiếp được chuyển lên quản lý cấp trên. Dữ liệu lịch sử không bị xóa.
+          </div>
+          <label class="block text-sm font-medium">
+            Lý do / căn cứ <span class="text-destructive">*</span>
+            <textarea v-model="detachReason" rows="4" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 font-normal" placeholder="Ví dụ: Quyết định nghỉ việc số..." />
+          </label>
+          <p v-if="detachError" class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{{ detachError }}</p>
+        </div>
+        <template #footer>
+          <BaseButton variant="outline" :disabled="detachSaving" @click="showDetachModal = false">Hủy</BaseButton>
+          <BaseButton variant="destructive" :disabled="detachSaving" @click="detachEmployee">{{ detachSaving ? 'Đang xử lý...' : 'Xác nhận gỡ' }}</BaseButton>
         </template>
       </BaseModal>
 
@@ -435,7 +486,7 @@
                   <option value="OTHER">Khác</option>
                 </select>
               </div>
-              <BaseInput v-model="editForm.nationality_name" label="Quốc tịch" />
+              <label class="block text-sm font-medium">Quốc tịch<ResourceSelect v-model="editForm.nationality_id" resource="nationalities" label-key="nationality_name" code-key="nationality_code" /></label>
               <BaseInput v-model="editForm.hometown" label="Quê quán" />
               <BaseInput v-model="editForm.permanent_address" label="Địa chỉ thường trú" />
               <BaseInput v-model="editForm.education_level" label="Trình độ học vấn" />
@@ -459,7 +510,7 @@
               <BaseInput v-model="editForm.tax_number" label="Mã số thuế cá nhân" />
               <BaseInput v-model="editForm.insurance_number" label="Số sổ BHXH" />
               <BaseInput v-model="editForm.bank_account" label="Số tài khoản ngân hàng" />
-              <BaseInput v-model="editForm.bank_name" label="Ngân hàng" />
+              <label class="block text-sm font-medium">Ngân hàng<ResourceSelect v-model="editForm.bank_id" resource="banks" label-key="bank_name" code-key="bank_code" /></label>
             </div>
           </div>
 
@@ -518,11 +569,15 @@ import BaseBadge from '../components/BaseBadge.vue';
 import BaseModal from '../components/BaseModal.vue';
 import BaseInput from '../components/BaseInput.vue';
 import BaseButton from '../components/BaseButton.vue';
+import ResourceCrudPanel from '../components/ResourceCrudPanel.vue';
+import ResourceSelect from '../components/ResourceSelect.vue';
+import InsuranceClaimsPanel from '../components/InsuranceClaimsPanel.vue';
 import { employeeService } from '../services/employeeService';
 import { dependentService } from '../services/dependentService';
 import { settingsService } from '../services/settingsService';
 import { onboardingService } from '../services/onboardingService';
 import { contractService } from '../services/contractService';
+import { authService } from '../services/authService';
 import { useToast } from '../composables/useToast';
 import { certificateExpiryStatus } from '../utils/managementUi';
 
@@ -546,6 +601,37 @@ const certificateForm = ref({});
 const loading = ref(true);
 const error = ref('');
 const activeTab = ref('personal');
+const canManageRecords = computed(() => authService.hasCapability('employee.records.manage'));
+const showDetachModal = ref(false);
+const detachSaving = ref(false);
+const detachReason = ref('');
+const detachError = ref('');
+
+const openDetachModal = () => {
+  detachReason.value = '';
+  detachError.value = '';
+  showDetachModal.value = true;
+};
+
+const detachEmployee = async () => {
+  if (detachReason.value.trim().length < 3) {
+    detachError.value = 'Vui lòng ghi lý do ít nhất 3 ký tự';
+    return;
+  }
+  detachSaving.value = true;
+  detachError.value = '';
+  try {
+    await employeeService.detachFromOrg(route.params.id, detachReason.value.trim());
+    showDetachModal.value = false;
+    employee.value = await employeeService.getById(route.params.id);
+    toast.success('Đã gỡ nhân viên khỏi cơ cấu và thu hồi phiên đăng nhập');
+  } catch (err) {
+    const errors = err.response?.data?.errors || err.response?.data?.data?.errors;
+    detachError.value = errors ? Object.values(errors).flat().join(' ') : (err.response?.data?.message || 'Không thể gỡ nhân viên khỏi cơ cấu');
+  } finally {
+    detachSaving.value = false;
+  }
+};
 
 const emptyCertificateForm = () => ({
   certificate_name: '',
@@ -617,10 +703,26 @@ const tabs = [
   { id: 'emergency', label: 'Liên hệ khẩn cấp' },
   { id: 'dependents', label: 'Người phụ thuộc' },
   { id: 'credentials', label: 'Bằng cấp & Chứng chỉ' },
+  { id: 'insurance', label: 'Bảo hiểm' },
   { id: 'onboarding', label: 'Hội nhập / Nghỉ việc' },
   { id: 'history', label: 'Lịch sử công tác' },
   { id: 'salary', label: 'Thông tin lương' },
 ];
+
+const identityDocumentColumns = [{ key: 'document_type_name', label: 'Loại giấy tờ' }, { key: 'document_number', label: 'Số giấy tờ' }, { key: 'issue_date', label: 'Ngày cấp' }, { key: 'front_image_url', label: 'Mặt trước', downloadPath: '/employee-record-files/identity-documents/{id}/front', downloadLabel: 'Tải mặt trước' }, { key: 'back_image_url', label: 'Mặt sau', downloadPath: '/employee-record-files/identity-documents/{id}/back', downloadLabel: 'Tải mặt sau' }];
+const identityDocumentFields = [
+  { key: 'employee_id', type: 'hidden', label: '' },
+  { key: 'document_type_id', label: 'Loại giấy tờ', type: 'resource', resource: 'document-types', labelKey: 'document_type_name', codeKey: 'document_type_code', required: true, cast: 'number' },
+  { key: 'document_number', label: 'Số giấy tờ', required: true }, { key: 'full_name', label: 'Họ tên trên giấy tờ', nullable: true },
+  { key: 'issue_date', label: 'Ngày cấp', type: 'date', nullable: true }, { key: 'issue_place', label: 'Nơi cấp', nullable: true },
+  { key: 'expiry_date', label: 'Ngày hết hạn', type: 'date', nullable: true }, { key: 'has_chip', label: 'CCCD gắn chip', type: 'checkbox' },
+  { key: '_front_file', label: 'Tệp mặt trước', type: 'file', uploadPath: '/employee-record-files/identity-documents/{id}/front', full: true },
+  { key: '_back_file', label: 'Tệp mặt sau', type: 'file', uploadPath: '/employee-record-files/identity-documents/{id}/back', full: true },
+];
+const socialInsuranceColumns = [{ key: 'social_insurance_number', label: 'Số BHXH' }, { key: 'health_insurance_number', label: 'Số BHYT' }, { key: 'tax_code', label: 'Mã số thuế' }, { key: 'status', label: 'Trạng thái' }];
+const socialInsuranceFields = [{ key: 'employee_id', type: 'hidden', label: '' }, { key: 'social_insurance_number', label: 'Số BHXH', required: true }, { key: 'health_insurance_number', label: 'Số BHYT', nullable: true }, { key: 'tax_code', label: 'Mã số thuế', nullable: true }, { key: 'issue_date', label: 'Ngày cấp', type: 'date', nullable: true }, { key: 'issue_place', label: 'Nơi cấp', nullable: true }, { key: 'status', label: 'Trạng thái', type: 'select', options: [{ value: 'ACTIVE', label: 'Hiệu lực' }, { value: 'INACTIVE', label: 'Ngừng' }] }];
+const qualificationColumns = [{ key: 'qualification_type_name', label: 'Loại trình độ' }, { key: 'qualification_name', label: 'Tên bằng cấp' }, { key: 'major', label: 'Chuyên ngành' }, { key: 'school_name', label: 'Trường' }, { key: 'file_url', label: 'Tệp', downloadPath: '/employee-record-files/qualifications/{id}/file', downloadLabel: 'Tải văn bằng' }];
+const qualificationFields = [{ key: 'employee_id', type: 'hidden', label: '' }, { key: 'qualification_type_id', label: 'Loại trình độ', type: 'resource', resource: 'qualification-types', labelKey: 'qualification_type_name', codeKey: 'qualification_type_code', required: true, cast: 'number' }, { key: 'qualification_name', label: 'Tên bằng cấp', required: true }, { key: 'major', label: 'Chuyên ngành', nullable: true }, { key: 'school_name', label: 'Trường', nullable: true }, { key: 'graduation_year', label: 'Năm tốt nghiệp', type: 'number', cast: 'number', nullable: true }, { key: 'graduation_grade', label: 'Xếp loại', nullable: true }, { key: 'qualification_number', label: 'Số văn bằng', nullable: true }, { key: 'is_highest', label: 'Trình độ cao nhất', type: 'checkbox' }, { key: '_private_file', label: 'Tệp văn bằng', type: 'file', uploadPath: '/employee-record-files/qualifications/{id}/file', full: true }];
 
 const onboardingChecklists = ref([]);
 const onboardingBusy = ref(false);
@@ -747,6 +849,7 @@ const openEditModal = () => {
     insurance_number: e.insurance_number || '',
     bank_account: e.bank_account || '',
     bank_name: e.bank_name || '',
+    bank_id: e.bank_id ? String(e.bank_id) : '',
     emergency_contact_name: e.emergency_contact_name || '',
     emergency_contact_relationship: e.emergency_contact_relationship || '',
     emergency_contact_phone: e.emergency_contact_phone || '',
@@ -756,6 +859,7 @@ const openEditModal = () => {
     religion: e.religion || '',
     marital_status: (e.marital_status || '').toUpperCase(),
     nationality_name: e.nationality_name || '',
+    nationality_id: e.nationality_id ? String(e.nationality_id) : '',
     hometown: e.hometown || '',
     permanent_address: e.permanent_address || '',
     education_level: e.education_level || '',

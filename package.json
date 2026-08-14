@@ -18,7 +18,10 @@
     "test:zk-bridge": "node tools/zk-bridge/bridge.test.js",
     "test:user-role": "node scripts/test-user-role.mjs",
     "test:shift-roster": "node scripts/test-shift-roster.mjs",
-    "test:organization-chart": "node scripts/test-organization-chart.mjs"
+    "test:organization-chart": "node scripts/test-organization-chart.mjs",
+    "test:endpoints": "node scripts/audit-endpoints.mjs",
+    "test:auth-browser": "playwright test tests/browser/auth-refresh.spec.mjs",
+    "update:browserslist": "update-browserslist-db"
   },
   "dependencies": {
     "axios": "^1.18.1",
@@ -36,11 +39,15 @@
     "vue-router": "^4.6.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/typography": "^0.5.15",
     "@vitejs/plugin-vue": "^6.0.8",
     "autoprefixer": "^10.4.20",
+    "browserslist": "^4.28.8",
+    "caniuse-lite": "^1.0.30001809",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
+    "update-browserslist-db": "^1.3.1",
     "vite": "^8.1.5"
   }
 }

@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+      time: "09:00"
+      timezone: Asia/Bangkok
+    allow:
+      - dependency-name: browserslist
+      - dependency-name: caniuse-lite
+      - dependency-name: update-browserslist-db
+    groups:
+      browser-compatibility-data:
+        patterns:
+          - browserslist
+          - caniuse-lite
+          - update-browserslist-db

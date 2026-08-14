@@ -130,6 +130,7 @@ export const employeeService = {
     
     const profileKeys = [
       'address', 'personal_phone', 'bank_name', 'bank_account', 'personal_email',
+      'bank_id', 'nationality_id',
       'id_number', 'id_issue_date', 'id_issue_place', 'tax_number', 'insurance_number',
       'emergency_contact_name', 'emergency_contact_relationship', 'emergency_contact_phone',
       // Extended VN "employee 360" fields (stored in profile JSONB — no migration).
@@ -210,9 +211,6 @@ export const employeeService = {
     if (data.avatar_url !== undefined) {
       flatPayload.avatar_url = data.avatar_url;
     }
-    if (data.nationality_id !== undefined) {
-      flatPayload.nationality_id = data.nationality_id;
-    }
     if (data.manager_id !== undefined) {
       // Empty string -> null (clear manager); otherwise numeric id.
       flatPayload.manager_id = data.manager_id === '' || data.manager_id === null ? null : data.manager_id;
@@ -244,8 +242,8 @@ export const employeeService = {
 
   // Remove from org chart: reparent direct reports to this person's manager and
   // mark them TERMINATED (safe — no hard delete). Used by the org chart.
-  detachFromOrg: async (id) => {
-    const response = await axiosClient.post(`/employees/${id}/detach-from-org`);
+  detachFromOrg: async (id, reason) => {
+    const response = await axiosClient.post(`/employees/${id}/detach-from-org`, { reason });
     lookupCache.invalidate();
     return response.data;
   },
@@ -316,25 +314,6 @@ export const employeeService = {
 
   deleteCertificate: async (employeeId, certificateId) => {
     const response = await axiosClient.delete(`/employees/${employeeId}/certificates/${certificateId}`);
-    return response.data;
-  },
-
-  // Create employee salary
-  createSalary: async (employeeId, data) => {
-    const payload = { ...data, employee_id: employeeId };
-    const response = await axiosClient.post(`/salary-details`, payload);
-    return response.data;
-  },
-
-  // Update employee salary
-  updateSalary: async (employeeId, salaryId, data) => {
-    const response = await axiosClient.patch(`/salary-details/${salaryId}`, data);
-    return response.data;
-  },
-
-  // Delete employee salary
-  deleteSalary: async (employeeId, salaryId) => {
-    const response = await axiosClient.delete(`/salary-details/${salaryId}`);
     return response.data;
   }
 };

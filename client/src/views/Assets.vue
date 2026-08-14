@@ -1,299 +1,65 @@
 <template>
   <div class="space-y-6">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-3xl font-bold text-foreground">Danh Mục Tài Sản</h1>
-        <p class="text-muted-foreground mt-1">Danh sách thiết bị máy tính, điện thoại, nội thất bàn giao cho nhân viên</p>
-      </div>
-      <BaseButton @click="openCreateModal">+ Thêm tài sản</BaseButton>
+    <div>
+      <p class="text-xs font-bold uppercase tracking-[0.22em] text-amber-600">Asset control room</p>
+      <h1 class="mt-1 text-3xl font-bold text-foreground">Tài sản & vòng đời thiết bị</h1>
+      <p class="mt-1 text-muted-foreground">Dữ liệu tài sản dùng danh mục chuẩn; sự cố và bảo trì được lưu riêng để giữ lịch sử.</p>
     </div>
 
-    <!-- Summary Widgets -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-      <div v-for="stat in assetStats" :key="stat.label" class="bg-card p-4 rounded-xl border border-border flex items-center gap-4">
-        <div class="p-3 rounded-full" :class="stat.bgColorClass">
-          <svg class="w-5 h-5" :class="stat.iconColorClass" fill="none" stroke="currentColor" viewBox="0 0 24 24" v-html="stat.iconSvg"></svg>
-        </div>
-        <div>
-          <p class="text-xs text-muted-foreground font-semibold">{{ stat.label }}</p>
-          <p class="text-xl font-bold text-foreground">{{ stat.count }}</p>
-        </div>
-      </div>
+    <div class="flex gap-2 overflow-x-auto rounded-2xl border border-border bg-gradient-to-r from-amber-50 via-card to-sky-50 p-2 dark:from-amber-950/20 dark:to-sky-950/20">
+      <button v-for="tab in tabs" :key="tab.value" class="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition-colors" :class="activeTab === tab.value ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:bg-card'" @click="activeTab = tab.value">{{ tab.label }}</button>
     </div>
 
-    <!-- Table Card -->
-    <BaseCard>
-      <BaseTable
-        :columns="[
-          { key: 'asset_code', label: 'Mã tài sản' },
-          { key: 'name', label: 'Tên tài sản' },
-          { key: 'category', label: 'Loại tài sản' },
-          { key: 'purchase_date', label: 'Ngày mua' },
-          { key: 'price', label: 'Trị giá' },
-          { key: 'status', label: 'Trạng thái' }
-        ]"
-        :data="assets"
-      >
-        <template #cell-asset_code="{ item }">
-          <span class="font-bold text-foreground">{{ item.asset_code }}</span>
-        </template>
-
-        <template #cell-name="{ item }">
-          <span class="font-medium">{{ item.name }}</span>
-        </template>
-
-        <template #cell-price="{ item }">
-          <span class="font-medium text-primary">{{ formatCurrency(item.price || item.purchase_cost) }}</span>
-        </template>
-
-        <template #cell-purchase_date="{ item }">
-          <span>{{ formatDate(item.purchase_date) }}</span>
-        </template>
-
-        <template #cell-status="{ item }">
-          <BaseBadge :variant="getStatusVariant(item.status)">
-            {{ getStatusLabel(item.status) }}
-          </BaseBadge>
-        </template>
-
-        <template #actions="{ item }">
-          <div class="flex gap-1">
-            <button 
-              @click="editItem(item)" 
-              class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-            >
-              Sửa
-            </button>
-            <button 
-              @click="deleteItem(item.id)" 
-              class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
-            >
-              Xóa
-            </button>
-          </div>
-        </template>
-      </BaseTable>
-    </BaseCard>
-
-    <!-- Create/Edit Modal -->
-    <BaseModal v-model="showModal" :title="form.id ? 'Cập nhật tài sản thiết bị' : 'Đăng ký tài sản mới'">
-      <div class="space-y-4">
-        <BaseInput v-model="form.asset_code" label="Mã tài sản (Ví dụ: LAP-024, MON-012)" required />
-        <BaseInput v-model="form.name" label="Tên tài sản (Ví dụ: Laptop Dell Latitude 5420)" required />
-        
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-foreground mb-1">Nhóm thiết bị <span class="text-destructive">*</span></label>
-            <select 
-              v-model="form.category" 
-              class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              required
-            >
-              <option value="Laptop/PC">Laptop / Máy tính</option>
-              <option value="Monitor">Màn hình</option>
-              <option value="Office Equipment">Thiết bị văn phòng</option>
-              <option value="Others">Khác</option>
-            </select>
-          </div>
-
-          <BaseInput v-model="form.purchase_date" type="date" label="Ngày mua" required />
-        </div>
-
-        <div class="grid grid-cols-2 gap-4">
-          <BaseMoneyInput v-model="form.price" label="Trị giá mua (VNĐ)" required />
-          <div>
-            <label class="block text-sm font-medium text-foreground mb-1">Trạng thái thiết bị</label>
-            <select 
-              v-model="form.status" 
-              class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="available">Sẵn dùng (Available)</option>
-              <option value="assigned">Đang cấp phát (Assigned)</option>
-              <option value="maintenance">Đang sửa chữa (Maintenance)</option>
-              <option value="lost_broken">Hỏng / Mất (Broken)</option>
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-foreground mb-1">Chi tiết cấu hình / Mô tả</label>
-          <textarea 
-            v-model="form.description" 
-            class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring" 
-            rows="3" 
-            placeholder="Nhập thông tin số serial, RAM, CPU..."
-          ></textarea>
-        </div>
-      </div>
-      <template #footer>
-        <BaseButton variant="outline" @click="showModal = false">Hủy</BaseButton>
-        <BaseButton @click="submitForm">Lưu</BaseButton>
-      </template>
-    </BaseModal>
+    <ResourceCrudPanel
+      v-if="activeTab === 'assets'"
+      resource="assets"
+      title="Tài sản"
+      description="Mã tài sản, danh mục, vị trí và nhà cung cấp đều được kiểm tra cùng tenant/pháp nhân."
+      :columns="assetColumns"
+      :fields="assetFields"
+      :defaults="{ status: 'AVAILABLE' }"
+    />
+    <ResourceCrudPanel v-else-if="activeTab === 'categories'" resource="asset-categories" title="Danh mục tài sản" :columns="categoryColumns" :fields="categoryFields" :defaults="{ status: 'ACTIVE' }" />
+    <ResourceCrudPanel v-else-if="activeTab === 'locations'" resource="asset-locations" title="Vị trí tài sản" :columns="locationColumns" :fields="locationFields" :defaults="{ status: 'ACTIVE' }" />
+    <ResourceCrudPanel v-else-if="activeTab === 'suppliers'" resource="suppliers" title="Nhà cung cấp" :columns="supplierColumns" :fields="supplierFields" :defaults="{ status: 'ACTIVE' }" />
+    <ResourceCrudPanel v-else-if="activeTab === 'incidents'" resource="asset-incidents" title="Sự cố tài sản" description="Không xóa sự cố đang xử lý; cập nhật trạng thái để giữ audit." :columns="incidentColumns" :fields="incidentFields" :defaults="{ status: 'OPEN', damage_level: 'MEDIUM', incident_date: today }" />
+    <ResourceCrudPanel v-else resource="asset-maintenance" title="Lịch sử bảo trì" :columns="maintenanceColumns" :fields="maintenanceFields" :defaults="{ maintenance_date: today }" />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import BaseButton from '../components/BaseButton.vue';
-import BaseCard from '../components/BaseCard.vue';
-import BaseTable from '../components/BaseTable.vue';
-import BaseModal from '../components/BaseModal.vue';
-import BaseInput from '../components/BaseInput.vue';
-import BaseMoneyInput from '../components/BaseMoneyInput.vue';
-import BaseBadge from '../components/BaseBadge.vue';
-import { assetService } from '../services/assetService';
-import { useToast } from '../composables/useToast';
+import { ref } from 'vue';
+import ResourceCrudPanel from '../components/ResourceCrudPanel.vue';
 
-const toast = useToast();
-const assets = ref([]);
-const showModal = ref(false);
+const activeTab = ref('assets');
+const today = new Date().toISOString().slice(0, 10);
+const tabs = [
+  { value: 'assets', label: 'Tài sản' }, { value: 'categories', label: 'Danh mục' },
+  { value: 'locations', label: 'Vị trí' }, { value: 'suppliers', label: 'Nhà cung cấp' },
+  { value: 'incidents', label: 'Sự cố' }, { value: 'maintenance', label: 'Bảo trì' },
+];
+const statuses = [{ value: 'AVAILABLE', label: 'Sẵn dùng' }, { value: 'ASSIGNED', label: 'Đang cấp phát' }, { value: 'MAINTENANCE', label: 'Bảo trì' }, { value: 'LOST_BROKEN', label: 'Hỏng / mất' }];
+const activeStatuses = [{ value: 'ACTIVE', label: 'Hoạt động' }, { value: 'INACTIVE', label: 'Ngừng dùng' }];
+const money = (value) => value == null || value === '' ? '—' : new Intl.NumberFormat('vi-VN').format(Number(value));
 
-const form = ref({
-  asset_code: '',
-  name: '',
-  category: 'Laptop/PC',
-  purchase_date: '',
-  price: 0,
-  description: '',
-  status: 'available'
-});
-
-const loadData = async () => {
-  try {
-    const res = await assetService.getAll();
-    assets.value = res?.data || res || [];
-  } catch (err) {
-    console.error('Error loading assets:', err);
-    assets.value = [];
-  }
-};
-
-const formatDate = (date) => {
-  if (!date) return '-';
-  return new Date(date).toLocaleDateString('vi-VN');
-};
-
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value || 0);
-};
-
-const openCreateModal = () => {
-  form.value = {
-    asset_code: '',
-    name: '',
-    category: 'Laptop/PC',
-    purchase_date: new Date().toISOString().substring(0, 10),
-    price: 0,
-    description: '',
-    status: 'available'
-  };
-  showModal.value = true;
-};
-
-const editItem = (item) => {
-  form.value = {
-    ...item,
-    price: item.price || item.purchase_cost || 0,
-    purchase_date: item.purchase_date ? item.purchase_date.substring(0, 10) : ''
-  };
-  showModal.value = true;
-};
-
-const submitForm = async () => {
-  if (!form.value.asset_code || !form.value.name || !form.value.purchase_date) {
-    toast.error('Vui lòng điền đầy đủ các thông tin bắt buộc');
-    return;
-  }
-  try {
-    const data = {
-      ...form.value,
-      purchase_cost: form.value.price
-    };
-    if (form.value.id) {
-      await assetService.update(form.value.id, data);
-      toast.success('Cập nhật tài sản thành công');
-    } else {
-      await assetService.create(data);
-      toast.success('Thêm tài sản mới thành công');
-    }
-    showModal.value = false;
-    await loadData();
-  } catch (err) {
-    console.error('Error saving asset:', err);
-    toast.error('Có lỗi xảy ra khi lưu tài sản');
-  }
-};
-
-const deleteItem = async (id) => {
-  if (!confirm('Bạn có chắc chắn muốn xóa tài sản này?')) return;
-  try {
-    await assetService.delete(id);
-    toast.success('Xóa tài sản thành công');
-    await loadData();
-  } catch (err) {
-    console.error('Error deleting asset:', err);
-    toast.error('Có lỗi xảy ra khi xóa tài sản');
-  }
-};
-
-// --- Statistics ---
-const assetStats = computed(() => {
-  const list = assets.value;
-  return [
-    {
-      label: 'Tổng tài sản',
-      count: list.length,
-      bgColorClass: 'bg-blue-100 dark:bg-blue-900/30',
-      iconColorClass: 'text-blue-600',
-      iconSvg: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />'
-    },
-    {
-      label: 'Đang cấp phát',
-      count: list.filter(a => a.status === 'assigned').length,
-      bgColorClass: 'bg-green-100 dark:bg-green-900/30',
-      iconColorClass: 'text-green-600',
-      iconSvg: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />'
-    },
-    {
-      label: 'Kho sẵn sàng',
-      count: list.filter(a => a.status === 'available').length,
-      bgColorClass: 'bg-amber-100 dark:bg-amber-900/30',
-      iconColorClass: 'text-amber-600',
-      iconSvg: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />'
-    },
-    {
-      label: 'Hỏng hóc / Sửa',
-      count: list.filter(a => a.status === 'maintenance' || a.status === 'lost_broken').length,
-      bgColorClass: 'bg-red-100 dark:bg-red-900/30',
-      iconColorClass: 'text-red-600',
-      iconSvg: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />'
-    }
-  ];
-});
-
-// --- Label Helpers ---
-const getStatusLabel = (status) => {
-  switch (status) {
-    case 'available': return 'Sẵn dùng';
-    case 'assigned': return 'Đang cấp phát';
-    case 'maintenance': return 'Bảo trì';
-    case 'lost_broken': return 'Hỏng hóc/Mất';
-    default: return 'Khác';
-  }
-};
-
-const getStatusVariant = (status) => {
-  switch (status) {
-    case 'available': return 'secondary';
-    case 'assigned': return 'success';
-    case 'maintenance': return 'warning';
-    case 'lost_broken': return 'destructive';
-    default: return 'secondary';
-  }
-};
-
-onMounted(async () => {
-  await loadData();
-});
+const assetColumns = [{ key: 'asset_code', label: 'Mã', mono: true }, { key: 'asset_name', label: 'Tên tài sản' }, { key: 'category_name', label: 'Danh mục' }, { key: 'location_name', label: 'Vị trí' }, { key: 'supplier_name', label: 'Nhà cung cấp' }, { key: 'purchase_cost', label: 'Nguyên giá', format: money }, { key: 'status', label: 'Trạng thái' }];
+const assetFields = [
+  { key: 'asset_code', label: 'Mã tài sản', required: true }, { key: 'asset_name', label: 'Tên tài sản', required: true },
+  { key: 'category_id', label: 'Danh mục', type: 'resource', resource: 'asset-categories', labelKey: 'category_name', codeKey: 'category_code', required: true, cast: 'number' },
+  { key: 'location_id', label: 'Vị trí', type: 'resource', resource: 'asset-locations', labelKey: 'location_name', codeKey: 'location_code', nullable: true, cast: 'number' },
+  { key: 'supplier_id', label: 'Nhà cung cấp', type: 'resource', resource: 'suppliers', labelKey: 'supplier_name', codeKey: 'supplier_code', nullable: true, cast: 'number' },
+  { key: 'status', label: 'Trạng thái', type: 'select', options: statuses, required: true },
+  { key: 'purchase_date', label: 'Ngày mua', type: 'date', nullable: true }, { key: 'purchase_cost', label: 'Nguyên giá', type: 'number', min: 0, cast: 'number', nullable: true },
+  { key: 'serial_number', label: 'Serial', nullable: true }, { key: 'description', label: 'Mô tả / cấu hình', type: 'textarea', full: true, nullable: true },
+];
+const categoryColumns = [{ key: 'category_code', label: 'Mã', mono: true }, { key: 'category_name', label: 'Tên' }, { key: 'description', label: 'Mô tả' }, { key: 'status', label: 'Trạng thái' }];
+const categoryFields = [{ key: 'category_code', label: 'Mã', required: true }, { key: 'category_name', label: 'Tên', required: true }, { key: 'description', label: 'Mô tả', type: 'textarea', full: true, nullable: true }, { key: 'status', label: 'Trạng thái', type: 'select', options: activeStatuses }];
+const locationColumns = [{ key: 'location_code', label: 'Mã', mono: true }, { key: 'location_name', label: 'Tên vị trí' }, { key: 'description', label: 'Mô tả' }, { key: 'status', label: 'Trạng thái' }];
+const locationFields = [{ key: 'location_code', label: 'Mã', required: true }, { key: 'location_name', label: 'Tên vị trí', required: true }, { key: 'department_id', label: 'Phòng ban', type: 'resource', resource: 'departments', labelKey: 'department_name', codeKey: 'department_code', nullable: true, cast: 'number' }, { key: 'description', label: 'Mô tả', type: 'textarea', full: true, nullable: true }, { key: 'status', label: 'Trạng thái', type: 'select', options: activeStatuses }];
+const supplierColumns = [{ key: 'supplier_code', label: 'Mã', mono: true }, { key: 'supplier_name', label: 'Nhà cung cấp' }, { key: 'contact_person', label: 'Liên hệ' }, { key: 'phone_number', label: 'Điện thoại' }, { key: 'status', label: 'Trạng thái' }];
+const supplierFields = [{ key: 'supplier_code', label: 'Mã', required: true }, { key: 'supplier_name', label: 'Tên nhà cung cấp', required: true }, { key: 'contact_person', label: 'Người liên hệ', nullable: true }, { key: 'phone_number', label: 'Điện thoại', nullable: true }, { key: 'email', label: 'Email', type: 'email', nullable: true }, { key: 'address', label: 'Địa chỉ', type: 'textarea', full: true, nullable: true }, { key: 'status', label: 'Trạng thái', type: 'select', options: activeStatuses }];
+const incidentColumns = [{ key: 'asset_id', label: 'Tài sản', mono: true }, { key: 'incident_type', label: 'Loại sự cố' }, { key: 'incident_date', label: 'Ngày' }, { key: 'damage_level', label: 'Mức độ' }, { key: 'status', label: 'Trạng thái' }];
+const incidentFields = [{ key: 'asset_id', label: 'Tài sản', type: 'resource', resource: 'assets', labelKey: 'asset_name', codeKey: 'asset_code', required: true, cast: 'number' }, { key: 'reported_by', label: 'Người báo', type: 'employee', nullable: true, cast: 'number' }, { key: 'incident_type', label: 'Loại sự cố', required: true }, { key: 'incident_date', label: 'Ngày xảy ra', type: 'date', required: true }, { key: 'damage_level', label: 'Mức độ', type: 'select', options: [{ value: 'LOW', label: 'Nhẹ' }, { value: 'MEDIUM', label: 'Trung bình' }, { value: 'HIGH', label: 'Nặng' }] }, { key: 'status', label: 'Trạng thái', type: 'select', options: [{ value: 'OPEN', label: 'Mới' }, { value: 'IN_PROGRESS', label: 'Đang xử lý' }, { value: 'RESOLVED', label: 'Đã xử lý' }] }, { key: 'description', label: 'Mô tả', type: 'textarea', full: true, required: true }, { key: 'resolved_date', label: 'Ngày xử lý xong', type: 'date', nullable: true }];
+const maintenanceColumns = [{ key: 'asset_id', label: 'Tài sản', mono: true }, { key: 'maintenance_type', label: 'Loại bảo trì' }, { key: 'maintenance_date', label: 'Ngày' }, { key: 'vendor', label: 'Đơn vị thực hiện' }, { key: 'cost', label: 'Chi phí', format: money }];
+const maintenanceFields = [{ key: 'asset_id', label: 'Tài sản', type: 'resource', resource: 'assets', labelKey: 'asset_name', codeKey: 'asset_code', required: true, cast: 'number' }, { key: 'maintenance_type', label: 'Loại bảo trì', required: true }, { key: 'maintenance_date', label: 'Ngày bảo trì', type: 'date', required: true }, { key: 'cost', label: 'Chi phí', type: 'number', min: 0, cast: 'number', nullable: true }, { key: 'vendor', label: 'Đơn vị thực hiện', nullable: true }, { key: 'next_maintenance_date', label: 'Lần kế tiếp', type: 'date', nullable: true }, { key: 'description', label: 'Mô tả', type: 'textarea', full: true, nullable: true }];
 </script>

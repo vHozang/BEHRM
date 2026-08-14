@@ -1,404 +1,70 @@
 <template>
   <div class="space-y-6">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-3xl font-bold text-foreground">Hỗ Trợ Nội Bộ (Helpdesk)</h1>
-        <p class="text-muted-foreground mt-1">Gửi yêu cầu hỗ trợ kỹ thuật IT, văn phòng phẩm hoặc phản ánh nhân sự</p>
-      </div>
-      <BaseButton @click="openCreateModal">+ Gửi yêu cầu hỗ trợ</BaseButton>
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div><p class="text-xs font-bold uppercase tracking-[0.2em] text-cyan-600">Internal service desk</p><h1 class="mt-1 text-3xl font-bold">Hỗ trợ nội bộ</h1><p class="mt-1 text-muted-foreground">Mỗi ticket có danh mục chuẩn và timeline xử lý không thể xóa cứng.</p></div>
+      <BaseButton v-if="activeTab === 'tickets'" @click="openCreate">+ Gửi yêu cầu</BaseButton>
     </div>
 
-    <!-- Summary Statistics -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div v-for="stat in stats" :key="stat.label" class="bg-card p-4 rounded-xl border border-border flex items-center justify-between">
-        <div>
-          <p class="text-xs text-muted-foreground font-semibold uppercase">{{ stat.label }}</p>
-          <p class="text-2xl font-black mt-1" :class="stat.colorClass">{{ stat.count }}</p>
-        </div>
-        <div class="p-3 rounded-full" :class="stat.bgColorClass">
-          <svg class="w-5 h-5" :class="stat.colorClass" fill="none" stroke="currentColor" viewBox="0 0 24 24" v-html="stat.iconSvg"></svg>
-        </div>
-      </div>
+    <div v-if="canManage" class="flex gap-2 rounded-xl border border-border bg-card p-2">
+      <button v-for="tab in tabs" :key="tab.value" class="rounded-lg px-3 py-2 text-sm font-semibold" :class="activeTab === tab.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'" @click="activeTab = tab.value">{{ tab.label }}</button>
     </div>
 
-    <!-- Tickets List Table -->
-    <BaseCard>
-      <BaseTable
-        :columns="[
-          { key: 'ticket_code', label: 'Mã Ticket' },
-          { key: 'title', label: 'Nội dung yêu cầu' },
-          { key: 'category', label: 'Phân loại' },
-          { key: 'priority', label: 'Mức độ' },
-          { key: 'created_at', label: 'Ngày tạo' },
-          { key: 'status', label: 'Trạng thái' }
-        ]"
-        :data="tickets"
-      >
-        <template #cell-ticket_code="{ item }">
-          <span class="font-bold text-foreground">#{{ item.ticket_code || `TK-${item.id}` }}</span>
-        </template>
+    <ResourceCrudPanel v-if="activeTab === 'categories'" resource="service-categories" title="Danh mục dịch vụ" description="Danh mục được dùng trực tiếp khi nhân viên tạo ticket." :columns="categoryColumns" :fields="categoryFields" :defaults="{ status: 'ACTIVE' }" />
 
-        <template #cell-title="{ item }">
-          <div class="font-semibold text-foreground">{{ item.title }}</div>
-          <div class="text-xs text-muted-foreground line-clamp-1 mt-0.5">{{ item.description }}</div>
-          <div v-if="item.admin_note" class="text-[10px] text-primary bg-primary/5 px-2 py-0.5 rounded border border-primary/20 w-max mt-1">
-            Phản hồi: {{ item.admin_note }}
-          </div>
-        </template>
-
-        <template #cell-category="{ item }">
-          <span>{{ getCategoryLabel(item.category) }}</span>
-        </template>
-
-        <template #cell-priority="{ item }">
-          <BaseBadge :variant="getPriorityVariant(item.priority)">
-            {{ getPriorityLabel(item.priority) }}
-          </BaseBadge>
-        </template>
-
-        <template #cell-created_at="{ item }">
-          <span>{{ formatDate(item.created_at) }}</span>
-        </template>
-
-        <template #cell-status="{ item }">
-          <BaseBadge :variant="getStatusVariant(item.status)">
-            {{ getStatusLabel(item.status) }}
-          </BaseBadge>
-        </template>
-
-        <template #actions="{ item }">
-          <div class="flex gap-1">
-            <button 
-              @click="viewDetail(item)" 
-              class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-            >
-              {{ isAdmin ? 'Xử lý' : 'Xem chi tiết' }}
-            </button>
-            <button 
-              v-if="item.status === 'pending'"
-              @click="deleteItem(item.id)" 
-              class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
-            >
-              Hủy
-            </button>
-          </div>
-        </template>
-      </BaseTable>
-    </BaseCard>
-
-    <!-- Create Ticket Modal -->
-    <BaseModal v-model="showCreateModal" title="Gửi yêu cầu hỗ trợ mới">
-      <div class="space-y-4">
-        <BaseInput v-model="form.title" label="Tiêu đề yêu cầu hỗ trợ" placeholder="Ví dụ: Máy in phòng HR bị kẹt giấy, lỗi Wifi tầng 3..." required />
-        
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-foreground mb-1">Phân mục yêu cầu <span class="text-destructive">*</span></label>
-            <select 
-              v-model="form.category" 
-              class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              required
-            >
-              <option value="IT">Hỗ trợ kỹ thuật IT</option>
-              <option value="HR">Thắc mắc nhân sự (HR)</option>
-              <option value="Admin">Hành chính / Văn phòng phẩm</option>
-              <option value="Others">Khác</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-foreground mb-1">Mức độ khẩn cấp <span class="text-destructive">*</span></label>
-            <select 
-              v-model="form.priority" 
-              class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              required
-            >
-              <option value="low">Thấp</option>
-              <option value="medium">Trung bình</option>
-              <option value="high">Khẩn cấp</option>
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-foreground mb-1">Chi tiết yêu cầu / Lỗi gặp phải <span class="text-destructive">*</span></label>
-          <textarea 
-            v-model="form.description" 
-            class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring" 
-            rows="4" 
-            placeholder="Mô tả chi tiết lỗi, số bàn làm việc hoặc thiết bị đang gặp sự cố..."
-            required
-          ></textarea>
-        </div>
+    <template v-else>
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <BaseCard v-for="item in summaryCards" :key="item.label"><p class="text-xs uppercase text-muted-foreground">{{ item.label }}</p><p class="mt-1 text-2xl font-black" :class="item.className">{{ item.value }}</p></BaseCard>
       </div>
-      <template #footer>
-        <BaseButton variant="outline" @click="showCreateModal = false">Hủy</BaseButton>
-        <BaseButton @click="submitCreateTicket">Gửi Ticket</BaseButton>
-      </template>
+      <BaseCard>
+        <div class="mb-4 grid gap-3 sm:grid-cols-3">
+          <input v-model="filters.search" class="rounded-lg border border-input bg-background px-3 py-2 text-sm" placeholder="Tìm mã hoặc tiêu đề" @keyup.enter="load" />
+          <select v-model="filters.category_id" class="rounded-lg border border-input bg-background px-3 py-2 text-sm" @change="resetAndLoad"><option value="">Tất cả danh mục</option><option v-for="category in categories" :key="category.id" :value="String(category.id)">{{ category.category_name }}</option></select>
+          <select v-model="filters.status" class="rounded-lg border border-input bg-background px-3 py-2 text-sm" @change="resetAndLoad"><option value="">Tất cả trạng thái</option><option v-for="status in statuses" :key="status.value" :value="status.value">{{ status.label }}</option></select>
+        </div>
+        <div v-if="loading" class="py-10 text-center text-muted-foreground">Đang tải...</div>
+        <div v-else class="overflow-x-auto rounded-xl border border-border">
+          <table class="w-full min-w-[850px] text-sm"><thead class="bg-muted/40 text-left text-xs uppercase text-muted-foreground"><tr><th class="px-3 py-2.5">Ticket</th><th class="px-3 py-2.5">Người gửi</th><th class="px-3 py-2.5">Danh mục</th><th class="px-3 py-2.5">Ưu tiên</th><th class="px-3 py-2.5">Trạng thái</th><th class="px-3 py-2.5"></th></tr></thead>
+            <tbody><tr v-for="ticket in tickets" :key="ticket.id" class="border-t border-border/70"><td class="px-3 py-3"><p class="font-mono text-xs">{{ ticket.ticket_code }}</p><p class="font-semibold">{{ ticket.title }}</p></td><td class="px-3 py-3">{{ ticket.requester_name || 'Tôi' }}</td><td class="px-3 py-3">{{ ticket.category_name || 'Chưa phân loại' }}</td><td class="px-3 py-3">{{ priorityLabel(ticket.priority) }}</td><td class="px-3 py-3"><BaseBadge :variant="statusVariant(ticket.status)">{{ statusLabel(ticket.status) }}</BaseBadge></td><td class="px-3 py-3 text-right"><button class="text-xs font-semibold text-primary hover:underline" @click="openDetail(ticket)">Chi tiết</button><button v-if="canCancel(ticket)" class="ml-3 text-xs font-semibold text-destructive hover:underline" @click="cancelTicket(ticket)">Hủy</button></td></tr><tr v-if="!tickets.length"><td colspan="6" class="py-10 text-center text-muted-foreground">Chưa có ticket.</td></tr></tbody>
+          </table>
+        </div>
+        <div v-if="pagination.last_page > 1" class="mt-4 flex items-center justify-between text-sm"><span class="text-muted-foreground">Trang {{ pagination.current_page }}/{{ pagination.last_page }} · {{ pagination.total }} ticket</span><div class="flex gap-2"><BaseButton variant="outline" :disabled="pagination.current_page <= 1" @click="goPage(-1)">Trước</BaseButton><BaseButton variant="outline" :disabled="pagination.current_page >= pagination.last_page" @click="goPage(1)">Sau</BaseButton></div></div>
+      </BaseCard>
+    </template>
+
+    <BaseModal v-model="createModal" title="Gửi yêu cầu hỗ trợ">
+      <div class="space-y-4"><label class="block text-sm font-medium">Danh mục<select v-model="form.category_id" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 font-normal"><option value="">Chọn danh mục</option><option v-for="category in categories" :key="category.id" :value="String(category.id)">{{ category.category_name }}</option></select></label><BaseInput v-model="form.title" label="Tiêu đề" required /><label class="block text-sm font-medium">Ưu tiên<select v-model="form.priority" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 font-normal"><option value="LOW">Thấp</option><option value="NORMAL">Bình thường</option><option value="HIGH">Cao</option><option value="URGENT">Khẩn cấp</option></select></label><label class="block text-sm font-medium">Mô tả<textarea v-model="form.description" rows="5" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 font-normal"></textarea></label><p v-if="formError" class="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{{ formError }}</p></div>
+      <template #footer><BaseButton variant="outline" @click="createModal = false">Hủy</BaseButton><BaseButton :disabled="saving" @click="createTicket">{{ saving ? 'Đang gửi...' : 'Gửi ticket' }}</BaseButton></template>
     </BaseModal>
 
-    <!-- Detail & Handle Modal -->
-    <BaseModal v-model="showDetailModal" :title="'Chi tiết Ticket #' + selectedTicket?.ticket_code" size="md">
-      <div v-if="selectedTicket" class="space-y-4">
-        <div class="bg-muted/30 p-4 rounded-xl space-y-2 text-sm">
-          <p><strong>Tiêu đề:</strong> {{ selectedTicket.title }}</p>
-          <p><strong>Người gửi:</strong> {{ selectedTicket.employee_name || 'Nhân viên' }}</p>
-          <p><strong>Phân loại:</strong> {{ getCategoryLabel(selectedTicket.category) }}</p>
-          <p><strong>Mức độ:</strong> {{ getPriorityLabel(selectedTicket.priority) }}</p>
-          <p><strong>Mô tả lỗi:</strong> {{ selectedTicket.description }}</p>
-        </div>
-
-        <div class="border-t border-border pt-4">
-          <p class="text-sm font-semibold text-foreground mb-3">Quy trình xử lý</p>
-          <ApprovalTimeline :steps="approvalSteps" />
-        </div>
-
-        <!-- Admin handling panel -->
-        <div v-if="isAdmin" class="space-y-3 p-4 bg-primary/5 rounded-xl border border-primary/20">
-          <h4 class="font-bold text-primary text-sm">Xử Lý & Phản Hồi</h4>
-          <div>
-            <label class="block text-xs font-semibold text-muted-foreground mb-1">Cập nhật trạng thái</label>
-            <select 
-              v-model="selectedTicket.status" 
-              class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="pending">Chờ tiếp nhận (Pending)</option>
-              <option value="processing">Đang xử lý (Processing)</option>
-              <option value="completed">Đã hoàn thành (Completed)</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-muted-foreground mb-1">Lời nhắn gửi nhân viên</label>
-            <textarea 
-              v-model="selectedTicket.admin_note" 
-              class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring" 
-              rows="2" 
-              placeholder="Nhập nội dung phản hồi, thời gian dự kiến sửa xong..."
-            ></textarea>
-          </div>
-        </div>
+    <BaseModal v-model="detailModal" title="Chi tiết ticket" size="lg">
+      <div v-if="selected" class="space-y-5"><div class="rounded-xl bg-muted/40 p-4"><div class="flex items-start justify-between gap-3"><div><p class="font-mono text-xs text-muted-foreground">{{ selected.ticket_code }}</p><h3 class="text-lg font-bold">{{ selected.title }}</h3><p class="text-xs text-muted-foreground">{{ selected.category_name }} · {{ selected.requester_name }}</p></div><BaseBadge :variant="statusVariant(selected.status)">{{ statusLabel(selected.status) }}</BaseBadge></div><p class="mt-4 whitespace-pre-line text-sm">{{ selected.description }}</p></div>
+        <div v-if="canManage" class="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-3"><label class="text-xs font-semibold">Trạng thái<select v-model="manageForm.status" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-normal"><option v-for="status in statuses" :key="status.value" :value="status.value">{{ status.label }}</option></select></label><label class="text-xs font-semibold">Ưu tiên<select v-model="manageForm.priority" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-normal"><option v-for="priority in priorities" :key="priority.value" :value="priority.value">{{ priority.label }}</option></select></label><label class="text-xs font-semibold">Người/nhóm xử lý<input v-model="manageForm.assigned_to" class="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-normal" /></label><textarea v-model="manageForm.comment" rows="2" class="sm:col-span-3 rounded-lg border border-input bg-background px-3 py-2 text-sm" placeholder="Ghi chú cập nhật"></textarea><BaseButton class="sm:col-span-3" :disabled="saving" @click="updateTicket">Cập nhật xử lý</BaseButton></div>
+        <div><h4 class="mb-3 font-semibold">Timeline</h4><div class="space-y-3"><div v-for="update in selected.updates || []" :key="update.id" class="border-l-2 border-primary/40 pl-4"><p class="text-sm font-medium">{{ update.created_by_name || 'Hệ thống' }} · {{ update.action_type }}</p><p class="text-xs text-muted-foreground">{{ dateTime(update.created_at) }}<span v-if="update.old_status !== update.new_status"> · {{ statusLabel(update.old_status) }} → {{ statusLabel(update.new_status) }}</span></p><p v-if="update.comment" class="mt-1 text-sm">{{ update.comment }}</p></div></div><div class="mt-4 flex gap-2"><input v-model="comment" class="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm" placeholder="Thêm trao đổi" /><BaseButton variant="outline" :disabled="!comment.trim()" @click="addComment">Gửi</BaseButton></div></div>
       </div>
-      <template #footer>
-        <BaseButton variant="outline" @click="showDetailModal = false">Đóng</BaseButton>
-        <BaseButton v-if="isAdmin" @click="submitHandleTicket">Lưu trạng thái</BaseButton>
-      </template>
+      <template #footer><BaseButton variant="outline" @click="detailModal = false">Đóng</BaseButton></template>
     </BaseModal>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import BaseButton from '../components/BaseButton.vue';
-import BaseCard from '../components/BaseCard.vue';
-import BaseTable from '../components/BaseTable.vue';
-import BaseModal from '../components/BaseModal.vue';
-import BaseInput from '../components/BaseInput.vue';
-import BaseBadge from '../components/BaseBadge.vue';
-import ApprovalTimeline from '../components/ApprovalTimeline.vue';
-import { serviceTicketService } from '../services/serviceTicketService';
-import { authService } from '../services/authService';
-import { useToast } from '../composables/useToast';
-
-const toast = useToast();
-const tickets = ref([]);
-const isAdmin = computed(() => authService.canAccessModule('communications'));
-
-const showCreateModal = ref(false);
-const showDetailModal = ref(false);
-const selectedTicket = ref(null);
-
-const approvalSteps = computed(() => {
-  if (!selectedTicket.value) return [];
-  const tk = selectedTicket.value;
-  return [
-    {
-      step_name: 'Khởi tạo Ticket',
-      approver_name: tk.employee_name || 'Nhân viên',
-      status: 'ĐÃ_DUYỆT',
-      action_date: tk.created_at,
-      comment: 'Yêu cầu hỗ trợ đã được tạo'
-    },
-    {
-      step_name: 'Tiếp nhận hỗ trợ',
-      approver_name: 'Đội ngũ IT/HR',
-      status: tk.status !== 'pending' ? 'ĐÃ_DUYỆT' : 'CHỜ_DUYỆT',
-      action_date: tk.status !== 'pending' ? tk.updated_at : null,
-      comment: tk.status !== 'pending' ? 'Yêu cầu đã được tiếp nhận' : 'Đang chờ điều phối'
-    },
-    {
-      step_name: 'Hoàn thành xử lý',
-      approver_name: 'Kỹ thuật viên',
-      status: tk.status === 'completed' ? 'HOÀN_THÀNH' : 'CHỜ_DUYỆT',
-      action_date: tk.status === 'completed' ? tk.updated_at : null,
-      comment: tk.status === 'completed' ? (tk.admin_note || 'Sự cố đã được khắc phục') : null
-    }
-  ];
-});
-
-const form = ref({
-  title: '',
-  category: 'IT',
-  priority: 'medium',
-  description: ''
-});
-
-const loadData = async () => {
-  try {
-    const user = authService.getUser();
-    const params = isAdmin.value ? { per_page: 100 } : { requester_id: user?.id, per_page: 100 };
-    const res = await serviceTicketService.getAllTickets(params);
-    tickets.value = res?.data || res || [];
-  } catch (err) {
-    console.error('Error loading tickets:', err);
-    tickets.value = [];
-  }
-};
-
-const formatDate = (date) => {
-  if (!date) return '-';
-  return new Date(date).toLocaleDateString('vi-VN');
-};
-
-const openCreateModal = () => {
-  form.value = {
-    title: '',
-    category: 'IT',
-    priority: 'medium',
-    description: ''
-  };
-  showCreateModal.value = true;
-};
-
-const submitCreateTicket = async () => {
-  if (!form.value.title || !form.value.description) {
-    toast.error('Vui lòng nhập đầy đủ tiêu đề và nội dung mô tả');
-    return;
-  }
-  try {
-    const data = {
-      ...form.value,
-      requester_id: authService.getUser()?.id,
-      ticket_code: `TK${Date.now().toString().slice(-6)}`,
-      status: 'pending'
-    };
-    await serviceTicketService.createTicket(data);
-    toast.success('Gửi yêu cầu hỗ trợ thành công');
-    showCreateModal.value = false;
-    await loadData();
-  } catch (err) {
-    console.error('Error creating ticket:', err);
-    toast.error('Gửi yêu cầu thất bại');
-  }
-};
-
-const viewDetail = (item) => {
-  selectedTicket.value = { ...item };
-  showDetailModal.value = true;
-};
-
-const submitHandleTicket = async () => {
-  if (!selectedTicket.value.id) return;
-  try {
-    await serviceTicketService.updateTicket(selectedTicket.value.id, {
-      status: selectedTicket.value.status,
-      admin_note: selectedTicket.value.admin_note
-    });
-    toast.success('Cập nhật trạng thái ticket thành công');
-    showDetailModal.value = false;
-    await loadData();
-  } catch (err) {
-    console.error('Error updating ticket:', err);
-    toast.error('Cập nhật trạng thái thất bại');
-  }
-};
-
-const deleteItem = async (id) => {
-  if (!confirm('Bạn có chắc chắn muốn hủy yêu cầu hỗ trợ này?')) return;
-  try {
-    await serviceTicketService.updateTicket(id, { status: 'cancelled' });
-    toast.success('Đã hủy yêu cầu hỗ trợ');
-    await loadData();
-  } catch (err) {
-    console.error('Error deleting ticket:', err);
-    toast.error('Hủy thất bại');
-  }
-};
-
-// --- Statistics ---
-const stats = computed(() => {
-  const list = tickets.value;
-  return [
-    {
-      label: 'Tổng số yêu cầu',
-      count: list.length,
-      colorClass: 'text-blue-600',
-      bgColorClass: 'bg-blue-100 dark:bg-blue-900/30',
-      iconSvg: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />'
-    },
-    {
-      label: 'Đang xử lý',
-      count: list.filter(t => t.status === 'processing').length,
-      colorClass: 'text-amber-600',
-      bgColorClass: 'bg-amber-100 dark:bg-amber-900/30',
-      iconSvg: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />'
-    },
-    {
-      label: 'Đã hoàn thành',
-      count: list.filter(t => t.status === 'completed').length,
-      colorClass: 'text-green-600',
-      bgColorClass: 'bg-green-100 dark:bg-green-900/30',
-      iconSvg: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />'
-    }
-  ];
-});
-
-// --- Label & Style Helpers ---
-const getCategoryLabel = (cat) => {
-  switch (cat) {
-    case 'IT': return 'Hỗ trợ IT';
-    case 'HR': return 'Phản ánh HR';
-    case 'Admin': return 'Hành chính';
-    default: return 'Khác';
-  }
-};
-
-const getPriorityLabel = (pri) => {
-  switch (pri) {
-    case 'low': return 'Thấp';
-    case 'medium': return 'Thường';
-    case 'high': return 'Khẩn cấp';
-    default: return 'Thường';
-  }
-};
-
-const getPriorityVariant = (pri) => {
-  switch (pri) {
-    case 'low': return 'secondary';
-    case 'medium': return 'info';
-    case 'high': return 'destructive';
-    default: return 'secondary';
-  }
-};
-
-const getStatusLabel = (status) => {
-  switch (status) {
-    case 'pending': return 'Chờ tiếp nhận';
-    case 'processing': return 'Đang xử lý';
-    case 'completed': return 'Đã xong';
-    case 'cancelled': return 'Đã hủy';
-    default: return 'Chờ';
-  }
-};
-
-const getStatusVariant = (status) => {
-  switch (status) {
-    case 'pending': return 'warning';
-    case 'processing': return 'info';
-    case 'completed': return 'success';
-    case 'cancelled': return 'secondary';
-    default: return 'secondary';
-  }
-};
-
-onMounted(loadData);
+import { computed, onMounted, reactive, ref } from 'vue';
+import BaseBadge from '../components/BaseBadge.vue'; import BaseButton from '../components/BaseButton.vue'; import BaseCard from '../components/BaseCard.vue'; import BaseInput from '../components/BaseInput.vue'; import BaseModal from '../components/BaseModal.vue'; import ResourceCrudPanel from '../components/ResourceCrudPanel.vue';
+import { authService } from '../services/authService'; import { serviceTicketService } from '../services/serviceTicketService'; import { useToast } from '../composables/useToast';
+const toast = useToast(); const canManage = computed(() => authService.hasCapability('communications.manage')); const activeTab = ref('tickets'); const tabs = [{ value: 'tickets', label: 'Ticket' }, { value: 'categories', label: 'Danh mục dịch vụ' }];
+const categories = ref([]); const tickets = ref([]); const loading = ref(false); const saving = ref(false); const createModal = ref(false); const detailModal = ref(false); const selected = ref(null); const comment = ref(''); const formError = ref(''); const filters = reactive({ search: '', category_id: '', status: '' }); const pagination = reactive({ current_page: 1, last_page: 1, total: 0 }); const summary = reactive({ total: 0, pending: 0, in_progress: 0, completed: 0 });
+const form = reactive({ category_id: '', title: '', description: '', priority: 'NORMAL' }); const manageForm = reactive({ status: '', priority: '', assigned_to: '', comment: '' });
+const statuses = [{ value: 'PENDING', label: 'Chờ xử lý' }, { value: 'IN_PROGRESS', label: 'Đang xử lý' }, { value: 'RESOLVED', label: 'Đã giải quyết' }, { value: 'CLOSED', label: 'Đã đóng' }, { value: 'CANCELLED', label: 'Đã hủy' }]; const priorities = [{ value: 'LOW', label: 'Thấp' }, { value: 'NORMAL', label: 'Bình thường' }, { value: 'HIGH', label: 'Cao' }, { value: 'URGENT', label: 'Khẩn cấp' }];
+const categoryColumns = [{ key: 'category_code', label: 'Mã', mono: true }, { key: 'category_name', label: 'Tên danh mục' }, { key: 'description', label: 'Mô tả' }, { key: 'status', label: 'Trạng thái' }]; const categoryFields = [{ key: 'category_code', label: 'Mã', required: true }, { key: 'category_name', label: 'Tên danh mục', required: true }, { key: 'description', label: 'Mô tả', type: 'textarea', full: true, nullable: true }, { key: 'status', label: 'Trạng thái', type: 'select', options: [{ value: 'ACTIVE', label: 'Hoạt động' }, { value: 'INACTIVE', label: 'Ngừng dùng' }] }];
+const summaryCards = computed(() => [{ label: 'Tổng ticket', value: summary.total || 0, className: '' }, { label: 'Chờ xử lý', value: summary.pending || 0, className: 'text-amber-600' }, { label: 'Đang xử lý', value: summary.in_progress || 0, className: 'text-blue-600' }, { label: 'Hoàn tất', value: summary.completed || 0, className: 'text-emerald-600' }]);
+const statusLabel = (value) => statuses.find((item) => item.value === String(value || '').toUpperCase())?.label || value || '—'; const priorityLabel = (value) => priorities.find((item) => item.value === String(value || '').toUpperCase())?.label || value || '—'; const statusVariant = (value) => ({ RESOLVED: 'success', CLOSED: 'success', IN_PROGRESS: 'warning', CANCELLED: 'secondary' }[String(value).toUpperCase()] || 'default'); const dateTime = (value) => value ? new Date(value).toLocaleString('vi-VN') : '—';
+const loadCategories = async () => { const data = await serviceTicketService.categories(); categories.value = Array.isArray(data) ? data : data?.items || []; };
+const load = async () => { loading.value = true; try { const result = await serviceTicketService.list({ ...filters, page: pagination.current_page, per_page: 25 }); tickets.value = result.items; Object.assign(pagination, result.pagination); Object.assign(summary, result.summary || {}); } finally { loading.value = false; } };
+const resetAndLoad = () => { pagination.current_page = 1; load(); }; const goPage = (delta) => { pagination.current_page += delta; load(); };
+const openCreate = () => { Object.assign(form, { category_id: categories.value[0]?.id ? String(categories.value[0].id) : '', title: '', description: '', priority: 'NORMAL' }); formError.value = ''; createModal.value = true; };
+const createTicket = async () => { if (!form.category_id || !form.title.trim() || !form.description.trim()) { formError.value = 'Chọn danh mục, nhập tiêu đề và mô tả'; return; } saving.value = true; try { await serviceTicketService.create({ ...form, category_id: Number(form.category_id) }); createModal.value = false; toast.success('Đã gửi ticket'); await load(); } catch (error) { formError.value = error.response?.data?.message || 'Không thể tạo ticket'; } finally { saving.value = false; } };
+const openDetail = async (ticket) => { detailModal.value = true; selected.value = await serviceTicketService.show(ticket.id); Object.assign(manageForm, { status: selected.value.status, priority: selected.value.priority, assigned_to: selected.value.assigned_to || '', comment: '' }); comment.value = ''; };
+const updateTicket = async () => { saving.value = true; try { selected.value = await serviceTicketService.update(selected.value.id, { ...manageForm }); Object.assign(manageForm, { status: selected.value.status, priority: selected.value.priority, assigned_to: selected.value.assigned_to || '', comment: '' }); await load(); } catch (error) { toast.error(error.response?.data?.message || 'Không thể cập nhật ticket'); } finally { saving.value = false; } };
+const addComment = async () => { selected.value = await serviceTicketService.addUpdate(selected.value.id, comment.value); comment.value = ''; };
+const canCancel = (ticket) => ['PENDING', 'OPEN'].includes(String(ticket.status).toUpperCase()); const cancelTicket = async (ticket) => { if (!confirm('Hủy ticket này?')) return; try { await serviceTicketService.cancel(ticket.id); await load(); if (selected.value?.id === ticket.id) detailModal.value = false; } catch (error) { toast.error(error.response?.data?.message || 'Không thể hủy ticket'); } };
+onMounted(async () => { await Promise.all([loadCategories(), load()]); });
 </script>

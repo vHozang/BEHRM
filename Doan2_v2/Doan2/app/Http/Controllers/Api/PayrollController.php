@@ -13,20 +13,27 @@ use App\Services\PayslipReadinessService;
 use App\Support\AccessControl;
 use App\Support\HrmConfig;
 use App\Support\Notifier;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Carbon;
 
 class PayrollController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $this->requireAnyCapability($request, [
+            'payroll.periods.manage',
+            'payroll.run',
+            'payroll.amounts.view',
+        ]);
         $perPage = min(max((int) $request->query('per_page', 15), 1), 100);
 
-        $query = SalaryPeriod::orderByDesc('id');
+        $query = $this->periodQuery($request)->orderByDesc('id');
 
         foreach (['status', 'period_type'] as $field) {
             if ($request->filled($field)) {
@@ -39,7 +46,9 @@ class PayrollController extends Controller
         // Đa pháp nhân: cùng period_code lặp lại theo từng pháp nhân → đính tên để
         // dropdown FE phân biệt (P-2026-07 · Chi nhánh Hà Nội). Bulk pluck, không cần relation.
         $items = $page->items();
-        $entityNames = DB::table('legal_entities')->pluck('name', 'id');
+        $entityNames = DB::table('legal_entities')
+            ->where('tenant_id', TenantContext::id())
+            ->pluck('name', 'id');
         foreach ($items as $item) {
             $item->legal_entity_name = $entityNames[$item->legal_entity_id] ?? null;
         }
@@ -57,50 +66,57 @@ class PayrollController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $this->requireCapability($request, 'payroll.periods.manage');
         $validator = Validator::make($request->all(), [
-            'period_code' => 'required|string|unique:salary_periods,period_code',
+            'period_code' => 'required|string|max:80',
+            'period_name' => 'nullable|string|max:255',
+            'period_type' => 'nullable|string|max:30',
             'start_date' => 'required|date',
-            'end_date' => 'required|date|after:start_date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'legal_entity_id' => 'nullable|integer',
         ], [
-            'period_code.required' => 'MÃ£ ká»³ lÆ°Æ¡ng lÃ  báº¯t buá»™c',
-            'period_code.unique' => 'MÃ£ ká»³ lÆ°Æ¡ng Ä‘Ã£ tá»“n táº¡i',
-            'start_date.required' => 'NgÃ y báº¯t Ä‘áº§u lÃ  báº¯t buá»™c',
-            'end_date.required' => 'NgÃ y káº¿t thÃºc lÃ  báº¯t buá»™c',
+            'period_code.required' => 'Mã kỳ lương là bắt buộc',
+            'start_date.required' => 'Ngày bắt đầu là bắt buộc',
+            'end_date.required' => 'Ngày kết thúc là bắt buộc',
         ]);
 
         if ($validator->fails()) {
             return $this->validationError($validator->errors()->toArray());
         }
 
-        // Entity targeting: a supplied legal_entity_id must belong to the
-        // current tenant. If absent, the BelongsToTenant trait defaults it.
-        if ($request->filled('legal_entity_id')) {
-            $entityId = (int) $request->input('legal_entity_id');
-            if (! LegalEntity::find($entityId)) {
-                return $this->validationError([
-                    'legal_entity_id' => ['legal_entity_id không thuộc công ty hiện tại'],
-                ]);
-            }
+        $entityId = (int) ($request->input('legal_entity_id') ?: TenantContext::legalEntityId());
+        if (! $this->canUseLegalEntity($request, $entityId)) {
+            return $this->validationError(['legal_entity_id' => ['Pháp nhân không thuộc công ty hiện tại']]);
         }
 
-        $columns = Schema::getColumnListing('salary_periods');
-        $data = collect($request->all())->only($columns)->toArray();
-        $data['status'] = $data['status'] ?? 'OPEN';
-        $data['created_at'] = now();
-        $data['updated_at'] = now();
+        $data = $validator->validated();
+        $data['period_code'] = strtoupper(trim((string) $data['period_code']));
+        $data['period_type'] = strtoupper((string) ($data['period_type'] ?? 'MONTHLY'));
+        $data['period_name'] = $data['period_name'] ?? $data['period_code'];
+        $data['status'] = 'OPEN';
+        $data['tenant_id'] = TenantContext::id();
+        $data['legal_entity_id'] = $entityId;
+        if ($this->periodConflict($data)) {
+            return $this->validationError(['period_code' => ['Kỳ lương đã tồn tại trong pháp nhân này']]);
+        }
 
         $period = SalaryPeriod::create($data);
 
         return response()->json([
             'status' => 201,
-            'message' => 'Ká»³ lÆ°Æ¡ng Ä‘Ã£ Ä‘Æ°á»£c táº¡o',
+            'message' => 'Kỳ lương đã được tạo',
             'data' => $period,
         ], 201);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
-        $period = SalaryPeriod::withCount('salaryDetails')->find($id);
+        $this->requireAnyCapability($request, [
+            'payroll.periods.manage',
+            'payroll.run',
+            'payroll.amounts.view',
+        ]);
+        $period = $this->periodQuery($request)->withCount('salaryDetails')->find($id);
 
         if (! $period) {
             return $this->notFound();
@@ -111,64 +127,116 @@ class PayrollController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $period = SalaryPeriod::find($id);
+        $this->requireCapability($request, 'payroll.periods.manage');
+        $period = $this->periodQuery($request)->find($id);
 
         if (! $period) {
             return $this->notFound();
         }
 
-        if ($period->isClosed()) {
+        if (strtoupper((string) $period->status) !== 'OPEN') {
             return $this->validationError([
-                'status' => ['KhÃ´ng thá»ƒ sá»­a ká»³ lÆ°Æ¡ng Ä‘Ã£ chá»‘t'],
+                'status' => ['Chỉ kỳ lương OPEN mới được sửa'],
             ]);
         }
 
         $validator = Validator::make($request->all(), [
-            'period_code' => "nullable|string|unique:salary_periods,period_code,{$id}",
+            'period_code' => 'sometimes|string|max:80',
+            'period_name' => 'sometimes|nullable|string|max:255',
+            'period_type' => 'sometimes|string|max:30',
+            'start_date' => 'sometimes|date',
+            'end_date' => 'sometimes|date',
+            'legal_entity_id' => 'sometimes|integer',
         ]);
 
         if ($validator->fails()) {
             return $this->validationError($validator->errors()->toArray());
         }
 
-        $columns = Schema::getColumnListing('salary_periods');
-        $data = collect($request->except(['id', 'created_at', 'updated_at']))->only($columns)->toArray();
+        if ($request->has('status')) {
+            return $this->validationError(['status' => ['Dùng thao tác trình/chốt/mở lại thay vì sửa trực tiếp trạng thái']]);
+        }
+
+        $data = $validator->validated();
+        if (isset($data['period_code'])) {
+            $data['period_code'] = strtoupper(trim((string) $data['period_code']));
+        }
+        if (isset($data['period_type'])) {
+            $data['period_type'] = strtoupper((string) $data['period_type']);
+        }
+        $candidate = array_merge($period->only(['period_code', 'period_type', 'start_date', 'end_date', 'legal_entity_id']), $data, [
+            'tenant_id' => $period->tenant_id,
+        ]);
+        if ((string) $candidate['end_date'] < (string) $candidate['start_date']) {
+            return $this->validationError(['end_date' => ['Ngày kết thúc không được trước ngày bắt đầu']]);
+        }
+        if (! $this->canUseLegalEntity($request, (int) $candidate['legal_entity_id'])) {
+            return $this->validationError(['legal_entity_id' => ['Pháp nhân không thuộc công ty hiện tại']]);
+        }
+        if ($this->periodConflict($candidate, $id)) {
+            return $this->validationError(['period_code' => ['Kỳ lương bị trùng trong pháp nhân này']]);
+        }
 
         $period->update($data);
 
-        // Dong bo: ky chuyen sang DA TRA (PAID) nghia la tien da chuyen cho toan
-        // bo nhan vien -> moi phieu luong con PENDING phai thanh PAID (tranh lech
-        // kieu 19 phieu PAID + 1 phieu "cho chuyen" mo coi trong ky da tra).
-        $newStatus = strtoupper((string) ($data['status'] ?? ''));
-        if (in_array($newStatus, ['PAID', 'DA_TRA'], true) || $newStatus === 'ĐÃ_TRẢ') {
-            DB::table('salary_details')
-                ->where('period_id', $period->id)
-                ->where('transfer_status', 'PENDING')
-                ->update(['transfer_status' => 'PAID', 'updated_at' => now()]);
-        }
-
-        return $this->ok($period->fresh(), 'Ká»³ lÆ°Æ¡ng Ä‘Ã£ Ä‘Æ°á»£c cáº­p nháº­t');
+        return $this->ok($period->fresh(), 'Kỳ lương đã được cập nhật');
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
-        $period = SalaryPeriod::find($id);
+        $this->requireCapability($request, 'payroll.periods.manage');
+        $period = $this->periodQuery($request)->find($id);
 
         if (! $period) {
             return $this->notFound();
         }
 
-        if ($period->isClosed()) {
-            return $this->conflict(['KhÃ´ng thá»ƒ xÃ³a ká»³ lÆ°Æ¡ng Ä‘Ã£ chá»‘t'], 'Ká»³ lÆ°Æ¡ng');
+        if (strtoupper((string) $period->status) !== 'OPEN') {
+            return $this->conflict(['Chỉ kỳ OPEN mới được xóa'], 'Kỳ lương');
         }
 
         if ($period->salaryDetails()->exists()) {
-            return $this->conflict(['KhÃ´ng thá»ƒ xÃ³a ká»³ lÆ°Æ¡ng Ä‘Ã£ cÃ³ dá»¯ liá»‡u chi tiáº¿t lÆ°Æ¡ng'], 'Ká»³ lÆ°Æ¡ng');
+            return $this->conflict(['Không thể xóa kỳ lương đã có dữ liệu chi tiết'], 'Kỳ lương');
         }
 
         $period->delete();
 
-        return $this->ok(['id' => $id], 'Ká»³ lÆ°Æ¡ng Ä‘Ã£ Ä‘Æ°á»£c xÃ³a');
+        return $this->ok(['id' => $id], 'Kỳ lương đã được xóa');
+    }
+
+    public function suggestion(Request $request): JsonResponse
+    {
+        $this->requireCapability($request, 'payroll.periods.manage');
+        $payload = $request->validate([
+            'month' => ['required', 'date_format:Y-m'],
+            'legal_entity_id' => ['nullable', 'integer'],
+        ]);
+        $entityId = (int) ($payload['legal_entity_id'] ?? TenantContext::legalEntityId());
+        if (! $this->canUseLegalEntity($request, $entityId)) {
+            return $this->validationError(['legal_entity_id' => ['Pháp nhân không thuộc công ty hiện tại']]);
+        }
+        $entity = LegalEntity::find($entityId);
+        $start = Carbon::createFromFormat('Y-m-d', $payload['month'].'-01')->startOfMonth();
+        $code = 'P-'.$start->format('Y-m');
+        $candidate = [
+            'period_code' => $code,
+            'period_name' => 'Lương tháng '.$start->format('m/Y'),
+            'period_type' => 'MONTHLY',
+            'start_date' => $start->toDateString(),
+            'end_date' => $start->copy()->endOfMonth()->toDateString(),
+            'legal_entity_id' => $entityId,
+            'legal_entity_name' => $entity->name,
+        ];
+        $existing = DB::table('salary_periods')
+            ->where('tenant_id', TenantContext::id())
+            ->where('legal_entity_id', $entityId)
+            ->where('period_type', 'MONTHLY')
+            ->where('start_date', $candidate['start_date'])
+            ->where('end_date', $candidate['end_date'])
+            ->first();
+        $candidate['existing_period_id'] = $existing?->id;
+
+        return $this->ok($candidate, 'Gợi ý kỳ lương');
     }
 
     /**
@@ -183,6 +251,7 @@ class PayrollController extends Controller
      */
     public function bonusRun(Request $request): JsonResponse
     {
+        $this->requireCapability($request, 'payroll.run');
         if (! AccessControl::hasAnyRole(
             (int) $request->attributes->get('auth_employee_id'),
             ['ADMIN', 'TENANT_ADMIN', 'ACCOUNTANT']
@@ -275,6 +344,7 @@ class PayrollController extends Controller
         PayslipReadinessService $readinessService,
         PayslipIssueService $issueService
     ): JsonResponse {
+        $this->requireCapability($request, 'payroll.periods.manage');
         // Kế toán TRÌNH chốt kỳ (maker của maker–checker): OPEN → CHỜ_DUYỆT,
         // ghi người trình vào meta, báo ADMIN vào duyệt.
         $period = SalaryPeriod::find($id);
@@ -333,6 +403,7 @@ class PayrollController extends Controller
 
     public function reopenPeriod(Request $request, int $id): JsonResponse
     {
+        $this->requireCapability($request, 'payroll.periods.manage');
         // Trả kỳ về Đang mở: người trình thu hồi, hoặc admin trả về để tính lại.
         $period = SalaryPeriod::find($id);
 
@@ -685,6 +756,7 @@ class PayrollController extends Controller
      */
     public function run(Request $request, PayrollRunService $service): JsonResponse
     {
+        $this->requireCapability($request, 'payroll.run');
         $validator = Validator::make($request->all(), [
             'salary_period_id' => 'required|integer|exists:salary_periods,id',
         ], [
@@ -696,7 +768,7 @@ class PayrollController extends Controller
         }
 
         $periodId = (int) $request->input('salary_period_id');
-        $period = DB::table('salary_periods')->where('id', $periodId)->first();
+        $period = $this->periodQuery($request)->where('id', $periodId)->first();
         if (! $period) {
             return $this->notFound('Không tìm thấy kỳ lương');
         }
@@ -752,9 +824,13 @@ class PayrollController extends Controller
      */
     public function runStatus(Request $request): JsonResponse
     {
+        $this->requireCapability($request, 'payroll.run');
         $periodId = (int) ($request->query('salary_period_id') ?: $request->query('period_id'));
         if (! $periodId) {
             return $this->validationError(['salary_period_id' => ['Thiếu mã kỳ lương']]);
+        }
+        if (! $this->periodQuery($request)->where('id', $periodId)->exists()) {
+            return $this->notFound('Không tìm thấy kỳ lương');
         }
 
         $status = Cache::get(RunPayrollJob::statusKey($periodId));
@@ -886,5 +962,77 @@ class PayrollController extends Controller
             ->whereRaw('er.is_active = true')
             ->whereIn('r.role_code', ['HR', 'ADMIN'])
             ->pluck('er.employee_id')->unique()->values()->all();
+    }
+
+    private function requireCapability(Request $request, string $capability): void
+    {
+        abort_unless(
+            AccessControl::accessHasCapability((array) $request->attributes->get('access', []), $capability),
+            403,
+        );
+    }
+
+    /** @param array<int, string> $capabilities */
+    private function requireAnyCapability(Request $request, array $capabilities): void
+    {
+        $access = (array) $request->attributes->get('access', []);
+        abort_unless(
+            collect($capabilities)->contains(
+                fn (string $capability): bool => AccessControl::accessHasCapability($access, $capability),
+            ),
+            403,
+        );
+    }
+
+    private function periodQuery(Request $request)
+    {
+        return SalaryPeriod::query()->when(
+            ! $this->isAdminRequest($request),
+            fn ($query) => $query->where('legal_entity_id', TenantContext::legalEntityId()),
+        );
+    }
+
+    private function canUseLegalEntity(Request $request, int $legalEntityId): bool
+    {
+        if (! LegalEntity::find($legalEntityId)) {
+            return false;
+        }
+
+        return $this->isAdminRequest($request)
+            || $legalEntityId === (int) TenantContext::legalEntityId();
+    }
+
+    private function isAdminRequest(Request $request): bool
+    {
+        $access = (array) $request->attributes->get('access', []);
+        if (! empty($access['full'])) {
+            return true;
+        }
+
+        return collect($access['roles'] ?? [])->contains(
+            fn ($role): bool => is_array($role)
+                && in_array(strtoupper((string) ($role['role_code'] ?? '')), ['ADMIN', 'TENANT_ADMIN'], true),
+        );
+    }
+
+    /** @param array<string, mixed> $data */
+    private function periodConflict(array $data, ?int $ignoreId = null): bool
+    {
+        $tenantId = (int) ($data['tenant_id'] ?? TenantContext::id());
+        $entityId = (int) ($data['legal_entity_id'] ?? TenantContext::legalEntityId());
+        $code = strtoupper(trim((string) ($data['period_code'] ?? '')));
+        $type = strtoupper(trim((string) ($data['period_type'] ?? 'MONTHLY')));
+
+        $base = DB::table('salary_periods')
+            ->where('tenant_id', $tenantId)
+            ->where('legal_entity_id', $entityId)
+            ->when($ignoreId !== null, fn ($query) => $query->where('id', '<>', $ignoreId));
+
+        return (clone $base)->where('period_code', $code)->exists()
+            || (clone $base)
+                ->where('period_type', $type)
+                ->whereDate('start_date', (string) $data['start_date'])
+                ->whereDate('end_date', (string) $data['end_date'])
+                ->exists();
     }
 }

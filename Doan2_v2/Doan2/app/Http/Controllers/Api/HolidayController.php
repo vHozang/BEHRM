@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\VietnamHolidayService;
+use App\Support\AccessControl;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,11 @@ class HolidayController extends Controller
     /** Seed the statutory holidays for the current tenant + year (idempotent). */
     public function seed(Request $request): JsonResponse
     {
+        abort_unless(AccessControl::accessHasCapability(
+            (array) $request->attributes->get('access', []),
+            'leave.manage',
+        ), 403, 'Bạn không có quyền áp dụng lịch nghỉ lễ');
+
         if (! TenantContext::hasTenant()) {
             return $this->validationError(['tenant' => ['Không xác định được công ty hiện tại']]);
         }

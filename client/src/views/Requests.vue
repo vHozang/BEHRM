@@ -6,6 +6,7 @@
         <p class="text-muted-foreground mt-1">{{ isAdmin ? 'Xử lý các yêu cầu phê duyệt nhiều bước' : 'Tạo và theo dõi yêu cầu phê duyệt' }}</p>
       </div>
       <BaseButton
+        v-if="activeTab === 'requests'"
         @click="openCreateModal"
         data-testid="button-create-request"
         class="w-full sm:w-auto"
@@ -14,7 +15,19 @@
       </BaseButton>
     </div>
 
-    <div v-if="loading" class="text-center py-8">
+    <div v-if="canManageConfiguration" class="flex gap-2 overflow-x-auto rounded-xl border border-border bg-card p-2">
+      <button
+        v-for="tab in pageTabs"
+        :key="tab.value"
+        class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold"
+        :class="activeTab === tab.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'"
+        @click="activeTab = tab.value"
+      >{{ tab.label }}</button>
+    </div>
+
+    <RequestConfigurationPanel v-if="activeTab === 'configuration'" />
+
+    <div v-else-if="loading" class="text-center py-8">
       <p class="text-muted-foreground">Đang tải dữ liệu từ API...</p>
     </div>
 
@@ -23,7 +36,7 @@
       <p class="text-destructive/80 text-sm mt-1">{{ error }}</p>
     </div>
 
-    <template v-else>
+    <template v-else-if="activeTab === 'requests'">
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <BaseCard>
           <div class="text-center">
@@ -64,7 +77,7 @@
           <template #cell-title="{ item }">
             <div class="text-sm">
               <p class="font-medium">{{ item.title || item.subject || `Yêu cầu #${item.id}` }}</p>
-              <p class="text-xs text-muted-foreground">{{ getTypeText(item.type || item.request_type) }}</p>
+              <p class="text-xs text-muted-foreground">{{ getTypeText(item) }}</p>
             </div>
           </template>
 
@@ -119,6 +132,24 @@
                 </svg>
               </button>
               <button
+                v-if="canEdit(item)"
+                @click="openEditModal(item)"
+                class="p-1.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-600 dark:text-blue-400"
+                title="Sửa yêu cầu"
+                :disabled="processing"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+              </button>
+              <button
+                v-if="canDeleteDraft(item)"
+                @click="deleteDraft(item)"
+                class="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900 text-red-600 dark:text-red-400"
+                title="Xóa bản nháp"
+                :disabled="processing"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+              <button
                 @click="viewDetail(item)"
                 class="p-1.5 rounded hover:bg-muted"
                 title="Xem chi tiết"
@@ -136,12 +167,12 @@
 
     <BaseModal
       v-model="showCreateModal"
-      title="Tạo yêu cầu phê duyệt"
+      :title="editingRequestId ? 'Sửa yêu cầu phê duyệt' : 'Tạo yêu cầu phê duyệt'"
       data-testid="modal-create-request"
     >
       <div class="space-y-4">
         <BaseSelect
-          v-model="form.type"
+          v-model="form.request_type_id"
           label="Loại yêu cầu"
           :options="typeOptions"
           required
@@ -170,7 +201,7 @@
       <template #footer>
         <BaseButton variant="outline" @click="closeCreateModal" :disabled="saving">Hủy</BaseButton>
         <BaseButton @click="handleCreate" :disabled="saving">
-          {{ saving ? 'Đang tạo...' : 'Tạo yêu cầu' }}
+          {{ saving ? 'Đang lưu...' : (editingRequestId ? 'Lưu thay đổi' : 'Tạo yêu cầu') }}
         </BaseButton>
       </template>
     </BaseModal>
@@ -187,7 +218,7 @@
           </div>
           <div>
             <p class="text-sm text-muted-foreground">Loại yêu cầu</p>
-            <p class="font-medium">{{ getTypeText(selectedRequest.type || selectedRequest.request_type) }}</p>
+            <p class="font-medium">{{ getTypeText(selectedRequest) }}</p>
           </div>
           <div>
             <p class="text-sm text-muted-foreground">Người yêu cầu</p>
@@ -245,11 +276,15 @@ import BaseBadge from '../components/BaseBadge.vue';
 import BaseTable from '../components/BaseTable.vue';
 import BaseModal from '../components/BaseModal.vue';
 import ApprovalTimeline from '../components/ApprovalTimeline.vue';
+import RequestConfigurationPanel from '../components/RequestConfigurationPanel.vue';
 import { requestService } from '../services/requestService';
 import { authService } from '../services/authService';
 
 const isAdmin = computed(() => authService.isAdmin());
 const currentUser = computed(() => authService.getUser());
+const canManageConfiguration = computed(() => authService.hasCapability('requests.types.manage') || authService.hasCapability('requests.flows.manage'));
+const pageTabs = [{ value: 'requests', label: 'Đơn từ' }, { value: 'configuration', label: 'Loại đơn & luồng duyệt' }];
+const activeTab = ref('requests');
 
 const loading = ref(true);
 const error = ref('');
@@ -260,11 +295,12 @@ const formError = ref('');
 const showCreateModal = ref(false);
 const showDetailModal = ref(false);
 const selectedRequest = ref(null);
+const editingRequestId = ref(null);
 
 const requests = ref([]);
 
 const form = ref({
-  type: '',
+  request_type_id: '',
   title: '',
   description: ''
 });
@@ -276,24 +312,19 @@ const columns = [
   { key: 'status', label: 'Trạng thái' },
 ];
 
-const typeOptions = [
+const requestTypes = ref([]);
+const typeOptions = computed(() => [
   { label: 'Chọn loại yêu cầu', value: '' },
-  { label: 'Yêu cầu chung', value: 'general' },
-  { label: 'Yêu cầu nghỉ phép', value: 'leave' },
-  { label: 'Yêu cầu tăng ca', value: 'overtime' },
-  { label: 'Yêu cầu đổi ca', value: 'shift_swap' },
-  { label: 'Yêu cầu mua sắm', value: 'purchase' },
-];
+  ...requestTypes.value.map((type) => ({
+    label: type.request_type_name || type.request_type_code,
+    value: String(type.id),
+  })),
+]);
 
-const typeTexts = {
-  general: 'Yêu cầu chung',
-  leave: 'Yêu cầu nghỉ phép',
-  overtime: 'Yêu cầu tăng ca',
-  shift_swap: 'Yêu cầu đổi ca',
-  purchase: 'Yêu cầu mua sắm'
-};
-
-const getTypeText = (type) => typeTexts[type] || type || 'Yêu cầu chung';
+const getTypeText = (item) => item?.request_type_name
+  || item?.request_type?.request_type_name
+  || requestTypes.value.find((type) => String(type.id) === String(item?.request_type_id))?.request_type_name
+  || 'Yêu cầu chung';
 
 const statusCounts = computed(() => ({
   pending: requests.value.filter(r => r.status === 'pending').length,
@@ -391,12 +422,24 @@ const mapStepStatus = (status) => {
 };
 
 const resetForm = () => {
-  form.value = { type: '', title: '', description: '' };
+  form.value = { request_type_id: '', title: '', description: '' };
+  editingRequestId.value = null;
   formError.value = '';
 };
 
 const openCreateModal = () => {
   resetForm();
+  showCreateModal.value = true;
+};
+
+const openEditModal = (item) => {
+  editingRequestId.value = item.id;
+  form.value = {
+    request_type_id: String(item.request_type_id || ''),
+    title: item.title || '',
+    description: item.description || '',
+  };
+  formError.value = '';
   showCreateModal.value = true;
 };
 
@@ -471,7 +514,7 @@ const downloadAttachment = async (a) => {
 };
 
 const handleCreate = async () => {
-  if (!form.value.type) {
+  if (!form.value.request_type_id) {
     formError.value = 'Vui lòng chọn loại yêu cầu';
     return;
   }
@@ -485,17 +528,12 @@ const handleCreate = async () => {
     formError.value = '';
 
     const payload = {
-      type: form.value.type,
+      request_type_id: Number(form.value.request_type_id),
       title: form.value.title,
       description: form.value.description,
-      status: 'pending'
     };
-    const user = currentUser.value;
-    if (user?.employee_id) {
-      payload.employee_id = user.employee_id;
-    }
-
-    await requestService.create(payload);
+    if (editingRequestId.value) await requestService.update(editingRequestId.value, payload);
+    else await requestService.create(payload);
 
     closeCreateModal();
     await loadRequests();
@@ -545,6 +583,18 @@ const canCancel = (request) => {
   return String(request.employee_id || request.requester_id) === String(user.employee_id);
 };
 
+const isOwner = (request) => String(request.employee_id || request.requester_id) === String(currentUser.value?.employee_id || '');
+const canEdit = (request) => ['pending'].includes(request.status) && isOwner(request) && !request.has_approval_history;
+const canDeleteDraft = (request) => request.status === 'draft' && isOwner(request) && !request.has_approval_history;
+
+const deleteDraft = async (request) => {
+  if (!confirm('Xóa bản nháp này?')) return;
+  processing.value = true;
+  try { await requestService.remove(request.id); await loadRequests(); }
+  catch (err) { alert(err.response?.data?.message || 'Không thể xóa bản nháp'); }
+  finally { processing.value = false; }
+};
+
 const cancelRequest = async (request) => {
   if (processing.value || !canCancel(request)) return;
   if (!confirm('Bạn có chắc chắn muốn hủy yêu cầu này?')) return;
@@ -591,11 +641,16 @@ const loadRequests = async () => {
   }
 };
 
+const loadTypes = async () => {
+  const data = await requestService.getTypes({ status: 'ACTIVE' });
+  requestTypes.value = Array.isArray(data) ? data : (data?.items || []);
+};
+
 onMounted(async () => {
   try {
     loading.value = true;
     error.value = '';
-    await loadRequests();
+    await Promise.all([loadTypes(), loadRequests()]);
   } catch (err) {
     console.error('Requests API Error:', err);
     if (err.response?.status !== 403) {

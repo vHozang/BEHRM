@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\AttendanceDuplicatePreflightCommand;
+use App\Console\Commands\BackfillCanonicalCatalogsCommand;
 use App\Console\Commands\ImportLegacyAttendanceLeave;
 use App\Console\Commands\ImportLegacyCommunications;
 use App\Console\Commands\ImportLegacyContracts;
@@ -27,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withCommands([
         AttendanceDuplicatePreflightCommand::class,
+        BackfillCanonicalCatalogsCommand::class,
         ImportLegacyMasterData::class,
         ImportLegacyEmployees::class,
         ImportLegacyContracts::class,

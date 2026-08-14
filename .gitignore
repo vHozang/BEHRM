@@ -1,6 +1,8 @@
 # Dependencies & build output
 node_modules/
 dist/
+playwright-report/
+test-results/
 .venv/
 vendor/
 
@@ -63,4 +65,3 @@ qa*.pdf
 
 Api.md
 Doan.md
-

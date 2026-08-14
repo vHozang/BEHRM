@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Support\AccessControl;
+use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -96,6 +97,29 @@ class ModuleAccess
             return false;
         }
 
+        // Hồ sơ định danh/trình độ được lưu private. Chủ hồ sơ chỉ được tải
+        // file của chính mình; upload vẫn là nghiệp vụ HR và đi qua capability.
+        if ($segment === 'employee-record-files' && strtoupper($request->method()) === 'GET') {
+            $parts = explode('/', ltrim($path, '/'));
+            $resource = $parts[1] ?? '';
+            $recordId = $parts[2] ?? '';
+            $table = match ($resource) {
+                'identity-documents' => 'identity_documents',
+                'qualifications' => 'qualifications',
+                default => null,
+            };
+            if ($table && is_numeric($recordId)) {
+                $ownerId = (int) DB::table($table)
+                    ->where('tenant_id', TenantContext::id())
+                    ->where('id', (int) $recordId)
+                    ->value('employee_id');
+
+                return $ownerId === $employeeId;
+            }
+
+            return false;
+        }
+
         // Onboarding/offboarding: employees may READ their own checklists and
         // TICK their own tasks. The controller enforces row ownership for
         // non-managers; create/add-task/delete/cancel still need the hr module.
@@ -154,6 +178,27 @@ class ModuleAccess
             $target = $request->input('employee_id', $request->query('employee_id'));
 
             return $target !== null && (int) $target === $employeeId;
+        }
+
+        // Detail/edit-by-id của đơn tự phục vụ không mang employee_id trong
+        // query/body. Phân giải chủ sở hữu từ bản ghi; approve/reject vẫn phải
+        // đi qua quyền quản lý ở controller.
+        if (in_array($segment, ['leave-requests', 'attendance-adjustments'], true)) {
+            $parts = explode('/', ltrim($path, '/'));
+            $rid = $parts[1] ?? '';
+            $action = $parts[2] ?? '';
+            $method = strtoupper($request->method());
+            if (is_numeric($rid)
+                && ! in_array($action, ['approve', 'reject'], true)
+                && in_array($method, ['GET', 'PUT', 'PATCH'], true)) {
+                $table = $segment === 'leave-requests' ? 'leave_requests' : 'attendance_adjustment_requests';
+                $ownerId = (int) DB::table($table)
+                    ->where('tenant_id', TenantContext::id())
+                    ->where('id', (int) $rid)
+                    ->value('employee_id');
+
+                return $ownerId === $employeeId;
+            }
         }
 
         // Cancel-by-id của đơn tự phục vụ (nghỉ phép / điều chỉnh công): route

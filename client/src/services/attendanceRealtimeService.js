@@ -60,6 +60,7 @@ export const attendanceRealtimeService = {
       wssPort: Number(config.port || 443),
       forceTLS: (config.scheme || 'https') === 'https',
       enabledTransports: ['ws', 'wss'],
+      // endpoint-audit: POST /attendance/realtime/auth
       authEndpoint: '/api/v1/attendance/realtime/auth',
       auth: { headers: { Authorization: `Bearer ${localStorage.getItem('auth_token') || ''}` } }
     });

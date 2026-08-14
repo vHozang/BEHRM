@@ -355,11 +355,19 @@ class BusinessRulesTest extends TestCase
 
     public function test_generic_catalog_codes_are_unique_within_a_tenant(): void
     {
+        $assetCategoryId = DB::table('asset_categories')->insertGetId([
+            'category_code' => 'QA_ASSET_CATEGORY',
+            'category_name' => 'QA Asset Category',
+            'status' => 'ACTIVE',
+            'tenant_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         $cases = [
             ['/api/v1/roles', ['role_code' => 'QA_DUP_ROLE', 'role_name' => 'QA Role']],
             ['/api/v1/leave-types', ['leave_type_code' => 'QA_DUP_LEAVE', 'leave_type_name' => 'QA Leave']],
             ['/api/v1/shift-types', ['shift_code' => 'QA_DUP_SHIFT', 'shift_name' => 'QA Shift', 'start_time' => '08:00', 'end_time' => '17:00']],
-            ['/api/v1/assets', ['asset_code' => 'QA_DUP_ASSET', 'asset_name' => 'QA Asset']],
+            ['/api/v1/assets', ['asset_code' => 'QA_DUP_ASSET', 'asset_name' => 'QA Asset', 'category_id' => $assetCategoryId]],
             ['/api/v1/policies', ['policy_code' => 'QA_DUP_POLICY', 'policy_name' => 'QA Policy', 'content' => 'Policy body']],
             ['/api/v1/salary-components', ['code' => 'QA_DUP_COMPONENT', 'name' => 'QA Component', 'type' => 'earning', 'category' => 'fixed']],
         ];

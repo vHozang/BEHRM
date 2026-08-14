@@ -123,7 +123,15 @@ const rejectComment = ref('');
 // Chi tiết + tiến trình duyệt (người tạo + người duyệt thật từ object lồng).
 const showDetail = ref(false);
 const selectedRequest = ref(null);
-const openDetail = (item) => { selectedRequest.value = item; showDetail.value = true; };
+const openDetail = async (item) => {
+  selectedRequest.value = item;
+  showDetail.value = true;
+  try {
+    selectedRequest.value = await profileChangeService.get(item.id);
+  } catch (err) {
+    notify.error(err.response?.data?.message || 'Không tải được chi tiết yêu cầu');
+  }
+};
 const approvalSteps = computed(() => {
   const req = selectedRequest.value;
   if (!req) return [];

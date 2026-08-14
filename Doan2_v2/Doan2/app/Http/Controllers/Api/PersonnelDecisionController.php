@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\RefreshTokenService;
 use App\Support\HrmConfig;
 use App\Support\Notifier;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -295,9 +297,10 @@ class PersonnelDecisionController extends Controller
                 DB::table('employees')->where('id', $employeeId)
                     ->update([$col => (int) $row->new_value, 'updated_at' => now()]);
                 // Khép lịch sử công tác cũ, mở dòng mới kể từ ngày hiệu lực.
+                $previousEndDate = \Carbon\Carbon::parse($effective)->subDay()->toDateString();
                 DB::table('employment_histories')->where('employee_id', $employeeId)
                     ->whereRaw('is_current = true')
-                    ->update(['is_current' => DB::raw('false'), 'end_date' => $effective, 'updated_at' => now()]);
+                    ->update(['is_current' => DB::raw('false'), 'end_date' => $previousEndDate, 'updated_at' => now()]);
                 $emp = DB::table('employees')->find($employeeId);
                 DB::table('employment_histories')->insert(TenantContext::stamp([
                     'employee_id' => $employeeId,
@@ -330,6 +333,12 @@ class PersonnelDecisionController extends Controller
                 DB::table('employment_histories')->where('employee_id', $employeeId)
                     ->whereRaw('is_current = true')
                     ->update(['is_current' => DB::raw('false'), 'end_date' => $effective, 'updated_at' => now()]);
+
+                if (Schema::hasTable('api_refresh_tokens')) {
+                    app(RefreshTokenService::class)->revokeEmployee($employeeId);
+                } elseif (Schema::hasTable('api_tokens')) {
+                    DB::table('api_tokens')->where('employee_id', $employeeId)->delete();
+                }
 
                 $extra = $this->payoutUnusedLeave($emp, $effective, $row);
                 break;

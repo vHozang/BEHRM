@@ -1,19 +1,91 @@
 
 import axios from 'axios';
+import {
+  broadcastSessionCleared,
+  coordinateRefresh,
+  subscribeSessionCleared,
+} from './authRefreshCoordinator';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 // Same-origin is the production default; Vite proxies /api during local development.
 const axiosClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
+  baseURL: API_BASE_URL,
   timeout: 30000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
+const refreshClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 30000,
+  withCredentials: true,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+const redirectToLogin = () => {
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    window.location.href = '/login';
+  }
+};
+
+export const clearStoredSession = ({ broadcast = false, redirect = false } = {}) => {
+  ['auth_token', 'auth_expires_at', 'user', 'user_email', 'role', 'user_role', 'access']
+    .forEach((key) => localStorage.removeItem(key));
+  if (broadcast) broadcastSessionCleared();
+  if (redirect) redirectToLogin();
+};
+
+subscribeSessionCleared(() => clearStoredSession({ redirect: true }));
+
+export const storeAccessToken = (payload = {}) => {
+  const token = payload.access_token || payload.token;
+  if (!token) return null;
+  localStorage.setItem('auth_token', token);
+  const expiresAt = payload.expires_at
+    || (payload.expires_in ? new Date(Date.now() + Number(payload.expires_in) * 1000).toISOString() : null);
+  if (expiresAt) localStorage.setItem('auth_expires_at', expiresAt);
+  return token;
+};
+
+const tokenNeedsRefresh = () => {
+  const expiresAt = Date.parse(localStorage.getItem('auth_expires_at') || '');
+  return Number.isFinite(expiresAt) && expiresAt - Date.now() <= 5 * 60 * 1000;
+};
+
+const isAuthEndpoint = (url = '') => /\/auth\/(login|refresh|logout|forgot-password|reset-password)/.test(String(url));
+
+export const refreshAccessToken = async () => {
+  return coordinateRefresh({
+    readToken: () => localStorage.getItem('auth_token'),
+    isTokenFresh: () => {
+      const token = localStorage.getItem('auth_token');
+      return !!token && !tokenNeedsRefresh();
+    },
+    performRefresh: async () => {
+      const legacyToken = localStorage.getItem('auth_token');
+      const response = await refreshClient.post('/auth/refresh', null, {
+        headers: legacyToken ? { Authorization: `Bearer ${legacyToken}` } : {},
+      });
+      const payload = response.data?.data ?? response.data ?? {};
+      return storeAccessToken(payload);
+    },
+  });
+};
+
 // Request interceptor - Attach auth token
 axiosClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('auth_token');
+  async (config) => {
+    let token = localStorage.getItem('auth_token');
+    if (token && tokenNeedsRefresh() && !isAuthEndpoint(config.url) && config.skipAuthRefresh !== true) {
+      try {
+        token = await refreshAccessToken();
+      } catch {
+        // The response interceptor handles an eventual 401 and session cleanup.
+      }
+    }
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -123,10 +195,22 @@ axiosClient.interceptors.response.use(
     return response;
   },
   (error) => {
-    // Handle 401 Unauthorized
-    if (error.response?.status === 401) {
-      localStorage.removeItem('auth_token');
-      window.location.href = '/login';
+    const original = error.config || {};
+    if (error.response?.status === 401 && !original._retry && !isAuthEndpoint(original.url)) {
+      original._retry = true;
+      return refreshAccessToken()
+        .then((token) => {
+          if (!token) throw error;
+          original.headers = original.headers || {};
+          original.headers.Authorization = `Bearer ${token}`;
+          return axiosClient(original);
+        })
+        .catch((refreshError) => {
+          if ([401, 403].includes(refreshError.response?.status)) {
+            clearStoredSession({ broadcast: true, redirect: true });
+          }
+          return Promise.reject(refreshError);
+        });
     }
     
     // Handle other errors

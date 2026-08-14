@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Repositories\OrganizationChartRepository;
+use App\Services\RefreshTokenService;
 use App\Support\AccessControl;
 use App\Support\HrmConfig;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -19,6 +21,8 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    public function __construct(private readonly RefreshTokenService $refreshTokens) {}
+
     public function login(Request $request): JsonResponse
     {
         $payload = $request->validate([
@@ -26,7 +30,10 @@ class AuthController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        $employee = DB::table('employees')->where('company_email', $payload['company_email'])->first();
+        $employee = DB::table('employees')
+            ->where('company_email', $payload['company_email'])
+            ->whereIn('status', ['ACTIVE', 'PROBATION'])
+            ->first();
 
         if (! $employee || ! Hash::check($payload['password'], $employee->password_hash ?? '')) {
             return response()->json([
@@ -36,24 +43,34 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $token = $this->issueToken((int) $employee->id);
+        $familyId = Str::uuid()->toString();
+        $accessToken = $this->issueToken((int) $employee->id, $familyId);
+        $refreshToken = $this->refreshTokens->issue(
+            (int) $employee->id,
+            (int) $employee->tenant_id,
+            $familyId,
+            $request,
+        );
 
         $access = AccessControl::forEmployee((int) $employee->id, ! empty($employee->is_super_admin));
 
         unset($employee->password_hash); // không bao giờ trả hash về client
         $employee->roles = $access['roles'] ?? [];
 
-        return response()->json([
+        $response = response()->json([
             'status' => 200,
             'message' => 'Login successful',
             'data' => [
-                'access_token' => $token,
+                'access_token' => $accessToken['token'],
                 'token_type' => 'Bearer',
                 'expires_in' => (int) env('JWT_TTL', 3600),
+                'expires_at' => $accessToken['expires_at']->toIso8601String(),
                 'employee' => $employee,
                 'access' => $access,
             ],
         ]);
+
+        return $response->withCookie($this->refreshCookie($refreshToken['token']));
     }
 
     public function me(Request $request): JsonResponse
@@ -73,18 +90,125 @@ class AuthController extends Controller
 
     public function refresh(Request $request): JsonResponse
     {
-        $employee = $request->attributes->get('auth_employee');
-        $token = $this->issueToken((int) $employee['id']);
+        if (! $this->isTrustedBrowserRequest($request)) {
+            return response()->json(['status' => 403, 'message' => 'Untrusted request origin', 'data' => null], 403);
+        }
 
-        return response()->json([
+        $cookieName = (string) config('hrm.auth.refresh_cookie', 'hrm_refresh');
+        $rawRefreshToken = $request->cookie($cookieName);
+        $rotated = $rawRefreshToken ? $this->refreshTokens->rotate($rawRefreshToken, $request) : null;
+
+        if ($rotated && $rotated['status'] === 'in_progress') {
+            return response()->json([
+                'status' => 409,
+                'code' => 'REFRESH_IN_PROGRESS',
+                'message' => 'Another tab is refreshing this session',
+                'data' => [
+                    'retry_after_ms' => (int) ($rotated['retry_after_ms'] ?? 500),
+                ],
+            ], 409)->header('Retry-After', '1');
+        }
+
+        if ($rotated && $rotated['status'] !== 'ok') {
+            return response()->json([
+                'status' => 401,
+                'message' => $rotated['status'] === 'reused'
+                    ? 'Refresh token reuse detected; session revoked'
+                    : 'Invalid or expired refresh token',
+                'data' => null,
+            ], 401)->withCookie($this->forgetRefreshCookie());
+        }
+
+        // One-release compatibility: a still-valid legacy access token may
+        // bootstrap a refresh-token family once.
+        if (! $rotated) {
+            $bearer = $request->bearerToken();
+            $accessRow = $bearer ? DB::table('api_tokens')
+                ->where('token_hash', hash('sha256', $bearer))
+                ->where(function ($query): void {
+                    $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
+                ->first() : null;
+
+            if (! $accessRow || $accessRow->family_id !== null) {
+                return response()->json([
+                    'status' => 401,
+                    'message' => 'Refresh token required; legacy bootstrap is no longer available for this access token',
+                    'data' => null,
+                ], 401)->withCookie($this->forgetRefreshCookie());
+            }
+
+            $familyId = Str::uuid()->toString();
+            DB::table('api_tokens')->where('id', $accessRow->id)->update([
+                'family_id' => $familyId,
+                'updated_at' => now(),
+            ]);
+            $legacyRefresh = $this->refreshTokens->issue(
+                (int) $accessRow->employee_id,
+                (int) $accessRow->tenant_id,
+                $familyId,
+                $request,
+            );
+            $rotated = [
+                'status' => 'ok',
+                'token' => $legacyRefresh['token'],
+                'family_id' => $familyId,
+                'employee_id' => (int) $accessRow->employee_id,
+                'tenant_id' => (int) $accessRow->tenant_id,
+            ];
+        }
+
+        $employee = DB::table('employees')
+            ->where('id', $rotated['employee_id'])
+            ->where('tenant_id', $rotated['tenant_id'])
+            ->whereIn('status', ['ACTIVE', 'PROBATION'])
+            ->first();
+        if (! $employee) {
+            $this->refreshTokens->revokeFamily((string) $rotated['family_id']);
+
+            return response()->json(['status' => 401, 'message' => 'Employee not found', 'data' => null], 401)
+                ->withCookie($this->forgetRefreshCookie());
+        }
+
+        $token = $this->issueToken((int) $employee->id, (string) $rotated['family_id']);
+
+        $response = response()->json([
             'status' => 200,
             'message' => 'Token refreshed',
             'data' => [
-                'access_token' => $token,
+                'access_token' => $token['token'],
                 'token_type' => 'Bearer',
                 'expires_in' => (int) env('JWT_TTL', 3600),
+                'expires_at' => $token['expires_at']->toIso8601String(),
             ],
         ]);
+
+        return $response->withCookie($this->refreshCookie((string) $rotated['token']));
+    }
+
+    public function logout(Request $request): JsonResponse
+    {
+        if (! $this->isTrustedBrowserRequest($request)) {
+            return response()->json(['status' => 403, 'message' => 'Untrusted request origin', 'data' => null], 403);
+        }
+
+        $cookieName = (string) config('hrm.auth.refresh_cookie', 'hrm_refresh');
+        $familyId = $this->refreshTokens->revokeToken($request->cookie($cookieName));
+        $bearer = $request->bearerToken();
+        if ($bearer) {
+            $accessRow = DB::table('api_tokens')->where('token_hash', hash('sha256', $bearer))->first();
+            if ($accessRow?->family_id && $familyId === null) {
+                $this->refreshTokens->revokeFamily((string) $accessRow->family_id);
+            } else {
+                DB::table('api_tokens')->where('id', $accessRow?->id)->delete();
+            }
+        }
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Logged out',
+            'data' => null,
+        ])->withCookie($this->forgetRefreshCookie());
     }
 
     public function uiPreferences(): JsonResponse
@@ -132,6 +256,7 @@ class AuthController extends Controller
 
             // Revoke every active session after a credential change.
             DB::table('api_tokens')->where('employee_id', $employee['id'])->delete();
+            $this->refreshTokens->revokeEmployee((int) $employee['id']);
         });
 
         return response()->json([
@@ -270,6 +395,7 @@ class AuthController extends Controller
                 'updated_at' => now(),
             ]);
             DB::table('api_tokens')->where('employee_id', $reset->employee_id)->delete();
+            $this->refreshTokens->revokeEmployee((int) $reset->employee_id);
 
             return true;
         });
@@ -289,7 +415,8 @@ class AuthController extends Controller
         ]);
     }
 
-    private function issueToken(int $employeeId): string
+    /** @return array{token: string, expires_at: \Illuminate\Support\Carbon} */
+    private function issueToken(int $employeeId, ?string $familyId = null): array
     {
         $token = rtrim(strtr(base64_encode(json_encode([
             'iss' => env('JWT_ISSUER', 'hrm-system'),
@@ -303,15 +430,74 @@ class AuthController extends Controller
         $tenantId = DB::table('employees')->where('id', $employeeId)->value('tenant_id')
             ?? TenantContext::id();
 
+        $expiresAt = now()->addSeconds((int) env('JWT_TTL', 3600));
         DB::table('api_tokens')->insert([
             'employee_id' => $employeeId,
             'token_hash' => hash('sha256', $token),
-            'expires_at' => now()->addSeconds((int) env('JWT_TTL', 3600)),
+            'expires_at' => $expiresAt,
+            'family_id' => $familyId,
             'tenant_id' => $tenantId,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        return $token;
+        return ['token' => $token, 'expires_at' => $expiresAt];
+    }
+
+    private function refreshCookie(string $token): \Symfony\Component\HttpFoundation\Cookie
+    {
+        $secure = config('hrm.auth.refresh_cookie_secure');
+        if ($secure === null) {
+            $secure = app()->environment('production');
+        }
+
+        return Cookie::make(
+            (string) config('hrm.auth.refresh_cookie', 'hrm_refresh'),
+            $token,
+            (int) config('hrm.auth.refresh_days', 30) * 1440,
+            '/api/v1/auth',
+            null,
+            (bool) $secure,
+            true,
+            false,
+            'lax',
+        );
+    }
+
+    private function forgetRefreshCookie(): \Symfony\Component\HttpFoundation\Cookie
+    {
+        return Cookie::forget(
+            (string) config('hrm.auth.refresh_cookie', 'hrm_refresh'),
+            '/api/v1/auth',
+        );
+    }
+
+    private function isTrustedBrowserRequest(Request $request): bool
+    {
+        $source = $request->headers->get('Origin') ?: $request->headers->get('Referer');
+        if (! $source) {
+            return ! app()->environment('production');
+        }
+
+        $allowed = array_merge(
+            (array) config('hrm.auth.trusted_origins', []),
+            array_filter([(string) config('app.url'), (string) config('app.frontend_url')]),
+        );
+        $sourceOrigin = $this->normalizeOrigin($source);
+
+        return $sourceOrigin !== null && collect($allowed)
+            ->map(fn ($origin) => $this->normalizeOrigin((string) $origin))
+            ->filter()
+            ->contains($sourceOrigin);
+    }
+
+    private function normalizeOrigin(string $url): ?string
+    {
+        $parts = parse_url($url);
+        if (! is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+            return null;
+        }
+
+        return strtolower($parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : ''));
     }
 }
