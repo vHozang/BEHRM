@@ -57,7 +57,9 @@ class ClaudeService
                 'x-api-key' => (string) config('hrm.ai.api_key'),
                 'anthropic-version' => '2023-06-01',
                 'content-type' => 'application/json',
-            ])->timeout(60)->post($base . '/v1/messages', $body);
+            ])->connectTimeout(min(5, (int) config('hrm.ai.timeout_seconds', 15)))
+                ->timeout((int) config('hrm.ai.timeout_seconds', 15))
+                ->post($base . '/v1/messages', $body);
         } catch (\Throwable $e) {
             Log::warning('ClaudeService network error', ['error' => $e->getMessage()]);
 

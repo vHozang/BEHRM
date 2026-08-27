@@ -1,23 +1,23 @@
 
 import axiosClient from './axiosClient';
-import { asJobTitleArray, mapJobTitle } from './jobTitlePayload';
+import { asJobTitleArray, mapJobTitle, toJobTitlePayload } from './jobTitlePayload';
 
 export const jobTitleService = {
   // Get all job titles
   getAll: async () => {
-    const response = await axiosClient.get('/positions');
+    const response = await axiosClient.get('/positions', { params: { per_page: 100 } });
     return asJobTitleArray(response.data);
   },
 
   // Create job title
   create: async (data) => {
-    const response = await axiosClient.post('/positions', data);
+    const response = await axiosClient.post('/positions', toJobTitlePayload(data));
     return mapJobTitle(response.data);
   },
 
   // Update job title
   update: async (id, data) => {
-    const response = await axiosClient.patch(`/positions/${id}`, data);
+    const response = await axiosClient.patch(`/positions/${id}`, toJobTitlePayload(data));
     return mapJobTitle(response.data);
   },
 

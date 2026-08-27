@@ -972,6 +972,26 @@ class AttendanceController extends Controller
             ]);
         }
 
+        $lockedPeriods = DB::table('salary_periods')
+            ->where('tenant_id', $tenantId)
+            ->where('legal_entity_id', $legalEntityId)
+            ->where('start_date', '<=', Carbon::parse($end)->toDateString())
+            ->where('end_date', '>=', Carbon::parse($start)->toDateString())
+            ->whereIn('status', ['CLOSED', 'LOCKED', 'PAID', 'ĐÃ_ĐÓNG', 'DA_DONG', 'ĐÃ_TRẢ', 'DA_TRA'])
+            ->orderBy('start_date')
+            ->get(['id', 'period_code', 'status']);
+        if ($lockedPeriods->isNotEmpty()) {
+            return response()->json([
+                'status' => 409,
+                'message' => 'Bảng công không thể thay đổi.',
+                'data' => [
+                    'violations' => $lockedPeriods
+                        ->map(fn ($period) => "Kỳ {$period->period_code} đang ở trạng thái {$period->status}; hãy mở lại kỳ trước khi tái tính công")
+                        ->all(),
+                ],
+            ], 409);
+        }
+
         $operation = $this->createOperation($request, 'RECOMPUTE', $legalEntityId, [
             'start' => Carbon::parse($start)->toDateString(),
             'end' => Carbon::parse($end)->toDateString(),

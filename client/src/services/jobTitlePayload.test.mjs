@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { asJobTitleArray, mapJobTitle } from './jobTitlePayload.js';
+import { asJobTitleArray, mapJobTitle, toJobTitlePayload } from './jobTitlePayload.js';
 
 assert.deepEqual(mapJobTitle({
   id: 5,
@@ -13,6 +13,7 @@ assert.deepEqual(mapJobTitle({
   code: 'DEV',
   job_title_name: 'Lap trinh vien',
   title: 'Lap trinh vien',
+  is_active: true,
 });
 
 assert.deepEqual(asJobTitleArray({
@@ -21,5 +22,18 @@ assert.deepEqual(asJobTitleArray({
     { id: 2, name: 'Ke toan' },
   ],
 }).map((item) => item.name), ['Nhan vien nhan su', 'Ke toan']);
+
+assert.deepEqual(toJobTitlePayload({
+  code: ' qa-01 ',
+  name: ' Chuyen vien QA ',
+  job_level: 'senior',
+  is_active: false,
+}), {
+  position_code: 'QA-01',
+  position_name: 'Chuyen vien QA',
+  job_family_id: null,
+  job_level: 'senior',
+  is_active: false,
+});
 
 console.log('jobTitlePayload position mapping test passed');

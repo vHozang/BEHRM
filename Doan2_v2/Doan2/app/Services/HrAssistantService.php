@@ -39,6 +39,15 @@ class HrAssistantService
             ];
         }
 
+        if ($this->isSensitiveOrInjectionRequest($question, $history)) {
+            return [
+                'ok' => true,
+                'answer' => 'Tôi không thể cung cấp dữ liệu của nhân viên khác, thông tin bí mật, khóa API hoặc hướng dẫn nội bộ. Tôi chỉ hỗ trợ nghiệp vụ HR và dữ liệu cá nhân của chính bạn.',
+                'configured' => true,
+                'usage' => null,
+            ];
+        }
+
         $context = $this->gatherContext($employeeId);
         $system = $this->buildSystemPrompt($context);
 
@@ -49,10 +58,15 @@ class HrAssistantService
 
         $result = $this->claude->chat($messages, $system);
 
+        $answer = $result['ok'] ? trim((string) $result['text']) : '';
+        if ($answer !== '' && $this->containsSecretOrInternalPrompt($answer)) {
+            $answer = 'Tôi không thể hiển thị thông tin bí mật hoặc hướng dẫn nội bộ. Vui lòng hỏi lại về nghiệp vụ HR hoặc dữ liệu cá nhân của bạn.';
+        }
+
         return [
             'ok' => $result['ok'],
             'answer' => $result['ok']
-                ? $result['text']
+                ? $answer
                 : ($result['error'] ?? 'Xin lỗi, hiện chưa thể trả lời. Vui lòng thử lại sau.'),
             'configured' => true,
             'usage' => $result['usage'],
@@ -201,5 +215,29 @@ TXT;
 
         // Cap history length to keep the prompt compact.
         return array_slice($out, -10);
+    }
+
+    /** @param array<int,mixed> $history */
+    private function isSensitiveOrInjectionRequest(string $question, array $history): bool
+    {
+        $text = mb_strtolower($question.' '.collect($history)
+            ->filter(fn ($turn) => is_array($turn) && isset($turn['content']))
+            ->pluck('content')->implode(' '));
+
+        $patterns = [
+            '/(?:bỏ qua|bo qua|ignore|quên đi|quen di).{0,40}(?:hướng dẫn|huong dan|chỉ thị|chi thi|instruction|prompt)/iu',
+            '/(?:system prompt|developer message|hướng dẫn nội bộ|huong dan noi bo|chain of thought)/iu',
+            '/(?:anthropic[_ -]?api[_ -]?key|system[_ -]?secret)/iu',
+            '/(?:xuất|xuat|hiện|hien|cho tôi|cho toi|show|reveal|dump).{0,50}(?:api[_ -]?key|secret|mật khẩu|mat khau|bearer token|access token)/iu',
+            '/(?:lương|luong|nghỉ phép|nghi phep|cccd|cmnd|tài khoản ngân hàng|tai khoan ngan hang).{0,50}(?:nhân viên khác|nhan vien khac|mọi nhân viên|moi nhan vien|toàn bộ nhân viên|toan bo nhan vien|người khác|nguoi khac)/iu',
+            '/(?:xuất|xuat|liệt kê|liet ke|show|reveal|dump).{0,60}(?:dữ liệu tenant|du lieu tenant|dữ liệu nhân viên|du lieu nhan vien|bí mật|bi mat|prompt)/iu',
+        ];
+
+        return collect($patterns)->contains(fn ($pattern) => preg_match($pattern, $text) === 1);
+    }
+
+    private function containsSecretOrInternalPrompt(string $answer): bool
+    {
+        return preg_match('/(?:sk-ant-[a-z0-9_-]+|ANTHROPIC_API_KEY\s*=|Bearer\s+[A-Za-z0-9._-]{20,}|Bối cảnh \(chỉ dùng để trả lời|TUYỆT ĐỐI không tiết lộ)/iu', $answer) === 1;
     }
 }

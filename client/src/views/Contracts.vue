@@ -174,6 +174,23 @@
           <BaseInput v-model="form.sign_date" type="date" label="Ngày ký HĐ" hint="Ngày đặt bút ký" required />
         </div>
 
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-foreground mb-1">Phòng ban theo hợp đồng</label>
+            <select v-model="form.department_id" class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+              <option value="">-- Chưa phân phòng --</option>
+              <option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name || department.department_name }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-foreground mb-1">Chức danh theo hợp đồng</label>
+            <select v-model="form.position_id" class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+              <option value="">-- Chưa có chức danh --</option>
+              <option v-for="position in positions" :key="position.id" :value="position.id">{{ position.name || position.position_name }}</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Compliance hint for new fixed-term contracts -->
         <div v-if="createRenewalHint" class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm text-amber-700 dark:text-amber-400">
           {{ createRenewalHint }}
@@ -354,6 +371,8 @@ import SignaturePad from '../components/SignaturePad.vue';
 import { contractService, printContractHtml } from '../services/contractService';
 import { parseFileToHtml, scanTemplate, applyMapping } from '../utils/contractTemplateImport';
 import { employeeService } from '../services/employeeService';
+import { departmentService } from '../services/departmentService';
+import { jobTitleService } from '../services/jobTitleService';
 import { settingsService } from '../services/settingsService';
 import { useToast } from '../composables/useToast';
 
@@ -368,6 +387,8 @@ const pagination = ref(null);
 const page = ref(1);
 const employees = ref([]);
 const contractTypes = ref([]);
+const departments = ref([]);
+const positions = ref([]);
 const showModal = ref(false);
 const showSignatureModal = ref(false);
 const showTerminateModal = ref(false);
@@ -380,7 +401,7 @@ const changeLogsLoading = ref(false);
 const filters = ref({ search: '', typeId: '', bucket: '' });
 
 const form = ref({
-  contract_code: '', employee_id: '', contract_type_id: '', sign_date: '',
+  contract_code: '', employee_id: '', contract_type_id: '', department_id: '', position_id: '', sign_date: '',
   start_date: '', end_date: '', basic_salary: 0, allowances: 0, notes: '', signature: ''
 });
 
@@ -528,11 +549,13 @@ const loadData = async () => {
     if (filters.value.search.trim()) params.search = filters.value.search.trim();
     if (filters.value.typeId) params.contract_type_id = filters.value.typeId;
     if (filters.value.bucket) params.bucket = filters.value.bucket;
-    const [conRes, lookupRes, typeRes, empRes] = await Promise.all([
+    const [conRes, lookupRes, typeRes, empRes, departmentRes, positionRes] = await Promise.all([
       contractService.getPage(params),
       contractService.getLookup(),
       contractService.getTypes().catch(() => []),
-      employeeService.getLookup().catch(() => [])
+      employeeService.getLookup().catch(() => []),
+      departmentService.getAll().catch(() => []),
+      jobTitleService.getAll().catch(() => [])
     ]);
     contracts.value = conRes.items;
     pagination.value = conRes.pagination;
@@ -545,6 +568,8 @@ const loadData = async () => {
     let emps = empRes?.data?.data || empRes?.data || empRes || [];
     if (!Array.isArray(emps)) emps = emps.items || emps.data || [];
     employees.value = Array.isArray(emps) ? emps : [];
+    departments.value = Array.isArray(departmentRes) ? departmentRes : (departmentRes?.items || []);
+    positions.value = Array.isArray(positionRes) ? positionRes : (positionRes?.items || []);
   } catch (err) {
     console.error('Error loading contracts:', err);
   }
@@ -587,7 +612,7 @@ const saveSignature = (signatureBase64) => {
 
 const openCreateModal = () => {
   form.value = {
-    contract_code: '', employee_id: '', contract_type_id: '',
+    contract_code: '', employee_id: '', contract_type_id: '', department_id: '', position_id: '',
     sign_date: new Date().toISOString().substring(0, 10),
     start_date: new Date().toISOString().substring(0, 10),
     end_date: '', basic_salary: 0, allowances: 0, notes: '', signature: ''

@@ -576,11 +576,8 @@ const rejectRequest = async (request) => {
 };
 
 const canCancel = (request) => {
-  if (!['pending', 'draft'].includes(request.status)) return false;
-  if (isAdmin.value) return true;
-  const user = currentUser.value;
-  if (!user?.employee_id) return false;
-  return String(request.employee_id || request.requester_id) === String(user.employee_id);
+  if (!['pending', 'in_progress'].includes(request.status)) return false;
+  return isOwner(request);
 };
 
 const isOwner = (request) => String(request.employee_id || request.requester_id) === String(currentUser.value?.employee_id || '');

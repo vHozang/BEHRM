@@ -231,6 +231,7 @@ class EmployeeController extends Controller
         $query = Employee::query()
             ->with(['department:id,department_name,department_code', 'position:id,position_name,position_code'])
             ->where(fn ($query) => $query->whereNull('profile->system_account')->orWhere('profile->system_account', false))
+            ->where('status', '!=', 'DELETED')
             ->orderByDesc('id');
 
         // Filter by query params
@@ -299,6 +300,7 @@ class EmployeeController extends Controller
             ->with(['position:id,position_code,position_name'])
             ->select(['id', 'employee_code', 'full_name', 'status', 'legal_entity_id', 'department_id', 'position_id', 'manager_id'])
             ->where(fn ($query) => $query->whereNull('profile->system_account')->orWhere('profile->system_account', false))
+            ->where('status', '!=', 'DELETED')
             ->where('legal_entity_id', $legalEntityId)
             ->when($request->filled('department_id'), fn ($query) => $query->where('department_id', (int) $request->query('department_id')))
             ->when($request->filled('search'), function ($query) use ($request): void {
@@ -692,9 +694,103 @@ class EmployeeController extends Controller
         }
 
         $violations = $employee->deletionViolations();
-        $violations[] = 'Hồ sơ nhân viên là dữ liệu lịch sử; hãy chuyển trạng thái hoặc dùng Gỡ khỏi sơ đồ thay vì xóa';
+        if ($violations !== []) {
+            return $this->conflict($violations, 'Nhân viên');
+        }
 
-        return $this->conflict($violations, 'Nhân viên');
+        if ((int) request()->attributes->get('auth_employee_id') === (int) $employee->id) {
+            return $this->conflict(['Không thể tự xóa tài khoản đang đăng nhập'], 'Nhân viên');
+        }
+
+        $before = $employee->toArray();
+        DB::transaction(function () use ($employee): void {
+            Employee::where('manager_id', $employee->id)->update(['manager_id' => $employee->manager_id]);
+
+            if (Schema::hasTable('departments')) {
+                DB::table('departments')
+                    ->where('tenant_id', $employee->tenant_id)
+                    ->whereNotNull('meta')
+                    ->orderBy('id')
+                    ->get(['id', 'meta'])
+                    ->each(function ($department) use ($employee): void {
+                        $meta = is_string($department->meta) ? (json_decode($department->meta, true) ?: []) : (array) $department->meta;
+                        if ((int) ($meta['manager_id'] ?? 0) !== (int) $employee->id
+                            && (int) ($meta['head_employee_id'] ?? 0) !== (int) $employee->id) {
+                            return;
+                        }
+                        if ((int) ($meta['manager_id'] ?? 0) === (int) $employee->id) {
+                            $meta['manager_id'] = null;
+                        }
+                        if ((int) ($meta['head_employee_id'] ?? 0) === (int) $employee->id) {
+                            $meta['head_employee_id'] = null;
+                        }
+                        DB::table('departments')->where('id', $department->id)->update([
+                            'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE),
+                            'updated_at' => now(),
+                        ]);
+                    });
+            }
+
+            if (Schema::hasTable('legal_entities')) {
+                DB::table('legal_entities')
+                    ->where('tenant_id', $employee->tenant_id)
+                    ->whereNotNull('meta')
+                    ->orderBy('id')
+                    ->get(['id', 'meta'])
+                    ->each(function ($entity) use ($employee): void {
+                        $meta = is_string($entity->meta) ? (json_decode($entity->meta, true) ?: []) : (array) $entity->meta;
+                        if ((int) ($meta['head_employee_id'] ?? 0) !== (int) $employee->id) {
+                            return;
+                        }
+                        $meta['head_employee_id'] = null;
+                        DB::table('legal_entities')->where('id', $entity->id)->update([
+                            'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE),
+                            'updated_at' => now(),
+                        ]);
+                    });
+            }
+
+            if (Schema::hasTable('employment_histories')) {
+                DB::table('employment_histories')
+                    ->where('tenant_id', $employee->tenant_id)
+                    ->where('employee_id', $employee->id)
+                    ->whereRaw('is_current = true')
+                    ->update([
+                        'is_current' => DB::raw('false'),
+                        'end_date' => now()->toDateString(),
+                        'notes' => 'Hồ sơ được soft-delete',
+                        'updated_at' => now(),
+                    ]);
+            }
+
+            if (Schema::hasTable('employee_departments')) {
+                DB::table('employee_departments')
+                    ->where('tenant_id', $employee->tenant_id)
+                    ->where('employee_id', $employee->id)
+                    ->delete();
+            }
+
+            $profile = is_array($employee->profile) ? $employee->profile : [];
+            $profile['deleted_at'] = now()->toIso8601String();
+            $employee->update([
+                'status' => 'DELETED',
+                'department_id' => null,
+                'position_id' => null,
+                'manager_id' => null,
+                'profile' => $profile,
+            ]);
+
+            if (Schema::hasTable('api_tokens')) {
+                DB::table('api_tokens')->where('employee_id', $employee->id)->delete();
+            }
+            if (Schema::hasTable('api_refresh_tokens')) {
+                app(RefreshTokenService::class)->revokeEmployee((int) $employee->id);
+            }
+        });
+
+        AuditLogger::log('soft_delete', 'employees', $employee->id, $before, $employee->fresh()->toArray());
+
+        return $this->ok(['id' => $employee->id, 'status' => 'DELETED'], 'Nhân viên đã được xóa mềm');
     }
 
     /**

@@ -148,6 +148,14 @@
           >
             {{ publicationBusy ? 'Đang phát hành...' : '✉ Phát hành & gửi phiếu' }}
           </BaseButton>
+          <BaseButton
+            v-if="isFullAdmin && periodReopenableClosed"
+            variant="outline"
+            @click="reopenPeriodFn"
+            data-testid="button-reopen-closed-period"
+          >
+            ↩ Mở lại kỳ đã chốt
+          </BaseButton>
         </div>
       </div>
       <p v-if="isAdmin && periodPendingClose" class="mt-3 text-xs text-amber-600">
@@ -541,6 +549,7 @@ const periodLocked = computed(() => selectedPeriod.value && LOCKED_STATUSES.incl
 // Maker–checker: kỳ đã trình chốt, chờ admin duyệt.
 const periodPendingClose = computed(() => String(selectedPeriod.value?.status) === 'CHỜ_DUYỆT');
 const periodClosed = computed(() => ['CLOSED', 'LOCKED', 'PAID', 'ĐÃ_ĐÓNG', 'DA_DONG', 'ĐÃ_TRẢ', 'DA_TRA'].includes(String(selectedPeriod.value?.status)));
+const periodReopenableClosed = computed(() => ['CLOSED', 'ĐÃ_ĐÓNG', 'DA_DONG'].includes(String(selectedPeriod.value?.status)));
 const isFullAdmin = computed(() => authService.getAccess().full === true);
 const salaryTabs = computed(() => {
   const rows = [{ value: 'payroll', label: 'Bảng lương' }];
@@ -899,13 +908,23 @@ const pollPublicationStatus = async () => {
 
 const reopenPeriodFn = async () => {
   if (!selectedPeriodId.value) return;
-  if (!window.confirm(`Trả kỳ ${selectedPeriod.value?.period_code} về Đang mở?`)) return;
+  const closed = periodReopenableClosed.value;
+  let reason = '';
+  if (closed) {
+    reason = window.prompt(`Nhập lý do mở lại kỳ đã chốt ${selectedPeriod.value?.period_code}:`, '')?.trim() || '';
+    if (reason.length < 5) {
+      notificationStore.addError('Bắt buộc nhập lý do ít nhất 5 ký tự khi mở lại kỳ đã chốt');
+      return;
+    }
+  } else if (!window.confirm(`Trả kỳ ${selectedPeriod.value?.period_code} về Đang mở?`)) return;
   try {
-    await salaryService.reopenPeriod(Number(selectedPeriodId.value));
-    notificationStore.addSuccess('Kỳ đã trả về Đang mở');
+    await salaryService.reopenPeriod(Number(selectedPeriodId.value), reason);
+    notificationStore.addSuccess('Kỳ đã được mở lại');
     await loadPeriods();
+    await loadDetails();
   } catch (err) {
-    notificationStore.addError(err.response?.data?.message || 'Không thể trả kỳ về');
+    const violations = err.response?.data?.data?.violations;
+    notificationStore.addError(Array.isArray(violations) && violations.length ? violations[0] : (err.response?.data?.message || 'Không thể mở lại kỳ'));
   }
 };
 

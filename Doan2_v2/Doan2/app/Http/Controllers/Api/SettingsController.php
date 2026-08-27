@@ -37,6 +37,7 @@ class SettingsController extends Controller
                         ['value' => '.', 'label' => 'Dấu chấm (1.000.000)'],
                         ['value' => ',', 'label' => 'Dấu phẩy (1,000,000)'],
                     ],
+                    'invalid_message' => 'Dấu phân cách tiền chỉ có thể là dấu chấm hoặc dấu phẩy',
                 ],
             ],
         ],
@@ -125,7 +126,14 @@ class SettingsController extends Controller
                         ['value' => 100, 'label' => '100% lương ngày'],
                     ],
                 ],
-                ['key' => 'attendance.device_upload_delay_minutes', 'label' => 'Thời gian chờ tự động tải dữ liệu máy chấm công (phút)', 'type' => 'int', 'min' => 1, 'max' => 1440],
+                [
+                    'key' => 'attendance.device_upload_delay_minutes',
+                    'label' => 'Thời gian chờ tự động tải dữ liệu máy chấm công (phút)',
+                    'type' => 'int',
+                    'min' => 1,
+                    'max' => 1440,
+                    'range_message' => 'Thời gian tải dữ liệu phải từ 1 đến 1440 phút',
+                ],
                 ['key' => 'attendance.half_day_hours', 'label' => 'Ngưỡng nửa công (giờ)', 'type' => 'float'],
                 ['key' => 'overtime.daily_max_hours', 'label' => 'OT tối đa / ngày (Đ.107: ≤4h)', 'type' => 'float'],
                 ['key' => 'overtime.monthly_max_hours', 'label' => 'OT tối đa / tháng (≤40h)', 'type' => 'float'],
@@ -139,7 +147,16 @@ class SettingsController extends Controller
                 ['key' => 'overtime.night_ot_extra', 'label' => 'OT ban đêm cộng thêm (+20%)', 'type' => 'float'],
                 ['key' => 'overtime.night_start', 'label' => 'Giờ bắt đầu ca đêm (HH:MM)', 'type' => 'text'],
                 ['key' => 'overtime.night_end', 'label' => 'Giờ kết thúc ca đêm (HH:MM)', 'type' => 'text'],
-                ['key' => 'attendance.enforce_mode', 'label' => 'Chống gian lận: chế độ (off/flag/block)', 'type' => 'text'],
+                [
+                    'key' => 'attendance.enforce_mode',
+                    'label' => 'Chống gian lận: chế độ (off/flag/block)',
+                    'type' => 'select',
+                    'options' => [
+                        ['value' => 'off', 'label' => 'Tắt'],
+                        ['value' => 'flag', 'label' => 'Cảnh báo'],
+                        ['value' => 'block', 'label' => 'Chặn'],
+                    ],
+                ],
                 ['key' => 'attendance.ip_allowlist', 'label' => 'Dải IP/CIDR mạng văn phòng (CSV)', 'type' => 'text'],
                 ['key' => 'attendance.geofence_lat', 'label' => 'Geofence: vĩ độ văn phòng', 'type' => 'text'],
                 ['key' => 'attendance.geofence_lng', 'label' => 'Geofence: kinh độ văn phòng', 'type' => 'text'],
@@ -204,40 +221,51 @@ class SettingsController extends Controller
     /** POST /settings/save — upsert tenant overrides. Body: { items: [{key,value}] }. */
     public function save(Request $request): JsonResponse
     {
-        $types = $this->keyTypes();
-        $items = $request->input('items', []);
-        if (! is_array($items)) {
-            return $this->validationError(['items' => ['Định dạng không hợp lệ']]);
+        $validator = Validator::make($request->all(), [
+            'items' => ['required', 'array', 'min:1', 'max:200'],
+            'items.*' => ['required', 'array'],
+            'items.*.key' => ['required', 'string', 'distinct'],
+            'items.*.value' => ['present'],
+        ]);
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
         }
 
-        $saved = [];
-        foreach ($items as $item) {
-            $key = $item['key'] ?? null;
-            if (! $key || ! isset($types[$key])) {
-                continue; // ignore unknown keys (whitelist)
-            }
-            $value = $this->cast($item['value'] ?? null, $types[$key]);
-            if ($value === null) {
+        $catalog = $this->keyCatalog();
+        $prepared = [];
+        $errors = [];
+        foreach ($validator->validated()['items'] as $index => $item) {
+            $key = trim((string) $item['key']);
+            if (! isset($catalog[$key])) {
+                $errors["items.{$index}.key"][] = 'Cấu hình không được phép chỉnh sửa';
+
                 continue;
             }
-            if ($key === 'attendance.device_upload_delay_minutes' && ($value < 1 || $value > 1440)) {
-                return $this->validationError([
-                    $key => ['Thời gian tải dữ liệu phải từ 1 đến 1440 phút'],
-                ]);
+
+            [$valid, $value, $message] = $this->validateAndCast($item['value'], $catalog[$key]);
+            if (! $valid) {
+                $errors["items.{$index}.value"][] = $message;
+
+                continue;
             }
-            if ($key === 'display.money_group_separator' && ! in_array($value, ['.', ','], true)) {
-                return $this->validationError([
-                    $key => ['Dấu phân cách tiền chỉ có thể là dấu chấm hoặc dấu phẩy'],
-                ]);
-            }
-            if ($key === 'attendance.violation_default_percent' && ! in_array((int) $value, [0, 25, 50, 75, 100], true)) {
-                return $this->validationError([
-                    $key => ['Mức khấu trừ chỉ được chọn 0, 25, 50, 75 hoặc 100%.'],
-                ]);
-            }
-            HrmConfig::set($key, $value);
-            $saved[] = $key;
+            $prepared[$key] = $value;
         }
+        if ($errors !== []) {
+            return $this->validationError($errors);
+        }
+
+        try {
+            DB::transaction(function () use ($prepared): void {
+                foreach ($prepared as $key => $value) {
+                    HrmConfig::set($key, $value);
+                }
+            });
+        } catch (\Throwable $exception) {
+            HrmConfig::flushMemoized();
+            throw $exception;
+        }
+
+        $saved = array_keys($prepared);
 
         return response()->json(['status' => 200, 'message' => 'Đã lưu cấu hình', 'data' => ['saved' => $saved]]);
     }
@@ -378,30 +406,161 @@ class SettingsController extends Controller
         ]);
     }
 
-    /** @return array<string,string> key => type */
-    private function keyTypes(): array
+    /** @return array<string,array<string,mixed>> key => catalog item */
+    private function keyCatalog(): array
     {
         $map = [];
         foreach (self::CATALOG as $group) {
             foreach ($group['items'] as $item) {
-                $map[$item['key']] = $item['type'];
+                $map[$item['key']] = $item;
             }
         }
 
         return $map;
     }
 
-    private function cast(mixed $value, string $type): mixed
+    /** @return array{bool,mixed,string} */
+    private function validateAndCast(mixed $value, array $item): array
     {
-        return match ($type) {
-            'int' => is_numeric($value) ? (int) $value : null,
-            'float' => is_numeric($value) ? (float) $value : null,
-            'bool' => filter_var($value, FILTER_VALIDATE_BOOLEAN),
-            'list' => is_array($value) ? array_values(array_filter(array_map(fn ($x) => trim((string) $x), $value), fn ($x) => $x !== '')) : null,
-            'modules' => is_array($value) ? array_values(array_filter($value, fn ($m) => isset(AccessControl::MODULES[$m]) && $m !== 'settings')) : null,
-            'json' => is_array($value) ? $value : (is_string($value) ? json_decode($value, true) : null),
-            default => is_scalar($value) ? (string) $value : null,
-        };
+        $type = $item['type'];
+        $key = $item['key'];
+
+        if ($type === 'int') {
+            $cast = filter_var($value, FILTER_VALIDATE_INT);
+            if ($cast === false) {
+                return [false, null, 'Giá trị phải là số nguyên'];
+            }
+
+            return $this->validateNumericBounds($key, (int) $cast, $item);
+        }
+
+        if ($type === 'float') {
+            if (! is_numeric($value) || ! is_finite((float) $value)) {
+                return [false, null, 'Giá trị phải là số hợp lệ'];
+            }
+
+            return $this->validateNumericBounds($key, (float) $value, $item);
+        }
+
+        if ($type === 'bool') {
+            $cast = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+            return $cast === null
+                ? [false, null, 'Giá trị phải là true hoặc false']
+                : [true, $cast, ''];
+        }
+
+        if ($type === 'select') {
+            foreach ($item['options'] ?? [] as $option) {
+                if ((string) $option['value'] === (string) $value) {
+                    return [true, $option['value'], ''];
+                }
+            }
+
+            return [false, null, $item['invalid_message'] ?? 'Giá trị không nằm trong danh sách cho phép'];
+        }
+
+        if ($type === 'list') {
+            if (! is_array($value) || collect($value)->contains(fn ($entry) => ! is_scalar($entry))) {
+                return [false, null, 'Danh sách không hợp lệ'];
+            }
+
+            return [true, array_values(array_filter(array_map(
+                fn ($entry) => trim((string) $entry),
+                $value
+            ), fn ($entry) => $entry !== '')), ''];
+        }
+
+        if ($type === 'modules') {
+            if (! is_array($value)) {
+                return [false, null, 'Danh sách phân hệ không hợp lệ'];
+            }
+            $modules = array_values(array_unique(array_map('strval', $value)));
+            $invalid = array_values(array_filter(
+                $modules,
+                fn ($module) => ! isset(AccessControl::MODULES[$module]) || $module === 'settings'
+            ));
+            if ($invalid !== []) {
+                return [false, null, 'Có phân hệ không được phép: '.implode(', ', $invalid)];
+            }
+
+            return [true, $modules, ''];
+        }
+
+        if ($type === 'json') {
+            if (is_string($value)) {
+                try {
+                    $value = json_decode($value, true, 512, JSON_THROW_ON_ERROR);
+                } catch (\JsonException) {
+                    return [false, null, 'JSON không hợp lệ'];
+                }
+            }
+
+            return is_array($value)
+                ? [true, $value, '']
+                : [false, null, 'JSON phải là mảng hoặc đối tượng'];
+        }
+
+        if (! is_scalar($value)) {
+            return [false, null, 'Giá trị phải là chuỗi'];
+        }
+        $cast = trim((string) $value);
+        if (mb_strlen($cast) > 20000) {
+            return [false, null, 'Giá trị vượt quá độ dài cho phép'];
+        }
+        if (in_array($key, ['overtime.night_start', 'overtime.night_end'], true)
+            && ! preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $cast)) {
+            return [false, null, 'Giờ phải có định dạng HH:MM'];
+        }
+        if ($key === 'leave.carryover_deadline'
+            && ! preg_match('/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/', $cast)) {
+            return [false, null, 'Hạn dùng phép phải có định dạng MM-DD'];
+        }
+
+        return [true, $cast, ''];
+    }
+
+    /** @return array{bool,int|float|null,string} */
+    private function validateNumericBounds(string $key, int|float $value, array $item): array
+    {
+        $bounds = [
+            'contract.probation_max_days' => [0, 365],
+            'contract.max_fixed_term' => [0, 20],
+            'contract.expiry_alert_days' => [0, 3650],
+            'payroll.overtime_multiplier' => [0, 10],
+            'payroll.night_ot_premium' => [0, 10],
+            'payroll.standard_hours_per_day' => [1, 24],
+            'leave.seniority_bonus_per_years' => [1, 100],
+            'leave.carryover_deadline' => [null, null],
+            'attendance.standard_hours_per_day' => [1, 24],
+            'attendance.standard_days_per_week' => [1, 7],
+            'attendance.weekly_rest_weekday' => [0, 6],
+            'attendance.late_grace_minutes' => [0, 1440],
+            'attendance.early_leave_grace_minutes' => [0, 1440],
+            'attendance.device_upload_delay_minutes' => [1, 1440],
+            'attendance.half_day_hours' => [0, 24],
+            'attendance.geofence_radius_m' => [0, 100000],
+            'overtime.daily_max_hours' => [0, 24],
+            'overtime.monthly_max_hours' => [0, 744],
+            'overtime.yearly_max_hours' => [0, 8784],
+            'overtime.multiplier_weekday' => [0, 10],
+            'overtime.multiplier_weekend' => [0, 10],
+            'overtime.multiplier_holiday' => [0, 10],
+            'overtime.multiplier_saturday' => [0, 10],
+            'overtime.multiplier_sunday' => [0, 10],
+            'overtime.night_premium' => [0, 10],
+            'overtime.night_ot_extra' => [0, 10],
+            'overtime.comp_off_rate' => [0, 10],
+        ];
+        [$min, $max] = $bounds[$key] ?? [$item['min'] ?? 0, $item['max'] ?? PHP_INT_MAX];
+        if ($min !== null && $value < $min) {
+            return [false, null, $item['range_message'] ?? "Giá trị phải lớn hơn hoặc bằng {$min}"];
+        }
+        if ($max !== null && $value > $max) {
+            return [false, null, $item['range_message'] ?? "Giá trị phải nhỏ hơn hoặc bằng {$max}"];
+        }
+
+        return [true, $value, ''];
     }
 
     private function validationError(array $errors): JsonResponse

@@ -40,6 +40,11 @@ class Contract extends Model
         return $this->belongsTo(Department::class, 'department_id');
     }
 
+    public function position(): BelongsTo
+    {
+        return $this->belongsTo(Position::class, 'position_id');
+    }
+
     public function changeLogs(): HasMany
     {
         return $this->hasMany(ContractChangeLog::class);

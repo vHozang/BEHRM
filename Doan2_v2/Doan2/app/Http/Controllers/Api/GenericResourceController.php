@@ -205,6 +205,15 @@ class GenericResourceController extends Controller
 
         ResourceAccess::assertAllowed($request, $resource, 'write');
         $table = $this->tableOrFail($resource);
+        if ($table === 'roles' && DB::getDriverName() === 'pgsql'
+            && ! $request->attributes->get('_roles_write_lock')) {
+            return DB::transaction(function () use ($request, $resource, $id, $child): JsonResponse {
+                DB::select('SELECT pg_advisory_xact_lock(483073, CAST(? AS integer))', [(int) TenantContext::id()]);
+                $request->attributes->set('_roles_write_lock', true);
+
+                return $this->store($request, $resource, $id, $child);
+            });
+        }
         if ($table === 'shift_types' && ! $this->shiftRosterAccess->canManageShiftTypes($request)) {
             abort(403, 'Chỉ Admin hoặc HR được quản lý định nghĩa ca');
         }
@@ -371,6 +380,13 @@ class GenericResourceController extends Controller
         if ($table === 'departments' && DB::getDriverName() === 'pgsql') {
             return DB::transaction(function () use ($request, $resource, $table, $id) {
                 DB::select('SELECT pg_advisory_xact_lock(483072, CAST(? AS integer))', [(int) TenantContext::id()]);
+
+                return $this->updateRecord($request, $resource, $table, $id);
+            });
+        }
+        if ($table === 'roles' && DB::getDriverName() === 'pgsql') {
+            return DB::transaction(function () use ($request, $resource, $table, $id): JsonResponse {
+                DB::select('SELECT pg_advisory_xact_lock(483073, CAST(? AS integer))', [(int) TenantContext::id()]);
 
                 return $this->updateRecord($request, $resource, $table, $id);
             });
@@ -570,8 +586,25 @@ class GenericResourceController extends Controller
         if ($table === 'policies' && $request->filled('title') && ! $request->filled('policy_name')) {
             $payload['policy_name'] = $request->input('title');
         }
+        if ($table === 'positions') {
+            if ($request->filled('code') && ! $request->filled('position_code')) {
+                $payload['position_code'] = $request->input('code');
+            }
+            if ($request->filled('name') && ! $request->filled('position_name')) {
+                $payload['position_name'] = $request->input('name');
+            }
+            if ($request->has('is_active') && ! $request->has('status')) {
+                $payload['status'] = filter_var($request->input('is_active'), FILTER_VALIDATE_BOOLEAN)
+                    ? DB::raw('true')
+                    : DB::raw('false');
+            }
+            unset($meta['code'], $meta['name'], $meta['is_active']);
+        }
 
         $codeColumns = [
+            'positions' => 'position_code',
+            'roles' => 'role_code',
+            'job_families' => 'code',
             'allowances' => 'allowance_code',
             'deductions' => 'deduction_code',
             'asset_categories' => 'category_code',
