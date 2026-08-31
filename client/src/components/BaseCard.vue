@@ -7,7 +7,7 @@
       </slot>
     </div>
     
-    <div class="p-5 sm:p-6">
+    <div :class="contentClass || 'p-5 sm:p-6'">
       <slot />
     </div>
     
@@ -24,6 +24,7 @@ interface Props {
   title?: string;
   hoverable?: boolean;
   testId?: string;
+  contentClass?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {

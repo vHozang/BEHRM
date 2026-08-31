@@ -94,7 +94,10 @@
       </div>
     </div>
 
-    <BaseCard class="flex min-h-[68vh] flex-1 flex-col overflow-hidden p-0">
+    <BaseCard
+      class="flex min-h-[68vh] flex-1 flex-col overflow-hidden"
+      content-class="flex min-h-0 flex-1 flex-col p-5 sm:p-6"
+    >
       <div v-if="loading" class="flex flex-1 flex-col items-center justify-center p-12">
         <div class="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary/20 border-b-primary"></div>
         <p class="text-muted-foreground">Đang dựng sơ đồ đơn vị...</p>
