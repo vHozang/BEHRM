@@ -313,8 +313,8 @@
           <BaseSelect v-model="form.department_id" label="Phòng ban" :options="departmentOptions" />
           <BaseSelect v-model="form.job_title_id" label="Chức danh" :options="jobTitleOptions" />
           <BaseSelect v-model="form.manager_id" label="Quản lý trực tiếp" :options="managerOptions" />
-          <BaseInput v-model="form.hire_date" label="Ngày vào làm" type="date" />
-          <BaseInput v-model="form.probation_end_date" label="Ngày hết thử việc" type="date" />
+          <BaseInput v-model="form.hire_date" label="Ngày vào làm" type="date" :error="dateErrors.hire_date" @blur="validateEmploymentDates" />
+          <BaseInput v-model="form.probation_end_date" label="Ngày hết thử việc" type="date" :error="dateErrors.probation_end_date" @blur="validateEmploymentDates" />
           <BaseSelect v-model="form.employment_status" label="Trạng thái làm việc" :options="employmentStatusOptions" />
           <BaseSelect v-model="form.employment_type" label="Loại hình làm việc" :options="employmentTypeOptions" />
         </div>
@@ -430,6 +430,7 @@ import { departmentService } from '../services/departmentService';
 import { jobTitleService } from '../services/jobTitleService';
 import { useNotificationStore } from '../stores/notificationStore';
 import { downloadCsv, parseCsv } from '../utils/csv';
+import { validateEmployeeDates } from '../utils/employeeDates';
 
 // ── Import nhân viên từ CSV (parse phía client → POST JSON, không cần lib Excel) ──
 const showImportModal = ref(false);
@@ -513,6 +514,7 @@ const error = ref('');
 const saving = ref(false);
 const updatingStatus = ref(false);
 const formError = ref('');
+const dateErrors = ref({ hire_date: '', probation_end_date: '' });
 
 const showModal = ref(false);
 const showStatusModal = ref(false);
@@ -533,6 +535,7 @@ const handleNextStep = () => {
     formError.value = 'Vui lòng nhập email công ty';
     return;
   }
+  if (currentStep.value === 2 && !validateEmploymentDates()) return;
   formError.value = '';
   currentStep.value++;
 };
@@ -712,6 +715,13 @@ const getStatusLabel = (status) => {
   return labels[status] || (status ? 'Đang làm việc' : 'Nghỉ việc');
 };
 
+const validateEmploymentDates = () => {
+  dateErrors.value = validateEmployeeDates(form.value.hire_date, form.value.probation_end_date);
+  const firstError = dateErrors.value.hire_date || dateErrors.value.probation_end_date;
+  formError.value = firstError;
+  return !firstError;
+};
+
 const resetForm = () => {
   form.value = {
     employee_code: '',
@@ -750,6 +760,7 @@ const resetForm = () => {
     emergency_contact_phone: ''
   };
   formError.value = '';
+  dateErrors.value = { hire_date: '', probation_end_date: '' };
 };
 
 const generateEmployeeCode = () => {
@@ -866,6 +877,11 @@ const handleSubmit = async () => {
     return;
   }
 
+  if (!validateEmploymentDates()) {
+    currentStep.value = 2;
+    return;
+  }
+
   try {
     saving.value = true;
     formError.value = '';
@@ -927,7 +943,14 @@ const handleSubmit = async () => {
     await Promise.all([loadEmployees(), refreshLookup()]);
   } catch (err) {
     console.error('Error saving employee:', err);
-    const errorMsg = err.response?.data?.error || err.response?.data?.message || 'Có lỗi xảy ra khi lưu';
+    const apiErrors = err.response?.data?.data?.errors || {};
+    dateErrors.value = {
+      hire_date: apiErrors.hire_date?.[0] || '',
+      probation_end_date: apiErrors['profile.probation_end_date']?.[0] || ''
+    };
+    if (dateErrors.value.hire_date || dateErrors.value.probation_end_date) currentStep.value = 2;
+    const validationMessage = Object.values(apiErrors).flat().find(Boolean);
+    const errorMsg = validationMessage || err.response?.data?.error || err.response?.data?.message || 'Có lỗi xảy ra khi lưu';
     formError.value = errorMsg;
     notificationStore.addError(`Lỗi: ${errorMsg}`);
   } finally {

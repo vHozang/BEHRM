@@ -6,6 +6,7 @@ import {
   normalizePercentage,
   notificationStatusEnabled
 } from '../client/src/utils/managementUi.js';
+import { isValidIsoDate, validateEmployeeDates } from '../client/src/utils/employeeDates.js';
 
 assert.equal(integrationEndpointLabel('http://100.105.84.89:8000'), 'Mac (ưu tiên)');
 assert.equal(integrationEndpointLabel('http://100.95.129.101:8000'), 'Windows (dự phòng)');
@@ -19,6 +20,14 @@ assert.equal(certificateExpiryStatus(null, now).label, 'Không thời hạn');
 assert.equal(certificateExpiryStatus('2026-08-03', now).label, 'Hết hạn');
 assert.equal(certificateExpiryStatus('2026-08-20', now).label, 'Sắp hết hạn');
 assert.equal(certificateExpiryStatus('2027-01-01', now).label, 'Còn hạn');
+
+assert.equal(isValidIsoDate('2026-08-04'), true);
+assert.equal(isValidIsoDate('04/08/2026'), false);
+assert.equal(isValidIsoDate('2026-02-30'), false);
+assert.deepEqual(validateEmployeeDates('2026-08-04', '2026-08-03'), {
+  hire_date: '',
+  probation_end_date: 'Ngày hết thử việc không được trước ngày vào làm.'
+});
 
 const expectedBindings = [
   ['client/src/views/Settings.vue', ['getAutoRecruitHealth', 'saveNotificationTemplates']],
