@@ -17,6 +17,13 @@ for (const marker of [
 ]) {
   assert.ok(chart.includes(marker), `OrganizationChart.vue thiếu ${marker}`);
 }
+assert.ok(
+  chart.includes('content-class="flex min-h-0 flex-1 flex-col'),
+  'Khung sơ đồ chưa lấp đầy chiều cao của thẻ chứa',
+);
+
+const baseCard = await readFile('client/src/components/BaseCard.vue', 'utf8');
+assert.ok(baseCard.includes('contentClass'), 'BaseCard chưa hỗ trợ tùy chỉnh lớp nội dung');
 
 const node = await readFile('client/src/components/OrgTreeNode.vue', 'utf8');
 for (const marker of ['Tổng nhân viên', 'Chưa gán người phụ trách', 'headcount_total', 'drilldown']) {
