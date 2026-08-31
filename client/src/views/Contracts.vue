@@ -148,14 +148,15 @@
     <BaseModal v-model="showModal" :title="form.id ? 'Chi tiết / Cập nhật hợp đồng' : 'Tạo hợp đồng lao động mới'" size="lg">
       <div class="space-y-4">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <BaseInput v-model="form.contract_code" label="Số hợp đồng (Ví dụ: HDLD/2026/001)" required />
+          <BaseInput v-model="form.contract_code" label="Số hợp đồng (Ví dụ: HDLD/2026/001)" required :error="formErrors.contract_code" />
 
           <div v-if="!form.id">
             <label class="block text-sm font-medium text-foreground mb-1">Nhân viên liên kết <span class="text-destructive">*</span></label>
-            <select v-model="form.employee_id" class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring" required>
+            <select v-model="form.employee_id" :class="['w-full px-3 py-2 rounded-lg border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring', formErrors.employee_id ? 'border-destructive' : 'border-input']" required>
               <option value="">-- Chọn nhân viên --</option>
               <option v-for="emp in employees" :key="emp.id" :value="emp.id">{{ emp.full_name }} ({{ emp.employee_code }})</option>
             </select>
+            <p v-if="formErrors.employee_id" class="text-sm text-destructive mt-1">{{ formErrors.employee_id }}</p>
           </div>
           <div v-else class="p-3 bg-muted rounded-lg">
             <p class="text-xs text-muted-foreground">Nhân viên</p>
@@ -166,12 +167,32 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-foreground mb-1">Loại hợp đồng <span class="text-destructive">*</span></label>
-            <select v-model="form.contract_type_id" class="w-full px-3 py-2 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring" required>
+            <select v-model="form.contract_type_id" :class="['w-full px-3 py-2 rounded-lg border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring', formErrors.contract_type_id ? 'border-destructive' : 'border-input']" required>
               <option value="">-- Chọn loại hợp đồng --</option>
               <option v-for="t in contractTypes" :key="t.id" :value="t.id">{{ t.contract_type_name || t.name }}</option>
             </select>
+            <p v-if="formErrors.contract_type_id" class="text-sm text-destructive mt-1">{{ formErrors.contract_type_id }}</p>
           </div>
-          <BaseInput v-model="form.sign_date" type="date" label="Ngày ký HĐ" hint="Ngày đặt bút ký" required />
+          <BaseInput v-model="form.sign_date" type="date" label="Ngày ký HĐ" hint="Ngày đặt bút ký" required :error="formErrors.sign_date" />
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-foreground mb-1">Phòng ban theo hợp đồng</label>
+            <select v-model="form.department_id" :class="['w-full px-3 py-2 rounded-lg border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring', formErrors.department_id ? 'border-destructive' : 'border-input']">
+              <option value="">-- Chưa phân phòng --</option>
+              <option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name || department.department_name }}</option>
+            </select>
+            <p v-if="formErrors.department_id" class="text-sm text-destructive mt-1">{{ formErrors.department_id }}</p>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-foreground mb-1">Chức danh theo hợp đồng</label>
+            <select v-model="form.position_id" :class="['w-full px-3 py-2 rounded-lg border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring', formErrors.position_id ? 'border-destructive' : 'border-input']">
+              <option value="">-- Chưa có chức danh --</option>
+              <option v-for="position in positions" :key="position.id" :value="position.id">{{ position.name || position.position_name }}</option>
+            </select>
+            <p v-if="formErrors.position_id" class="text-sm text-destructive mt-1">{{ formErrors.position_id }}</p>
+          </div>
         </div>
 
         <!-- Compliance hint for new fixed-term contracts -->
@@ -180,16 +201,16 @@
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <BaseInput v-model="form.start_date" type="date" label="Ngày bắt đầu làm chính thức (hiệu lực)" hint="Thời hạn HĐ tính từ đây" required />
-          <BaseInput v-model="form.end_date" type="date" label="Ngày hết hạn (để trống nếu vô hạn)" />
+          <BaseInput v-model="form.start_date" type="date" label="Ngày bắt đầu làm chính thức (hiệu lực)" hint="Thời hạn HĐ tính từ đây" required :error="formErrors.start_date" />
+          <BaseInput v-model="form.end_date" type="date" label="Ngày hết hạn (để trống nếu vô hạn)" :error="formErrors.end_date" />
         </div>
 
         <p v-if="signDateWarning" class="text-xs text-amber-600 -mt-2">⚠ {{ signDateWarning }}</p>
         <p v-if="formProbationWarning" class="text-xs text-amber-600 -mt-2">{{ formProbationWarning }}</p>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <BaseMoneyInput v-model="form.basic_salary" label="Mức lương cơ bản (VNĐ)" required />
-          <BaseMoneyInput v-model="form.allowances" label="Khoản phụ cấp cố định (VNĐ)" />
+          <BaseMoneyInput v-model="form.basic_salary" label="Mức lương cơ bản (VNĐ)" required :error="formErrors.basic_salary || formErrors['meta.basic_salary']" />
+          <BaseMoneyInput v-model="form.allowances" label="Khoản phụ cấp cố định (VNĐ)" :error="formErrors.allowances || formErrors['meta.allowances']" />
         </div>
 
         <div>
@@ -383,6 +404,19 @@ const form = ref({
   contract_code: '', employee_id: '', contract_type_id: '', sign_date: '',
   start_date: '', end_date: '', basic_salary: 0, allowances: 0, notes: '', signature: ''
 });
+const formErrors = ref({});
+
+const clearFormErrors = () => { formErrors.value = {}; };
+
+const extractValidationErrors = (err) => {
+  const errors = err?.response?.data?.data?.errors;
+  if (!errors || typeof errors !== 'object') return null;
+  const flat = {};
+  for (const [field, messages] of Object.entries(errors)) {
+    flat[field] = Array.isArray(messages) ? messages.join('. ') : String(messages);
+  }
+  return flat;
+};
 
 // ── Contract classification & lifecycle helpers ──────────
 const TERMINATED_STATUSES = ['TERMINATED', 'INACTIVE', 'HẾT_HIỆU_LỰC', 'ĐÃ_CHẤM_DỨT', 'CANCELLED'];
@@ -592,6 +626,7 @@ const openCreateModal = () => {
     start_date: new Date().toISOString().substring(0, 10),
     end_date: '', basic_salary: 0, allowances: 0, notes: '', signature: ''
   };
+  clearFormErrors();
   changeLogs.value = [];
   showModal.value = true;
 };
@@ -603,6 +638,7 @@ const editItem = async (item) => {
   } catch {
     // Keep the lightweight list row as fallback so the user can still inspect it.
   }
+  clearFormErrors();
   form.value = {
     ...detail,
     sign_date: detail.sign_date ? detail.sign_date.substring(0, 10) : '',
@@ -615,7 +651,14 @@ const editItem = async (item) => {
 };
 
 const submitForm = async () => {
-  if (!form.value.contract_code || !form.value.contract_type_id || !form.value.start_date || (!form.value.id && !form.value.employee_id)) {
+  clearFormErrors();
+  const errors = {};
+  if (!form.value.contract_code) errors.contract_code = 'Số hợp đồng là bắt buộc';
+  if (!form.value.contract_type_id) errors.contract_type_id = 'Vui lòng chọn loại hợp đồng';
+  if (!form.value.start_date) errors.start_date = 'Ngày bắt đầu hợp đồng là bắt buộc';
+  if (!form.value.id && !form.value.employee_id) errors.employee_id = 'Vui lòng chọn nhân viên liên kết';
+  if (Object.keys(errors).length) {
+    formErrors.value = errors;
     toast.error('Vui lòng điền đầy đủ các thông tin bắt buộc');
     return;
   }
@@ -631,7 +674,14 @@ const submitForm = async () => {
     await loadData();
   } catch (err) {
     console.error('Error saving contract:', err);
-    toast.error(err?.response?.data?.message || 'Có lỗi xảy ra khi lưu hợp đồng');
+    const fieldErrors = extractValidationErrors(err);
+    if (fieldErrors) {
+      formErrors.value = fieldErrors;
+      const reasons = Object.values(fieldErrors);
+      toast.error(reasons.join('. '), 6000);
+    } else {
+      toast.error(err?.response?.data?.message || 'Có lỗi xảy ra khi lưu hợp đồng');
+    }
   }
 };
 
