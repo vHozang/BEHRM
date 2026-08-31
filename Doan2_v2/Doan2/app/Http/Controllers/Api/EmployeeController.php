@@ -380,7 +380,8 @@ class EmployeeController extends Controller
             'profile' => 'nullable|array',
             'profile.bank_id' => ['nullable', 'integer', Rule::exists('banks', 'id')->where('tenant_id', TenantContext::id())],
             'profile.nationality_id' => ['nullable', 'integer', Rule::exists('nationalities', 'id')->where('tenant_id', TenantContext::id())],
-            'hire_date' => 'nullable|date',
+            'profile.probation_end_date' => ['bail', 'nullable', 'date_format:Y-m-d'],
+            'hire_date' => ['bail', 'nullable', 'date_format:Y-m-d'],
             'date_of_birth' => 'nullable|date',
             'gender' => 'nullable|string|max:50',
             'status' => 'nullable|string|in:ACTIVE,INACTIVE,ON_LEAVE,TERMINATED,PROBATION',
@@ -391,7 +392,11 @@ class EmployeeController extends Controller
             'employee_code.unique' => 'Mã nhân viên đã tồn tại',
             'department_id.exists' => 'Phòng ban không tồn tại',
             'position_id.exists' => 'Chức vụ không tồn tại',
+            'hire_date.date_format' => 'Ngày vào làm không hợp lệ (định dạng chuẩn YYYY-MM-DD)',
+            'profile.probation_end_date.date_format' => 'Ngày hết thử việc không hợp lệ (định dạng chuẩn YYYY-MM-DD)',
         ]);
+
+        $this->addEmployeeDateOrderValidation($validator, $request);
 
         if ($validator->fails()) {
             return $this->validationError($validator->errors()->toArray());
@@ -551,7 +556,8 @@ class EmployeeController extends Controller
             'profile' => 'nullable|array',
             'profile.bank_id' => ['nullable', 'integer', Rule::exists('banks', 'id')->where('tenant_id', TenantContext::id())],
             'profile.nationality_id' => ['nullable', 'integer', Rule::exists('nationalities', 'id')->where('tenant_id', TenantContext::id())],
-            'hire_date' => 'nullable|date',
+            'profile.probation_end_date' => ['bail', 'nullable', 'date_format:Y-m-d'],
+            'hire_date' => ['bail', 'nullable', 'date_format:Y-m-d'],
             'date_of_birth' => 'nullable|date',
             'gender' => 'nullable|string|max:50',
             'status' => 'nullable|string|in:ACTIVE,INACTIVE,ON_LEAVE,TERMINATED,PROBATION',
@@ -560,7 +566,11 @@ class EmployeeController extends Controller
             'employee_code.unique' => 'Mã nhân viên đã tồn tại',
             'department_id.exists' => 'Phòng ban không tồn tại',
             'position_id.exists' => 'Chức vụ không tồn tại',
+            'hire_date.date_format' => 'Ngày vào làm không hợp lệ (định dạng chuẩn YYYY-MM-DD)',
+            'profile.probation_end_date.date_format' => 'Ngày hết thử việc không hợp lệ (định dạng chuẩn YYYY-MM-DD)',
         ]);
+
+        $this->addEmployeeDateOrderValidation($validator, $request, $employee);
 
         if ($validator->fails()) {
             return $this->validationError($validator->errors()->toArray());
@@ -1113,6 +1123,42 @@ class EmployeeController extends Controller
             'message' => "Không thể xóa {$resourceName} do vi phạm ràng buộc nghiệp vụ",
             'data' => ['violations' => $violations],
         ], 409);
+    }
+
+    private function addEmployeeDateOrderValidation($validator, Request $request, ?Employee $employee = null): void
+    {
+        $validator->after(function ($validator) use ($request, $employee): void {
+            if ($validator->errors()->has('hire_date') || $validator->errors()->has('profile.probation_end_date')) {
+                return;
+            }
+
+            $input = $request->all();
+            $profileInput = is_array($input['profile'] ?? null) ? $input['profile'] : [];
+            $hireDateChanged = array_key_exists('hire_date', $input);
+            $probationEndChanged = array_key_exists('probation_end_date', $profileInput);
+            if (! $hireDateChanged && ! $probationEndChanged) {
+                return;
+            }
+
+            $existingHireDate = $employee?->hire_date;
+            $existingProfile = is_array($employee?->profile) ? $employee->profile : [];
+            $hireDate = $hireDateChanged
+                ? trim((string) ($input['hire_date'] ?? ''))
+                : ($existingHireDate ? $existingHireDate->format('Y-m-d') : '');
+            $probationEndDate = $probationEndChanged
+                ? trim((string) ($profileInput['probation_end_date'] ?? ''))
+                : trim((string) ($existingProfile['probation_end_date'] ?? ''));
+
+            if ($probationEndDate !== '' && $hireDate === '') {
+                $validator->errors()->add('hire_date', 'Ngày vào làm là bắt buộc khi có ngày hết thử việc');
+
+                return;
+            }
+
+            if ($hireDate !== '' && $probationEndDate !== '' && $probationEndDate < $hireDate) {
+                $validator->errors()->add('profile.probation_end_date', 'Ngày hết thử việc không được trước ngày vào làm');
+            }
+        });
     }
 
     private function validationError(array $errors): JsonResponse

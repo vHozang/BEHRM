@@ -455,6 +455,58 @@ class BusinessRulesTest extends TestCase
         $this->assertNotNull(DB::table('employees')->where('company_email', 'valid@company.com')->first());
     }
 
+    public function test_employee_creation_rejects_non_iso_employment_dates(): void
+    {
+        $this->postJson('/api/v1/employees', [
+            'full_name' => 'Invalid Hire Date',
+            'company_email' => 'invalid.hire.date@company.com',
+            'hire_date' => '04/08/2026',
+        ], [
+            'Authorization' => "Bearer {$this->token}",
+        ])->assertUnprocessable()
+            ->assertJsonStructure(['data' => ['errors' => ['hire_date']]]);
+
+        $this->postJson('/api/v1/employees', [
+            'full_name' => 'Invalid Probation Date',
+            'company_email' => 'invalid.probation.date@company.com',
+            'hire_date' => '2026-08-04',
+            'profile' => ['probation_end_date' => '03/09/2026'],
+        ], [
+            'Authorization' => "Bearer {$this->token}",
+        ])->assertUnprocessable()
+            ->assertJsonStructure(['data' => ['errors' => ['profile.probation_end_date']]]);
+    }
+
+    public function test_employee_creation_rejects_probation_end_before_hire_date(): void
+    {
+        $response = $this->postJson('/api/v1/employees', [
+            'full_name' => 'Invalid Probation Range',
+            'company_email' => 'invalid.probation.range@company.com',
+            'hire_date' => '2026-08-04',
+            'profile' => ['probation_end_date' => '2026-08-03'],
+        ], [
+            'Authorization' => "Bearer {$this->token}",
+        ]);
+
+        $response->assertUnprocessable();
+        $this->assertSame(
+            'Ngày hết thử việc không được trước ngày vào làm',
+            $response->json('data.errors')['profile.probation_end_date'][0] ?? null
+        );
+    }
+
+    public function test_employee_update_compares_probation_end_with_existing_hire_date(): void
+    {
+        DB::table('employees')->where('id', $this->employeeId)->update(['hire_date' => '2026-08-04']);
+
+        $this->patchJson("/api/v1/employees/{$this->employeeId}", [
+            'profile' => ['probation_end_date' => '2026-08-03'],
+        ], [
+            'Authorization' => "Bearer {$this->token}",
+        ])->assertUnprocessable()
+            ->assertJsonStructure(['data' => ['errors' => ['profile.probation_end_date']]]);
+    }
+
     public function test_cannot_create_contract_without_employee_id(): void
     {
         if (! Schema::hasTable('contracts')) {
