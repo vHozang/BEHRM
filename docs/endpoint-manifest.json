@@ -142,6 +142,18 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/attendance-adjustments/evidence",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceRegularizationController@downloadEvidence",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/attendance-adjustments/upload-evidence",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceRegularizationController@uploadEvidence",
+      "status": "UI_DIRECT"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/attendance-devices",
       "action": "App\\Http\\Controllers\\Api\\AttendanceDeviceController@index",
       "status": "UI_DIRECT"
