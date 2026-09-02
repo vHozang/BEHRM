@@ -162,7 +162,7 @@
       </div>
       <template #footer>
         <BaseButton variant="outline" @click="showModal = false">Hủy</BaseButton>
-        <BaseButton @click="submitForm">Lưu</BaseButton>
+        <BaseButton :loading="submitting" @click="submitForm">Lưu</BaseButton>
       </template>
     </BaseModal>
 
@@ -225,6 +225,7 @@ const candidates = ref([]);
 const showModal = ref(false);
 const showReviewModal = ref(false);
 const reviewLoading = ref(false);
+const submitting = ref(false);
 
 const reviewForm = ref({
   id: '',
@@ -315,6 +316,7 @@ const editItem = (item) => {
 };
 
 const submitForm = async () => {
+  if (submitting.value) return;
   if (!form.value.interview_date || !form.value.interviewer || (!form.value.id && !form.value.candidate_id)) {
     toast.error('Vui lòng điền đầy đủ các thông tin bắt buộc');
     return;
@@ -325,6 +327,7 @@ const submitForm = async () => {
     toast.error('Hãy nhập link phòng họp cụ thể hoặc bật tạo Google Meet tự động');
     return;
   }
+  submitting.value = true;
   try {
     if (form.value.id) {
       await recruitmentService.updateInterview(form.value.id, form.value);
@@ -339,6 +342,8 @@ const submitForm = async () => {
     console.error('Error saving interview:', err);
     const meetingError = err.response?.data?.data?.errors?.meeting_link?.[0];
     toast.error(meetingError || 'Có lỗi xảy ra khi lưu lịch phỏng vấn');
+  } finally {
+    submitting.value = false;
   }
 };
 
