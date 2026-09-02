@@ -218,13 +218,30 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-foreground mb-2">Bằng chứng (link ảnh/tài liệu)</label>
-          <input
-            v-model="form.evidence"
-            type="text"
-            class="w-full px-4 py-2.5 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            placeholder="Dán link ảnh chấm công/email xác nhận của quản lý (nếu có)"
-          />
+          <label class="block text-sm font-medium text-foreground mb-2">Bằng chứng (ảnh/tài liệu)</label>
+          <div class="flex gap-2">
+            <input
+              v-model="form.evidence"
+              type="text"
+              class="flex-1 px-4 py-2.5 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Dán link hoặc tải ảnh lên"
+            />
+            <label
+              class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-input bg-background text-foreground hover:bg-muted cursor-pointer transition-colors shrink-0"
+              :class="uploading ? 'opacity-60 pointer-events-none' : ''"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              <span class="text-sm">{{ uploading ? 'Đang tải...' : 'Tải ảnh' }}</span>
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                class="hidden"
+                @change="handleEvidenceUpload"
+                :disabled="uploading"
+              />
+            </label>
+          </div>
+          <p v-if="uploadedFileName" class="text-xs text-green-600 dark:text-green-400 mt-1">{{ uploadedFileName }}</p>
           <p class="text-xs text-muted-foreground mt-1">Đơn vẫn cần quản lý/HR duyệt — bước duyệt là xác nhận chính thức.</p>
         </div>
       </div>
@@ -281,6 +298,7 @@
           <div><p class="text-muted-foreground">Ngày công</p><p class="font-medium">{{ formatDate(selectedRequest.work_date) }}</p></div>
           <div><p class="text-muted-foreground">Giờ vào → ra (đề nghị)</p><p class="font-medium">{{ (selectedRequest.requested_check_in_time || '—') }} → {{ (selectedRequest.requested_check_out_time || '—') }}</p></div>
           <div class="col-span-2"><p class="text-muted-foreground">Lý do</p><p class="font-medium">{{ selectedRequest.reason || '-' }}</p></div>
+          <div v-if="selectedRequest.evidence" class="col-span-2"><p class="text-muted-foreground">Bằng chứng</p><a :href="selectedRequest.evidence" target="_blank" class="text-sm text-primary underline">📎 Xem bằng chứng đính kèm</a></div>
         </div>
         <div class="border-t border-border pt-2">
           <p class="text-sm font-semibold text-foreground mb-1">Tiến trình phê duyệt</p>
@@ -324,6 +342,8 @@ const saving = ref(false);
 const processing = ref(false);
 const error = ref('');
 const formError = ref('');
+const uploading = ref(false);
+const uploadedFileName = ref('');
 
 const adjustments = ref([]);
 const employees = ref([]);
@@ -449,6 +469,25 @@ const resetForm = () => {
     evidence: ''
   };
   formError.value = '';
+  uploadedFileName.value = '';
+};
+
+const handleEvidenceUpload = async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  event.target.value = '';
+  try {
+    uploading.value = true;
+    formError.value = '';
+    const result = await regularizationService.uploadEvidence(file);
+    form.value.evidence = result.file_url || result.storage_path;
+    uploadedFileName.value = file.name;
+  } catch (err) {
+    console.error('Evidence upload error:', err);
+    formError.value = apiErrorMessage(err, 'Không thể tải ảnh lên. Vui lòng thử lại.');
+  } finally {
+    uploading.value = false;
+  }
 };
 
 const openCreateModal = () => {
