@@ -181,7 +181,7 @@ const allowanceOptions = computed(() => allowances.value.map((item) => ({ value:
 const deductionOptions = computed(() => deductions.value.map((item) => ({ value: item.id, label: `${item.deduction_code} · ${item.deduction_name}` })));
 const assignmentBaseFields = [
   { key: 'employee_id', label: 'Nhân viên', type: 'employee', initialLabelKey: 'employee_label', required: true, cast: 'number', full: true },
-  { key: 'amount', label: 'Số tiền', type: 'number', min: 0, step: 1000, cast: 'number', nullable: true },
+  { key: 'amount', label: 'Số tiền', type: 'money', cast: 'number', nullable: true },
   { key: 'percentage', label: 'Tỷ lệ (%)', type: 'number', min: 0, step: 0.01, cast: 'number', nullable: true },
   { key: 'effective_date', label: 'Ngày hiệu lực', type: 'date', required: true },
   { key: 'expiry_date', label: 'Ngày kết thúc', type: 'date', nullable: true },

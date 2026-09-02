@@ -145,8 +145,6 @@ class OrganizationStructureService
             $this->departmentMeta[$id] = $this->decodeMeta($department->meta ?? null);
         }
 
-        $this->normalizeDepartmentParents();
-
         $rows = DB::table('employees as e')
             ->leftJoin('positions as p', 'p.id', '=', 'e.position_id')
             ->where('e.tenant_id', $tenantId)
@@ -182,6 +180,8 @@ class OrganizationStructureService
                 $this->employeeIdsByDepartment[$employee['department_id']][] = $employee['id'];
             }
         }
+
+        $this->normalizeDepartmentParents();
     }
 
     private function normalizeDepartmentParents(): void
@@ -223,6 +223,8 @@ class OrganizationStructureService
             $this->departmentParents[$id] = $parentId;
         }
 
+        $this->inferMissingHierarchy();
+
         foreach (array_keys($this->departments) as $startId) {
             $path = [];
             $pathIndex = [];
@@ -258,6 +260,71 @@ class OrganizationStructureService
             sort($children);
         }
         unset($children);
+    }
+
+    /**
+     * When meta.parent_id is missing for all departments in an entity,
+     * infer a single-root hierarchy so the chart renders as a tree
+     * instead of a flat list of disconnected cards.
+     */
+    private function inferMissingHierarchy(): void
+    {
+        $byEntity = [];
+        foreach ($this->departments as $id => $department) {
+            $byEntity[(int) $department->legal_entity_id][] = $id;
+        }
+
+        foreach ($byEntity as $entityId => $departmentIds) {
+            if (count($departmentIds) < 2) {
+                continue;
+            }
+
+            $hasAnyParent = false;
+            foreach ($departmentIds as $id) {
+                if ($this->departmentParents[$id] !== null) {
+                    $hasAnyParent = true;
+                    break;
+                }
+            }
+            if ($hasAnyParent) {
+                continue;
+            }
+
+            // All departments in this entity are roots — find a management-board
+            // department (BGD = "Ban Giám đốc") to serve as the tree root.
+            $rootId = null;
+            foreach ($departmentIds as $id) {
+                $code = strtoupper(trim((string) ($this->departments[$id]->department_code ?? '')));
+                if ($code === 'BGD') {
+                    $rootId = $id;
+                    break;
+                }
+            }
+
+            // Fallback: pick the department whose manager holds the GD (CEO) position.
+            if ($rootId === null) {
+                foreach ($departmentIds as $id) {
+                    $managerId = $this->departmentMeta[$id]['manager_id'] ?? null;
+                    if ($managerId && isset($this->employees[(int) $managerId])) {
+                        $posCode = strtoupper($this->employees[(int) $managerId]['position_code'] ?? '');
+                        if ($posCode === 'GD') {
+                            $rootId = $id;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if ($rootId === null) {
+                continue;
+            }
+
+            foreach ($departmentIds as $id) {
+                if ($id !== $rootId) {
+                    $this->departmentParents[$id] = $rootId;
+                }
+            }
+        }
     }
 
     /** @return array<int, array<string, mixed>> */

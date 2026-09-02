@@ -171,7 +171,7 @@ class RequestApprovalController extends Controller
         $requestType = DB::table('request_types')
             ->where('id', $request->input('request_type_id'))
             ->when(TenantContext::hasTenant(), fn ($q) => $q->where('request_types.tenant_id', TenantContext::id()))
-            ->whereIn('status', ['ACTIVE', 'active', '1'])
+            ->whereRaw("UPPER(COALESCE(status, 'ACTIVE')) IN ('ACTIVE','1')")
             ->first();
 
         if (! $requestType) {

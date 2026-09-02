@@ -350,8 +350,12 @@ const handleCreate = async () => {
     formError.value = 'Không thể xác định nhân viên. Vui lòng thử lại.';
     return;
   }
-  if (!form.value.from_date || !form.value.to_date) {
-    formError.value = 'Vui lòng chọn ngày của bạn và ngày muốn đổi';
+  if (!form.value.target_employee_id) {
+    formError.value = 'Vui lòng chọn nhân viên muốn đổi ca';
+    return;
+  }
+  if (!form.value.from_date) {
+    formError.value = 'Vui lòng chọn ngày muốn đổi ca';
     return;
   }
 
@@ -361,14 +365,10 @@ const handleCreate = async () => {
 
     const payload = {
       requester_id: parseInt(requesterId),
-      from_date: form.value.from_date,
-      to_date: form.value.to_date,
+      target_employee_id: parseInt(form.value.target_employee_id),
+      swap_date: form.value.from_date,
       reason: form.value.reason,
-      status: 'pending'
     };
-    if (form.value.target_employee_id) {
-      payload.target_employee_id = parseInt(form.value.target_employee_id);
-    }
 
     await workScheduleService.requestSwap(payload);
 

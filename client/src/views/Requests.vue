@@ -267,7 +267,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import BaseCard from '../components/BaseCard.vue';
 import BaseButton from '../components/BaseButton.vue';
 import BaseInput from '../components/BaseInput.vue';
@@ -285,6 +285,7 @@ const currentUser = computed(() => authService.getUser());
 const canManageConfiguration = computed(() => authService.hasCapability('requests.types.manage') || authService.hasCapability('requests.flows.manage'));
 const pageTabs = [{ value: 'requests', label: 'Đơn từ' }, { value: 'configuration', label: 'Loại đơn & luồng duyệt' }];
 const activeTab = ref('requests');
+watch(activeTab, (tab) => { if (tab === 'requests') loadTypes(); });
 
 const loading = ref(true);
 const error = ref('');
