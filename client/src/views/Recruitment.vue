@@ -779,18 +779,22 @@ const hireCandidate = () => {
   start.setDate(start.getDate() + 1);
 
   let autoDepartmentId = '';
+  let autoWorkLocation = '';
   const candidatePositionId = selectedCandidate.value.recruitment_position_id;
   if (candidatePositionId) {
     const recruitmentPos = positions.value.find(p => p.id == candidatePositionId);
     if (recruitmentPos?.department_id) {
       autoDepartmentId = String(recruitmentPos.department_id);
     }
+    if (recruitmentPos?.location) {
+      autoWorkLocation = recruitmentPos.location;
+    }
   }
 
   hireForm.value = {
     start_date: start.toISOString().slice(0, 10),
     arrival_time: '08:30',
-    work_location: '',
+    work_location: autoWorkLocation,
     offer_note: '',
     department_id: autoDepartmentId,
     position_id: ''
