@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\CreateGoogleMeetJob;
 use App\Mail\RecruitmentNotificationMail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class RecruitmentEmailNotificationTest extends TestCase
@@ -89,6 +91,7 @@ class RecruitmentEmailNotificationTest extends TestCase
 
     public function test_online_interview_can_create_a_real_google_meet_room(): void
     {
+        Queue::fake(CreateGoogleMeetJob::class);
         $candidateId = $this->candidate('SCREENING', 'auto-meet@example.test');
         config([
             'services.google_calendar.client_id' => 'calendar-client-id',
@@ -96,16 +99,6 @@ class RecruitmentEmailNotificationTest extends TestCase
             'services.google_calendar.refresh_token' => 'calendar-refresh-token',
             'services.google_calendar.calendar_id' => 'hr@example.test',
             'services.google_calendar.timezone' => 'Asia/Ho_Chi_Minh',
-        ]);
-        Http::fake([
-            'https://oauth2.googleapis.com/token' => Http::response([
-                'access_token' => 'google-access-token',
-            ]),
-            'https://www.googleapis.com/calendar/v3/calendars/*' => Http::response([
-                'id' => 'google-event-123',
-                'htmlLink' => 'https://calendar.google.com/calendar/event?eid=123',
-                'hangoutLink' => 'https://meet.google.com/abc-defg-hij',
-            ]),
         ]);
 
         $this->withToken($this->token)->postJson('/api/v1/interviews', [
@@ -117,18 +110,13 @@ class RecruitmentEmailNotificationTest extends TestCase
             'duration_minutes' => 60,
         ])->assertCreated()
             ->assertJsonPath('data.interview_date', '2026-08-10')
-            ->assertJsonPath('data.meta.meeting_link', 'https://meet.google.com/abc-defg-hij')
-            ->assertJsonPath('data.meta.google_calendar_event_id', 'google-event-123')
-            ->assertJsonPath('data.invitation_email_sent', true);
+            ->assertJsonPath('data.meta.meeting_status', 'CREATING')
+            ->assertJsonPath('data.invitation_email_sent', false);
 
-        Http::assertSent(function ($request): bool {
-            return str_contains($request->url(), '/calendar/v3/calendars/hr%40example.test/events')
-                && $request['conferenceData']['createRequest']['conferenceSolutionKey']['type'] === 'hangoutsMeet'
-                && $request['start']['timeZone'] === 'Asia/Ho_Chi_Minh';
-        });
-        Mail::assertSent(RecruitmentNotificationMail::class, function (RecruitmentNotificationMail $mail): bool {
-            return $mail->hasTo('auto-meet@example.test')
-                && $mail->mailData['meeting_link'] === 'https://meet.google.com/abc-defg-hij';
+        Queue::assertPushed(CreateGoogleMeetJob::class, function (CreateGoogleMeetJob $job) use ($candidateId): bool {
+            return $job->candidateId === $candidateId
+                && $job->durationMinutes === 60
+                && $job->attendeeEmail === 'auto-meet@example.test';
         });
     }
 

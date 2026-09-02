@@ -30,6 +30,7 @@ stats_resp.json
 # Agent / tooling artifacts
 .agents/
 ..agents/
+.codegraph/
 
 # Python caching & virtualenvs
 __pycache__/
