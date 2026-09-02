@@ -97,6 +97,9 @@ class AttendanceIntegrityAccessTest extends TestCase
             ->assertStatus(409);
         $this->withToken($admin['token'])->postJson('/api/v1/attendances/'.$attendanceId.'/verify', ['decision' => 'reject'])
             ->assertStatus(409);
+        $this->withToken($admin['token'])->postJson('/api/v1/attendance/recompute', ['month' => '2026-08'])
+            ->assertStatus(409)
+            ->assertJsonPath('status', 409);
     }
 
     public function test_unique_constraint_preflight_and_device_batch_limit(): void

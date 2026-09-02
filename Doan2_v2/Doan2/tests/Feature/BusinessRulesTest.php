@@ -159,7 +159,7 @@ class BusinessRulesTest extends TestCase
         $this->assertStringContainsString('tài sản', $response->json('data.violations.0'));
     }
 
-    public function test_employee_history_is_never_hard_deleted(): void
+    public function test_dependency_free_employee_is_soft_deleted_hidden_and_sessions_are_revoked(): void
     {
         // Create a fresh employee with no dependencies
         $freeEmployeeId = DB::table('employees')->insertGetId([
@@ -174,12 +174,34 @@ class BusinessRulesTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        $employeeLogin = $this->postJson('/api/v1/auth/login', [
+            'company_email' => 'free@company.com',
+            'password' => 'password',
+        ])->assertOk();
+        $this->assertNotNull($employeeLogin->json('data.access_token'));
+        $this->assertDatabaseHas('api_tokens', ['employee_id' => $freeEmployeeId]);
+        $this->assertDatabaseHas('api_refresh_tokens', ['employee_id' => $freeEmployeeId]);
+
         $response = $this->deleteJson("/api/v1/employees/{$freeEmployeeId}", [], [
             'Authorization' => "Bearer {$this->token}",
         ]);
 
-        $response->assertStatus(409);
+        $response->assertOk()->assertJsonPath('data.status', 'DELETED');
         $this->assertNotNull(DB::table('employees')->where('id', $freeEmployeeId)->first());
+        $this->assertDatabaseHas('employees', ['id' => $freeEmployeeId, 'status' => 'DELETED']);
+        $this->assertDatabaseMissing('api_tokens', ['employee_id' => $freeEmployeeId]);
+        $this->assertDatabaseMissing('api_refresh_tokens', ['employee_id' => $freeEmployeeId, 'revoked_at' => null]);
+        $this->withToken($this->token)->getJson('/api/v1/employees?per_page=100')
+            ->assertOk()
+            ->assertJsonMissing(['id' => $freeEmployeeId]);
+        $this->withToken($this->token)->getJson('/api/v1/employees/lookup')
+            ->assertOk()
+            ->assertJsonMissing(['id' => $freeEmployeeId]);
+        $this->assertDatabaseHas('audit_logs', [
+            'table_name' => 'employees',
+            'record_id' => $freeEmployeeId,
+            'action' => 'soft_delete',
+        ]);
     }
 
     public function test_cannot_delete_employee_with_multiple_violations(): void
@@ -383,6 +405,91 @@ class BusinessRulesTest extends TestCase
         }
     }
 
+    public function test_role_names_are_required_and_unique_case_insensitively_within_tenant(): void
+    {
+        $this->withToken($this->token)->postJson('/api/v1/roles', [
+            'role_code' => 'QA_ROLE_NAME_A',
+            'role_name' => 'Kiểm soát nội bộ',
+        ])->assertCreated();
+
+        $this->withToken($this->token)->postJson('/api/v1/roles', [
+            'role_code' => 'QA_ROLE_NAME_B',
+            'role_name' => ' kiểm soát nội bộ ',
+        ])->assertUnprocessable()
+            ->assertJsonStructure(['data' => ['errors' => ['role_name']]]);
+
+        $otherRoleId = $this->withToken($this->token)->postJson('/api/v1/roles', [
+            'role_code' => 'QA_ROLE_NAME_C',
+            'role_name' => 'Vai trò khác',
+        ])->assertCreated()->json('data.id');
+        $this->withToken($this->token)->patchJson("/api/v1/roles/{$otherRoleId}", [
+            'role_name' => 'KIỂM SOÁT NỘI BỘ',
+        ])->assertUnprocessable()
+            ->assertJsonStructure(['data' => ['errors' => ['role_name']]]);
+    }
+
+    public function test_position_alias_payload_is_canonicalized_and_duplicate_code_is_rejected(): void
+    {
+        $created = $this->withToken($this->token)->postJson('/api/v1/positions', [
+            'code' => 'qa-pos-01',
+            'name' => 'Chuyên viên QA',
+            'job_level' => 'senior',
+            'is_active' => true,
+        ])->assertCreated();
+        $positionId = (int) $created->json('data.id');
+
+        $this->assertDatabaseHas('positions', [
+            'id' => $positionId,
+            'position_code' => 'QA-POS-01',
+            'position_name' => 'Chuyên viên QA',
+        ]);
+        $this->withToken($this->token)->postJson('/api/v1/positions', [
+            'code' => 'QA-POS-01',
+            'name' => 'Tên khác',
+        ])->assertUnprocessable()
+            ->assertJsonStructure(['data' => ['errors' => ['position_code']]]);
+        $this->withToken($this->token)->postJson('/api/v1/positions', [
+            'code' => 'QA-POS-02',
+        ])->assertUnprocessable()
+            ->assertJsonStructure(['data' => ['errors' => ['position_name']]]);
+    }
+
+    public function test_unused_department_can_be_deleted_and_published_news_cannot(): void
+    {
+        $departmentId = DB::table('departments')->insertGetId([
+            'department_code' => 'QA-DELETE-DEPT',
+            'department_name' => 'Phòng xóa thử',
+            'status' => true,
+            'tenant_id' => 1,
+            'legal_entity_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->withToken($this->token)->deleteJson("/api/v1/departments/{$departmentId}")
+            ->assertOk();
+        $this->assertDatabaseMissing('departments', ['id' => $departmentId]);
+        $this->assertDatabaseHas('audit_logs', [
+            'table_name' => 'departments', 'record_id' => $departmentId, 'action' => 'delete',
+        ]);
+
+        $categoryId = DB::table('news_categories')->insertGetId([
+            'category_code' => 'QA-NEWS', 'category_name' => 'Tin QA', 'status' => 'ACTIVE',
+            'tenant_id' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $newsId = DB::table('news')->insertGetId([
+            'category_id' => $categoryId,
+            'title' => 'Tin đã xuất bản',
+            'content' => 'Không được xóa',
+            'status' => 'ĐÃ_XUẤT_BẢN',
+            'tenant_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->withToken($this->token)->deleteJson("/api/v1/news/{$newsId}")
+            ->assertConflict();
+        $this->assertDatabaseHas('news', ['id' => $newsId]);
+    }
+
     public function test_legal_entity_duplicate_code_returns_validation_error(): void
     {
         $payload = [
@@ -433,6 +540,20 @@ class BusinessRulesTest extends TestCase
         $response = $this->postJson('/api/v1/employees', [
             'full_name' => 'Duplicate Employee',
             'company_email' => 'test@company.com', // same as setUp employee
+        ], [
+            'Authorization' => "Bearer {$this->token}",
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertArrayHasKey('company_email', $response->json('data.errors'));
+    }
+
+    public function test_cannot_create_employee_with_invalid_email_format(): void
+    {
+        $response = $this->postJson('/api/v1/employees', [
+            'employee_code' => 'QA-INVALID-EMAIL',
+            'full_name' => 'Invalid Email Employee',
+            'company_email' => 'not-an-email',
         ], [
             'Authorization' => "Bearer {$this->token}",
         ]);

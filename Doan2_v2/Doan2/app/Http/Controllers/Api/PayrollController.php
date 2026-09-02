@@ -404,32 +404,86 @@ class PayrollController extends Controller
     public function reopenPeriod(Request $request, int $id): JsonResponse
     {
         $this->requireCapability($request, 'payroll.periods.manage');
-        // Trả kỳ về Đang mở: người trình thu hồi, hoặc admin trả về để tính lại.
         $period = SalaryPeriod::find($id);
 
         if (! $period) {
             return $this->notFound();
         }
-        if ((string) $period->status !== 'CHỜ_DUYỆT') {
-            return $this->validationError(['status' => ['Chỉ kỳ đang chờ duyệt mới trả về được']]);
-        }
 
         $callerId = (int) $request->attributes->get('auth_employee_id');
         $meta = is_string($period->meta) ? (json_decode($period->meta, true) ?: []) : (array) ($period->meta ?? []);
         $submitterId = (int) ($meta['submitted_by'] ?? 0);
-        if ($callerId !== $submitterId && ! $this->isAdminEmployee($callerId)) {
-            return response()->json(['status' => 403, 'message' => 'Chỉ người trình hoặc admin mới trả kỳ về', 'data' => null], 403);
+        $status = strtoupper(trim((string) $period->status));
+
+        if ($status === 'CHỜ_DUYỆT') {
+            if ($callerId !== $submitterId && ! $this->isAdminEmployee($callerId)) {
+                return response()->json(['status' => 403, 'message' => 'Chỉ người trình hoặc admin mới trả kỳ về', 'data' => null], 403);
+            }
+            $reason = trim((string) $request->input('reason', $request->input('comment', '')));
+        } elseif (in_array($status, ['CLOSED', 'ĐÃ_ĐÓNG', 'DA_DONG'], true)) {
+            if (! $this->isAdminEmployee($callerId)) {
+                return response()->json(['status' => 403, 'message' => 'Chỉ Admin được mở lại kỳ đã chốt', 'data' => null], 403);
+            }
+            $validated = $request->validate([
+                'reason' => ['required', 'string', 'min:5', 'max:2000'],
+            ], [
+                'reason.required' => 'Bắt buộc nhập lý do mở lại kỳ đã chốt',
+                'reason.min' => 'Lý do mở lại phải có ít nhất 5 ký tự',
+            ]);
+            $reason = trim($validated['reason']);
+
+            $published = Schema::hasTable('payslip_documents') && DB::table('payslip_documents')
+                ->where('tenant_id', $period->tenant_id)
+                ->where('salary_period_id', $period->id)
+                ->where(function ($query): void {
+                    $query->whereNotNull('published_at')
+                        ->orWhereNotNull('storage_path')
+                        ->orWhere('generation_status', 'READY')
+                        ->orWhere('email_status', 'SENT');
+                })
+                ->exists();
+            if ($published) {
+                return $this->conflict([
+                    'Kỳ lương đã phát hành PDF hoặc email; phải xử lý thu hồi phiếu qua một nghiệp vụ riêng trước khi mở lại',
+                ], 'Kỳ lương');
+            }
+        } elseif (in_array($status, ['PAID', 'LOCKED', 'ĐÃ_TRẢ', 'DA_TRA'], true)) {
+            return $this->conflict(['Kỳ lương đã thanh toán/khóa không thể mở lại'], 'Kỳ lương');
+        } else {
+            return $this->validationError(['status' => ['Chỉ kỳ chờ duyệt hoặc đã chốt chưa phát hành mới được mở lại']]);
         }
 
+        $fromStatus = (string) $period->status;
+        $meta['reopen_audit'] = is_array($meta['reopen_audit'] ?? null) ? $meta['reopen_audit'] : [];
+        $meta['reopen_audit'][] = [
+            'from_status' => $fromStatus,
+            'to_status' => 'OPEN',
+            'reason' => $reason,
+            'actor_id' => $callerId,
+            'at' => now()->toIso8601String(),
+        ];
         unset($meta['submitted_by'], $meta['submitted_at']);
-        $period->update(['status' => 'OPEN', 'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE)]);
+
+        DB::transaction(function () use ($period, $meta): void {
+            $period->update(['status' => 'OPEN', 'meta' => json_encode($meta, JSON_UNESCAPED_UNICODE)]);
+
+            foreach (DB::table('salary_details')->where('period_id', $period->id)->get(['id', 'meta']) as $detail) {
+                $detailMeta = is_string($detail->meta) ? (json_decode($detail->meta, true) ?: []) : (array) ($detail->meta ?? []);
+                $detailMeta['locked'] = false;
+                DB::table('salary_details')->where('id', $detail->id)->update([
+                    'meta' => json_encode($detailMeta, JSON_UNESCAPED_UNICODE),
+                    'updated_at' => now(),
+                ]);
+            }
+        });
+
         if ($submitterId && $callerId !== $submitterId) {
             Notifier::notify($submitterId, 'Kỳ lương bị trả về',
-                "Kỳ {$period->period_code} được trả về Đang mở".($request->input('comment') ? ': '.$request->input('comment') : '.'),
+                "Kỳ {$period->period_code} được trả về Đang mở".($reason !== '' ? ': '.$reason : '.'),
                 'salary_period', $period->id, ['priority' => 'high'], $callerId);
         }
 
-        return $this->ok($period->fresh(), 'Kỳ lương đã trả về Đang mở');
+        return $this->ok($period->fresh(), 'Kỳ lương đã được mở lại');
     }
 
     public function closePeriod(

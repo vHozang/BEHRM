@@ -35,7 +35,7 @@
         </template>
 
         <template #cell-quantity="{ item }"><span class="font-semibold">{{ item.quantity || 1 }} người</span></template>
-        <template #cell-salary_range="{ item }"><span class="font-medium text-primary">{{ item.salary_range || 'Thỏa thuận' }}</span></template>
+        <template #cell-salary_range="{ item }"><span class="font-medium text-primary">{{ item.salary_range ? formatSalaryDots(item.salary_range) : 'Thỏa thuận' }}</span></template>
         <template #cell-deadline="{ item }"><span>{{ formatDate(item.deadline) }}</span></template>
         <template #cell-status="{ item }">
           <BaseBadge :variant="item.status === 'PUBLISHED' && !isDeadlinePassed(item.deadline) ? 'success' : 'secondary'">
@@ -64,7 +64,7 @@
 
         <div class="grid gap-4 md:grid-cols-2">
           <BaseInput v-model.number="form.quantity" type="number" label="Số lượng cần tuyển" required />
-          <BaseInput v-model="form.salary_range" label="Mức lương" placeholder="Ví dụ: 20 - 35 triệu VNĐ" />
+          <BaseInput :modelValue="form.salary_range" @update:modelValue="onSalaryInput" label="Mức lương" placeholder="Ví dụ: 15.000.000" />
           <BaseInput v-model="form.location" label="Địa điểm làm việc" placeholder="TP. Hồ Chí Minh / Hybrid" required />
           <BaseInput v-model="form.deadline" type="date" label="Hạn nộp hồ sơ" required />
         </div>
@@ -120,7 +120,7 @@
           <div class="mb-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
             <span class="rounded-full border border-border px-3 py-1">{{ employmentLabel(previewPost.employment_type) }}</span>
             <span class="rounded-full border border-border px-3 py-1">{{ previewPost.location || 'Chưa cập nhật địa điểm' }}</span>
-            <span class="rounded-full border border-border px-3 py-1">{{ previewPost.salary_range || 'Thỏa thuận' }}</span>
+            <span class="rounded-full border border-border px-3 py-1">{{ previewPost.salary_range ? formatSalaryDots(previewPost.salary_range) : 'Thỏa thuận' }}</span>
           </div>
           <h2 class="text-3xl font-bold text-foreground">{{ previewPost.title }}</h2>
           <p class="mt-3 text-muted-foreground">{{ previewPost.summary }}</p>
@@ -229,6 +229,14 @@ const statusLabel = (item) => {
   return { PUBLISHED: 'Đang công khai', DRAFT: 'Bản nháp', CLOSED: 'Đã đóng', ARCHIVED: 'Lưu trữ' }[item.status] || item.status;
 };
 
+const formatSalaryDots = (val) => {
+  const digits = String(val).replace(/\D/g, '');
+  return digits ? Number(digits).toLocaleString('de-DE') : '';
+};
+const onSalaryInput = (val) => {
+  form.value.salary_range = formatSalaryDots(val);
+};
+
 const openCreateModal = () => {
   form.value = emptyForm();
   showModal.value = true;
@@ -241,7 +249,8 @@ const editItem = (item) => {
     requirements_text: listValue(item.requirements).join('\n'),
     benefits_text: listValue(item.benefits).join('\n'),
     required_skills_text: listValue(item.required_skills || item.required_skills_json).join(', '),
-    quantity: Number(item.quantity || 1)
+    quantity: Number(item.quantity || 1),
+    salary_range: formatSalaryDots(item.salary_range)
   };
   showModal.value = true;
 };

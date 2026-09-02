@@ -86,8 +86,8 @@ export const salaryService = {
     const response = await axiosClient.post(`/salary-periods/${id}/submit`, { allow_partial: allowPartial });
     return response.data;
   },
-  reopenPeriod: async (id, comment) => {
-    const response = await axiosClient.post(`/salary-periods/${id}/reopen`, comment ? { comment } : {});
+  reopenPeriod: async (id, reason) => {
+    const response = await axiosClient.post(`/salary-periods/${id}/reopen`, reason ? { reason } : {});
     return response.data;
   },
   // Chạy engine tính lương VN cho một kỳ (idempotent với kỳ đang mở)

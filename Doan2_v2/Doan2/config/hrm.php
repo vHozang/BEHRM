@@ -349,6 +349,7 @@ return [
         'model' => env('HRM_AI_MODEL', 'claude-opus-4-8'),
         'max_tokens' => (int) env('HRM_AI_MAX_TOKENS', 1024),
         'effort' => env('HRM_AI_EFFORT', 'low'),
+        'timeout_seconds' => max(5, min(60, (int) env('HRM_AI_TIMEOUT_SECONDS', 15))),
         'base_url' => env('ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
         'enabled' => filter_var(env('HRM_AI_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
     ],

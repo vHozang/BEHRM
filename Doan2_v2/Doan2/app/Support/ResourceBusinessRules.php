@@ -4,6 +4,7 @@ namespace App\Support;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 /**
  * Business rules cho các bảng NHÓM A (GenericResourceController).
@@ -346,7 +347,7 @@ class ResourceBusinessRules
                 [
                     'type' => 'self_status',
                     'status_column' => 'status',
-                    'blocked_statuses' => ['PUBLISHED', 'ĐÃ_ĐĂNG'],
+                    'blocked_statuses' => ['PUBLISHED', 'ĐÃ_ĐĂNG', 'ĐÃ_XUẤT_BẢN'],
                     'message' => 'Không thể xóa tin tức đã được đăng. Hãy chuyển sang trạng thái nháp hoặc ẩn trước',
                 ],
             ],
@@ -450,6 +451,7 @@ class ResourceBusinessRules
                 ['field' => 'role_code', 'rule' => 'required', 'message' => 'Mã vai trò là bắt buộc'],
                 ['field' => 'role_code', 'rule' => 'unique_if_present', 'table' => 'roles', 'message' => 'Mã vai trò đã tồn tại'],
                 ['field' => 'role_name', 'rule' => 'required', 'message' => 'Tên vai trò là bắt buộc'],
+                ['field' => 'role_name', 'rule' => 'unique_if_present', 'table' => 'roles', 'message' => 'Tên vai trò đã tồn tại'],
             ],
             'dependents' => [
                 ['field' => 'employee_id', 'rule' => 'required', 'message' => 'Nhân viên là bắt buộc'],
@@ -611,6 +613,7 @@ class ResourceBusinessRules
             ],
             'roles' => [
                 ['field' => 'role_code', 'rule' => 'unique_if_present', 'table' => 'roles', 'message' => 'Mã vai trò đã tồn tại'],
+                ['field' => 'role_name', 'rule' => 'unique_if_present', 'table' => 'roles', 'message' => 'Tên vai trò đã tồn tại'],
             ],
             'leave_types' => [
                 ['field' => 'leave_type_code', 'rule' => 'unique_if_present', 'table' => 'leave_types', 'message' => 'Mã loại nghỉ đã tồn tại'],
@@ -714,6 +717,9 @@ class ResourceBusinessRules
         }
 
         $query = DB::table($guard['table'])->where($guard['foreign_key'], $id);
+        if (TenantContext::hasTenant() && Schema::hasColumn($guard['table'], 'tenant_id')) {
+            $query->where('tenant_id', TenantContext::id());
+        }
 
         foreach ($guard['conditions'] as $condition) {
             if (! Schema::hasColumn($guard['table'], $condition['column'])) {
@@ -749,9 +755,20 @@ class ResourceBusinessRules
             return false;
         }
 
-        $record = DB::table($table)->where('id', $id)->first([$guard['status_column']]);
+        $record = DB::table($table)
+            ->where('id', $id)
+            ->when(TenantContext::hasTenant() && Schema::hasColumn($table, 'tenant_id'), fn ($query) => $query
+                ->where('tenant_id', TenantContext::id()))
+            ->first([$guard['status_column']]);
 
-        return $record && in_array($record->{$guard['status_column']}, $guard['blocked_statuses'], true);
+        if (! $record) {
+            return false;
+        }
+
+        $actual = self::normalizeStatus($record->{$guard['status_column']});
+        $blocked = array_map(self::normalizeStatus(...), $guard['blocked_statuses']);
+
+        return in_array($actual, $blocked, true);
     }
 
     private static function checkSelfField(array $guard, string $table, int $id): bool
@@ -760,7 +777,11 @@ class ResourceBusinessRules
             return false;
         }
 
-        $record = DB::table($table)->where('id', $id)->first([$guard['field']]);
+        $record = DB::table($table)
+            ->where('id', $id)
+            ->when(TenantContext::hasTenant() && Schema::hasColumn($table, 'tenant_id'), fn ($query) => $query
+                ->where('tenant_id', TenantContext::id()))
+            ->first([$guard['field']]);
 
         if (! $record) {
             return false;
@@ -773,6 +794,17 @@ class ResourceBusinessRules
             '!=' => $actualValue != $guard['value'],
             default => false,
         };
+    }
+
+    private static function normalizeStatus(mixed $status): string
+    {
+        return Str::of((string) $status)
+            ->trim()
+            ->ascii()
+            ->upper()
+            ->replaceMatches('/[^A-Z0-9]+/', '_')
+            ->trim('_')
+            ->toString();
     }
 
     // =========================================================================

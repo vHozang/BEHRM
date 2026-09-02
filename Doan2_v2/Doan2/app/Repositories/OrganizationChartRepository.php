@@ -93,7 +93,7 @@ class OrganizationChartRepository
                     LEFT JOIN positions   p ON p.id = e.position_id
                 WHERE
                     {$anchorCondition}
-                    AND e.status != 'TERMINATED'
+                    AND e.status NOT IN ('TERMINATED', 'RESIGNED', 'DELETED')
                     {$tenantAnchor}
 
                 UNION ALL
@@ -118,7 +118,7 @@ class OrganizationChartRepository
                     LEFT JOIN departments d ON d.id = e.department_id
                     LEFT JOIN positions   p ON p.id = e.position_id
                 WHERE
-                    e.status != 'TERMINATED'
+                    e.status NOT IN ('TERMINATED', 'RESIGNED', 'DELETED')
                     AND ot.depth < :maxDepth           -- Giới hạn độ sâu, tránh infinite loop
                     AND NOT (e.id = ANY(ot.id_path))  -- Phát hiện cycle: nếu ID đã có trong path → dừng
                     {$tenantRecursive}
@@ -154,7 +154,7 @@ class OrganizationChartRepository
         $rows = DB::table('employees as e')
             ->leftJoin('departments as d', 'd.id', '=', 'e.department_id')
             ->leftJoin('positions as p', 'p.id', '=', 'e.position_id')
-            ->where('e.status', '!=', 'TERMINATED')
+            ->whereNotIn('e.status', ['TERMINATED', 'RESIGNED', 'DELETED'])
             ->when($tenantId !== null, fn ($q) => $q->where('e.tenant_id', $tenantId))
             ->get([
                 'e.id', 'e.employee_code', 'e.full_name', 'e.manager_id', 'e.status',

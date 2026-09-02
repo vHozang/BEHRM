@@ -134,6 +134,14 @@ const loadData = async () => {
 };
 
 const saveItem = async () => {
+  if (!form.value.name?.trim()) {
+    toast.error('Tên chức danh là bắt buộc');
+    return;
+  }
+  if (!form.value.code?.trim()) {
+    toast.error('Mã chức danh là bắt buộc');
+    return;
+  }
   try {
     if (form.value.id) {
       await jobTitleService.update(form.value.id, form.value);
@@ -147,7 +155,8 @@ const saveItem = async () => {
     await loadData();
   } catch (err) {
     console.error('Error saving job title:', err);
-    toast.error('Có lỗi xảy ra khi lưu chức danh');
+    const errors = err.response?.data?.data?.errors;
+    toast.error(errors ? Object.values(errors).flat()[0] : (err.response?.data?.message || 'Có lỗi xảy ra khi lưu chức danh'));
   }
 };
 

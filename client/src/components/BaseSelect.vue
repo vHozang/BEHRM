@@ -4,7 +4,7 @@
       {{ label }}
       <span v-if="required" class="text-destructive ml-1">*</span>
     </label>
-    
+
     <select
       :id="id"
       :value="modelValue"
@@ -12,9 +12,10 @@
       :disabled="disabled"
       :required="required"
       :class="selectClasses"
+      :style="arrowStyle"
       :data-testid="testId"
     >
-      <option v-if="placeholder" value="" disabled>{{ placeholder }}</option>
+      <option value="" disabled>{{ placeholder || '-- Chọn --' }}</option>
       <option
         v-for="option in options"
         :key="option.value"
@@ -23,7 +24,7 @@
         {{ option.label }}
       </option>
     </select>
-    
+
     <p v-if="error" class="text-sm text-destructive mt-1">{{ error }}</p>
     <p v-else-if="hint" class="text-sm text-muted-foreground mt-1">{{ hint }}</p>
   </div>
@@ -60,10 +61,17 @@ const emit = defineEmits<{
 }>();
 
 const selectClasses = computed(() => {
-  const base = 'w-full px-4 py-2.5 rounded-lg border bg-background text-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed appearance-none bg-[url(\'data:image/svg+xml;charset=utf-8,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3E%3Cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'m6 8 4 4 4-4\'/%3E%3C/svg%3E\')] bg-[length:1.5em_1.5em] bg-[right_0.5rem_center] bg-no-repeat pr-10';
+  const base = 'w-full px-4 py-2.5 rounded-lg border bg-background text-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed appearance-none pr-10';
   const errorClass = props.error ? 'border-destructive' : 'border-input';
   return `${base} ${errorClass}`;
 });
+
+const arrowStyle = {
+  backgroundImage: "url(\"data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E\")",
+  backgroundSize: '1.5em 1.5em',
+  backgroundPosition: 'right 0.5rem center',
+  backgroundRepeat: 'no-repeat',
+};
 
 const handleChange = (event: Event) => {
   const target = event.target as HTMLSelectElement;

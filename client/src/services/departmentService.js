@@ -26,7 +26,7 @@ const mapDepartment = (dept) => {
 export const departmentService = {
   // Get all departments
   getAll: async () => {
-    const response = await axiosClient.get('/departments');
+    const response = await axiosClient.get('/departments', { params: { per_page: 100 } });
     const data = response.data || [];
     return Array.isArray(data) ? data.map(mapDepartment) : data;
   },

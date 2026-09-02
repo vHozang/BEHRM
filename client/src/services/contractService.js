@@ -15,6 +15,7 @@ const mapContract = (contract) => {
     contract.department_name ||
     contract.employee?.department?.department_name ||
     '';
+  const positionName = contract.position?.position_name || contract.position_name || '';
 
   return {
     ...contract,
@@ -24,6 +25,7 @@ const mapContract = (contract) => {
     employee_name: contract.employee?.full_name || contract.employee_name || '',
     employee_code: contract.employee?.employee_code || contract.employee_code || '',
     department_name: departmentName,
+    position_name: positionName,
     contract_type_name: contract.contract_type?.contract_type_name || contract.contract_type?.name || contract.contract_type_name || '',
     basic_salary: meta.basic_salary || contract.basic_salary || 0,
     allowances: meta.allowances || contract.allowances || 0,
@@ -63,6 +65,8 @@ export const contractService = {
       contract_number: data.contract_code,
       employee_id: data.employee_id,
       contract_type_id: data.contract_type_id,
+      department_id: data.department_id || null,
+      position_id: data.position_id || null,
       start_date: data.start_date,
       end_date: data.end_date,
       meta: {
@@ -82,6 +86,8 @@ export const contractService = {
       contract_number: data.contract_code,
       employee_id: data.employee_id,
       contract_type_id: data.contract_type_id,
+      department_id: data.department_id || null,
+      position_id: data.position_id || null,
       start_date: data.start_date,
       end_date: data.end_date,
       meta: {

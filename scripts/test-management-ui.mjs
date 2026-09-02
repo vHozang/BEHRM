@@ -56,6 +56,7 @@ const expectedUiLiterals = [
   ['client/src/views/Requests.vue', ['RequestConfigurationPanel', 'request_type_id']],
   ['client/src/views/mobile/MRequests.vue', ['request_type_id', "getTypes({ status: 'ACTIVE' })"]],
   ['client/src/views/Salaries.vue', ['SalaryPeriodsPanel', 'PayrollAdjustmentsPanel', 'InsuranceClaimsPanel']],
+  ['client/src/views/Contracts.vue', ['department_id', 'position_id', 'Phòng ban theo hợp đồng', 'Chức danh theo hợp đồng']],
   ['client/src/views/SalaryComponents.vue', ['resource="allowances"', 'resource="deductions"', 'resource="employee-allowances"', 'resource="employee-deductions"', 'resource="insurance-types"']],
   ['client/src/views/Assets.vue', ['resource="asset-categories"', 'resource="asset-locations"', 'resource="suppliers"', 'resource="asset-incidents"', 'resource="asset-maintenance"']],
   ['client/src/views/ServiceTickets.vue', ['resource="service-categories"', 'serviceTicketService.show', 'serviceTicketService.addUpdate']],

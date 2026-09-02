@@ -119,7 +119,7 @@ class Employee extends Model
     public function hasSubordinates(): bool
     {
         return static::where('manager_id', $this->id)
-            ->where('status', '!=', 'TERMINATED')
+            ->whereNotIn('status', ['TERMINATED', 'RESIGNED', 'DELETED'])
             ->exists();
     }
 
@@ -129,6 +129,8 @@ class Employee extends Model
 
         if ($this->hasActiveContract()) {
             $violations[] = 'Không thể xóa nhân viên đang có hợp đồng hiệu lực';
+        } elseif ($this->contracts()->exists()) {
+            $violations[] = 'Không thể xóa nhân viên đã có hồ sơ hợp đồng';
         }
         if ($this->hasUnpaidSalary()) {
             $violations[] = 'Không thể xóa nhân viên có lương chưa thanh toán';

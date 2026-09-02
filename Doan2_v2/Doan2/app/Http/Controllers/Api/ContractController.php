@@ -30,6 +30,7 @@ class ContractController extends Controller
             'employee:id,full_name,employee_code',
             'contractType:id,contract_type_name',
             'department:id,department_name',
+            'position:id,position_name',
         ])->orderByDesc('id');
 
         foreach (['employee_id', 'status', 'contract_type_id', 'department_id'] as $field) {
@@ -165,6 +166,7 @@ class ContractController extends Controller
                 'employee:id,full_name,employee_code',
                 'contractType:id,contract_type_name',
                 'department:id,department_name',
+                'position:id,position_name',
             ]),
         ], 201);
     }
@@ -175,6 +177,7 @@ class ContractController extends Controller
             'employee:id,full_name,employee_code',
             'contractType:id,contract_type_name',
             'department:id,department_name',
+            'position:id,position_name',
         ])->find($id);
 
         if (! $contract) {
@@ -290,6 +293,7 @@ class ContractController extends Controller
                 'employee:id,full_name,employee_code',
                 'contractType:id,contract_type_name',
                 'department:id,department_name',
+                'position:id,position_name',
             ]),
             'Hợp đồng đã được cập nhật'
         );
@@ -366,6 +370,7 @@ class ContractController extends Controller
                 'employee:id,full_name,employee_code',
                 'contractType:id,contract_type_name',
                 'department:id,department_name',
+                'position:id,position_name',
             ]),
             'Hợp đồng đã được kích hoạt'
         );
