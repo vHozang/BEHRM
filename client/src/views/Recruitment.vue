@@ -769,7 +769,7 @@ const advanceCandidate = async () => {
   }
 };
 
-const hireCandidate = () => {
+const hireCandidate = async () => {
   if (!selectedCandidate.value?.id) return;
   if (!['interviewing', 'offered'].includes(selectedCandidate.value.status)) {
     toast.error('Chỉ có thể tuyển ứng viên đang phỏng vấn hoặc đã được đề nghị nhận việc');
@@ -786,9 +786,14 @@ const hireCandidate = () => {
     if (recruitmentPos?.department_id) {
       autoDepartmentId = String(recruitmentPos.department_id);
     }
-    if (recruitmentPos?.location) {
-      autoWorkLocation = recruitmentPos.location;
-    }
+    try {
+      const posts = await recruitmentService.getRecruitmentPosts();
+      const postsArr = posts?.data || posts || [];
+      const matchedPost = postsArr.find(p => p.recruitment_position_id == candidatePositionId);
+      if (matchedPost?.location) {
+        autoWorkLocation = matchedPost.location;
+      }
+    } catch { /* fallback: HR types manually */ }
   }
 
   hireForm.value = {
