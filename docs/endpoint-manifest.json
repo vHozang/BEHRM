@@ -1863,6 +1863,12 @@
       "status": "UI_DIRECT"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/shift-swaps/{id}/reject",
+      "action": "App\\Http\\Controllers\\Api\\AttendanceController@rejectShiftSwap",
+      "status": "UI_DIRECT"
+    },
+    {
       "method": "GET",
       "path": "/storage/{path}",
       "action": "Closure",
