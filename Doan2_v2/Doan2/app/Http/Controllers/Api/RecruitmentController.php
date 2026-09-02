@@ -727,6 +727,13 @@ class RecruitmentController extends Controller
             return $this->validationError($validator->errors()->toArray());
         }
 
+        $existingEmployee = Employee::where('company_email', $candidate->email)->first();
+        if ($existingEmployee) {
+            return $this->validationError([
+                'email' => ["Email {$candidate->email} đã tồn tại trong hệ thống nhân viên (Mã NV: {$existingEmployee->employee_code})"],
+            ]);
+        }
+
         $employee = DB::transaction(function () use ($candidate, $request) {
             $candidate->update(['application_status' => 'HIRED']);
             $this->closeScheduledInterviews($candidate->id, 'PASSED', 'APPROVED');
