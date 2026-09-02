@@ -679,15 +679,12 @@ class RecruitmentController extends Controller
         });
 
         $candidate->refresh();
-        SendRecruitmentEmailJob::dispatch(
-            'rejected',
-            $candidate->id,
-            TenantContext::id(),
-            TenantContext::legalEntityId(),
-            null,
+        $mailSent = app(RecruitmentMailService::class)->sendRejected(
+            $candidate,
+            $request->input('reason'),
             $request->attributes->get('auth_employee_id'),
-            ['reason' => $request->input('reason')],
         );
+        $candidate->setAttribute('notification_email_sent', $mailSent);
         if ($candidate->ai_score !== null) {
             app(AiFeedbackService::class)->sendOutcome(
                 candidateId: $candidate->id,
@@ -759,14 +756,10 @@ class RecruitmentController extends Controller
         });
 
         $candidate->refresh();
-        SendRecruitmentEmailJob::dispatch(
-            'hired',
-            $candidate->id,
-            TenantContext::id(),
-            TenantContext::legalEntityId(),
-            null,
-            $request->attributes->get('auth_employee_id'),
+        $mailSent = app(RecruitmentMailService::class)->sendHired(
+            $candidate,
             $request->only(['start_date', 'arrival_time', 'work_location', 'offer_note']),
+            $request->attributes->get('auth_employee_id'),
         );
         if ($candidate->ai_score !== null) {
             app(AiFeedbackService::class)->sendOutcome(
@@ -784,6 +777,7 @@ class RecruitmentController extends Controller
         return $this->ok([
             'candidate' => $candidate->fresh(),
             'employee' => $employee,
+            'notification_email_sent' => $mailSent,
         ], 'Ứng viên đã được tuyển dụng thành công');
     }
 
@@ -929,15 +923,14 @@ class RecruitmentController extends Controller
                 $candidate->email,
                 $recruiterId,
             );
+            $interview->setAttribute('invitation_email_sent', false);
         } else {
-            SendRecruitmentEmailJob::dispatch(
-                'interview_invitation',
-                $candidate->id,
-                TenantContext::id(),
-                TenantContext::legalEntityId(),
-                $interview->id,
+            $mailSent = app(RecruitmentMailService::class)->sendInterviewInvitation(
+                $candidate,
+                $interview,
                 $recruiterId,
             );
+            $interview->setAttribute('invitation_email_sent', $mailSent);
         }
 
         return response()->json([
