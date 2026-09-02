@@ -614,7 +614,7 @@ const loadCalendar = async () => {
     rosterEmployees.value = data.employees || [];
     skippedEmployees.value = data.skipped_employees || [];
     rosterShiftTypes.value = data.shift_types || [];
-    canManageShiftTypes.value = data.permissions?.manage_shift_types === true;
+    canManageShiftTypes.value = data.permissions?.manage_shift_types === true || canManageShiftTypes.value;
   } catch (error) {
     rosterEmployees.value = [];
     skippedEmployees.value = [];

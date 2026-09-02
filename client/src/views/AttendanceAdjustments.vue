@@ -81,7 +81,7 @@
         <template #cell-reason="{ item }">
           <div class="text-sm">
             <p class="text-muted-foreground">{{ item.reason || '-' }}</p>
-            <a v-if="item.evidence" :href="item.evidence" target="_blank" class="text-xs text-primary underline">📎 Bằng chứng</a>
+            <button v-if="item.evidence" @click="downloadEvidence(item.evidence)" class="text-xs text-primary underline cursor-pointer">📎 Bằng chứng</button>
             <p v-if="item.decision_comment" class="text-xs text-muted-foreground italic mt-0.5">QL: {{ item.decision_comment }}</p>
           </div>
         </template>
@@ -298,7 +298,7 @@
           <div><p class="text-muted-foreground">Ngày công</p><p class="font-medium">{{ formatDate(selectedRequest.work_date) }}</p></div>
           <div><p class="text-muted-foreground">Giờ vào → ra (đề nghị)</p><p class="font-medium">{{ (selectedRequest.requested_check_in_time || '—') }} → {{ (selectedRequest.requested_check_out_time || '—') }}</p></div>
           <div class="col-span-2"><p class="text-muted-foreground">Lý do</p><p class="font-medium">{{ selectedRequest.reason || '-' }}</p></div>
-          <div v-if="selectedRequest.evidence" class="col-span-2"><p class="text-muted-foreground">Bằng chứng</p><a :href="selectedRequest.evidence" target="_blank" class="text-sm text-primary underline">📎 Xem bằng chứng đính kèm</a></div>
+          <div v-if="selectedRequest.evidence" class="col-span-2"><p class="text-muted-foreground">Bằng chứng</p><button @click="downloadEvidence(selectedRequest.evidence)" class="text-sm text-primary underline cursor-pointer">📎 Xem bằng chứng đính kèm</button></div>
         </div>
         <div class="border-t border-border pt-2">
           <p class="text-sm font-semibold text-foreground mb-1">Tiến trình phê duyệt</p>
@@ -326,6 +326,7 @@ import { buildApprovalSteps, statusVN } from '../utils/approvalSteps';
 import { regularizationService } from '../services/regularizationService';
 import { employeeService } from '../services/employeeService';
 import { authService } from '../services/authService';
+import axiosClient from '../services/axiosClient';
 import { useToast } from '../composables/useToast';
 
 const toast = useToast();
@@ -348,6 +349,19 @@ const uploadedFileName = ref('');
 const adjustments = ref([]);
 const employees = ref([]);
 const pagination = ref({ current_page: 1, per_page: 15, total: 0, last_page: 1 });
+
+const downloadEvidence = async (url) => {
+  try {
+    const fullUrl = url.startsWith('http') ? url : url;
+    const response = await axiosClient.get(fullUrl, { responseType: 'blob', baseURL: url.startsWith('http') ? '' : undefined });
+    const blob = response.data instanceof Blob ? response.data : new Blob([response.data]);
+    const objectUrl = URL.createObjectURL(blob);
+    window.open(objectUrl);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  } catch {
+    toast.error('Không thể tải bằng chứng. Vui lòng thử lại.');
+  }
+};
 
 // Chi tiết + tiến trình duyệt (người tạo + người duyệt thật).
 const showDetailModal = ref(false);

@@ -92,6 +92,13 @@
             <option value="">-- Chọn --</option>
             <option v-for="option in field.options || []" :key="String(option.value)" :value="String(option.value)">{{ option.label }}</option>
           </select>
+          <BaseMoneyInput
+            v-else-if="field.type === 'money'"
+            v-model="form[field.key]"
+            :placeholder="field.placeholder || ''"
+            compact
+            class="mt-1"
+          />
           <span v-else-if="field.type === 'checkbox'" class="mt-2 flex items-center gap-2 rounded-lg border border-input px-3 py-2 font-normal">
             <input v-model="form[field.key]" type="checkbox" class="h-4 w-4 rounded" />
             {{ field.checkboxLabel || 'Có' }}
@@ -125,6 +132,7 @@ import axiosClient from '../services/axiosClient';
 import BaseButton from './BaseButton.vue';
 import BaseCard from './BaseCard.vue';
 import BaseModal from './BaseModal.vue';
+import BaseMoneyInput from './BaseMoneyInput.vue';
 import RemoteEmployeeSelect from './RemoteEmployeeSelect.vue';
 import ResourceSelect from './ResourceSelect.vue';
 import { useToast } from '../composables/useToast';

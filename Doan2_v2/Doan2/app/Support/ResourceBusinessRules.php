@@ -247,7 +247,9 @@ class ResourceBusinessRules
                     'type' => 'has_related',
                     'table' => 'positions',
                     'foreign_key' => 'job_family_id',
-                    'conditions' => [],
+                    'conditions' => [
+                        ['column' => 'status', 'operator' => '!=', 'value' => 'DELETED'],
+                    ],
                     'message' => 'Không thể xóa nhóm chức danh đang có chức danh liên quan',
                 ],
             ],

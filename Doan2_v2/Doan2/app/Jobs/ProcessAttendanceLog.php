@@ -203,7 +203,21 @@ class ProcessAttendanceLog implements ShouldQueue
             }
         } elseif ($data->action === 'CHECK_OUT') {
             if (! $attendance) {
-                return;
+                // Overnight shift: check-out falls on the next calendar day.
+                // Look back for an open attendance record from yesterday.
+                $yesterday = $occurredAt->copy()->subDay()->toDateString();
+                $attendance = Attendance::withoutTenantScope()
+                    ->where('tenant_id', $employee->tenant_id)
+                    ->where('employee_id', $data->employeeId)
+                    ->where('work_date', $yesterday)
+                    ->whereNotNull('check_in_time')
+                    ->whereNull('check_out_time')
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $attendance) {
+                    return;
+                }
             }
             if ($attendance->check_in_time && ! $attendance->check_out_time) {
                 $attendance->update(['check_out_time' => $timeString]);

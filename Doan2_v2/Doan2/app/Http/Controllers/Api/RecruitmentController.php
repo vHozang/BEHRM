@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\CreateGoogleMeetJob;
+use App\Jobs\SendRecruitmentEmailJob;
 use App\Models\Employee;
 use App\Models\InterviewSchedule;
 use App\Models\RecruitmentCandidate;
@@ -677,12 +679,15 @@ class RecruitmentController extends Controller
         });
 
         $candidate->refresh();
-        $mailSent = app(RecruitmentMailService::class)->sendRejected(
-            $candidate,
-            $request->input('reason'),
+        SendRecruitmentEmailJob::dispatch(
+            'rejected',
+            $candidate->id,
+            TenantContext::id(),
+            TenantContext::legalEntityId(),
+            null,
             $request->attributes->get('auth_employee_id'),
+            ['reason' => $request->input('reason')],
         );
-        $candidate->setAttribute('notification_email_sent', $mailSent);
         if ($candidate->ai_score !== null) {
             app(AiFeedbackService::class)->sendOutcome(
                 candidateId: $candidate->id,
@@ -754,10 +759,14 @@ class RecruitmentController extends Controller
         });
 
         $candidate->refresh();
-        $mailSent = app(RecruitmentMailService::class)->sendHired(
-            $candidate,
-            $request->only(['start_date', 'arrival_time', 'work_location', 'offer_note']),
+        SendRecruitmentEmailJob::dispatch(
+            'hired',
+            $candidate->id,
+            TenantContext::id(),
+            TenantContext::legalEntityId(),
+            null,
             $request->attributes->get('auth_employee_id'),
+            $request->only(['start_date', 'arrival_time', 'work_location', 'offer_note']),
         );
         if ($candidate->ai_score !== null) {
             app(AiFeedbackService::class)->sendOutcome(
@@ -775,7 +784,6 @@ class RecruitmentController extends Controller
         return $this->ok([
             'candidate' => $candidate->fresh(),
             'employee' => $employee,
-            'notification_email_sent' => $mailSent,
         ], 'Ứng viên đã được tuyển dụng thành công');
     }
 
@@ -857,22 +865,37 @@ class RecruitmentController extends Controller
         $durationMinutes = $request->integer('duration_minutes')
             ?: (int) config('recruitment.mail.interview_duration_minutes', 60);
 
-        try {
-            $meetingMeta = $this->resolveMeetingMeta(
-                $request,
-                $candidate,
-                $scheduledAt,
-                (string) $data['interview_mode'],
-                $durationMinutes,
-            );
-        } catch (\Throwable $exception) {
-            Log::warning('Could not prepare interview meeting link', [
-                'candidate_id' => $candidate->id,
-                'error' => $exception->getMessage(),
-            ]);
+        $meetService = app(GoogleMeetService::class);
+        $mode = strtoupper((string) $data['interview_mode']);
+        $needsOnlineRoom = in_array($mode, ['ONLINE', 'HYBRID'], true);
+        $willCreateMeetAsync = false;
+        $meetingMeta = [];
 
+        $meetingLink = $request->exists('meeting_link')
+            ? trim((string) $request->input('meeting_link'))
+            : '';
+        if ($meetingLink === '' && filter_var($request->input('location'), FILTER_VALIDATE_URL)) {
+            $meetingLink = trim((string) $request->input('location'));
+        }
+
+        if ($meetingLink === '' && $needsOnlineRoom && $request->boolean('auto_create_meeting')) {
+            if (! $meetService->configured()) {
+                return $this->validationError([
+                    'meeting_link' => ['Chưa cấu hình Google Calendar API. Hãy nhập link phòng họp thủ công hoặc cấu hình OAuth cho Google Calendar.'],
+                ]);
+            }
+            $meetingMeta['meeting_status'] = 'CREATING';
+            $willCreateMeetAsync = true;
+        } elseif ($meetingLink !== '') {
+            if (! $meetService->isUsableMeetingLink($meetingLink)) {
+                return $this->validationError([
+                    'meeting_link' => ['Link Google Meet phải là link phòng cụ thể, ví dụ https://meet.google.com/abc-defg-hij; không dùng trang chủ Google Meet.'],
+                ]);
+            }
+            $meetingMeta['meeting_link'] = $meetingLink;
+        } elseif ($needsOnlineRoom) {
             return $this->validationError([
-                'meeting_link' => [$exception->getMessage()],
+                'meeting_link' => ['Phỏng vấn trực tuyến cần link phòng họp. Hãy nhập link hợp lệ hoặc bật tạo Google Meet tự động.'],
             ]);
         }
 
@@ -890,12 +913,32 @@ class RecruitmentController extends Controller
         if (in_array($candidate->application_status, ['PENDING', 'SCREENING'], true)) {
             $candidate->update(['application_status' => 'INTERVIEWING']);
         }
-        $mailSent = app(RecruitmentMailService::class)->sendInterviewInvitation(
-            $candidate,
-            $interview,
-            $request->attributes->get('auth_employee_id'),
-        );
-        $interview->setAttribute('invitation_email_sent', $mailSent);
+
+        $recruiterId = $request->attributes->get('auth_employee_id');
+        if ($willCreateMeetAsync) {
+            $positionName = $candidate->position?->position_name ?: 'Vị trí tuyển dụng';
+            CreateGoogleMeetJob::dispatch(
+                $interview->id,
+                $candidate->id,
+                TenantContext::id(),
+                TenantContext::legalEntityId(),
+                $scheduledAt->toIso8601String(),
+                $durationMinutes,
+                "Phỏng vấn {$candidate->full_name} - {$positionName}",
+                "Lịch phỏng vấn ứng viên {$candidate->full_name} cho vị trí {$positionName}.",
+                $candidate->email,
+                $recruiterId,
+            );
+        } else {
+            SendRecruitmentEmailJob::dispatch(
+                'interview_invitation',
+                $candidate->id,
+                TenantContext::id(),
+                TenantContext::legalEntityId(),
+                $interview->id,
+                $recruiterId,
+            );
+        }
 
         return response()->json([
             'status' => 201,
