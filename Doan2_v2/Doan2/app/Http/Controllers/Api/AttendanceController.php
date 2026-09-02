@@ -1139,6 +1139,41 @@ class AttendanceController extends Controller
         );
     }
 
+    public function rejectShiftSwap(int $id): JsonResponse
+    {
+        $swap = DB::table('shift_swaps')->where('id', $id)
+            ->when(TenantContext::hasTenant(), fn ($q) => $q->where('shift_swaps.tenant_id', TenantContext::id()))
+            ->first();
+
+        if (! $swap) {
+            return $this->notFound();
+        }
+
+        if (! in_array((string) ($swap->approval_status ?? ''), ['PENDING', 'CHỜ_DUYỆT'], true)) {
+            return $this->validationError(['approval_status' => ['Yêu cầu đổi ca không ở trạng thái chờ duyệt']]);
+        }
+
+        DB::table('shift_swaps')->where('id', $id)->update([
+            'approval_status' => 'REJECTED',
+            'approver_id' => request()->attributes->get('auth_employee_id'),
+            'updated_at' => now(),
+        ]);
+
+        Notifier::notifyMany(
+            [(int) $swap->requester_id, (int) $swap->target_employee_id],
+            'Đổi ca đã bị từ chối',
+            'Yêu cầu đổi ca ngày '.Carbon::parse($swap->swap_date)->format('d/m/Y').' đã bị từ chối.',
+            'shift_swap', $id, ['priority' => 'normal']
+        );
+
+        return $this->ok(
+            DB::table('shift_swaps')->where('id', $id)
+                ->when(TenantContext::hasTenant(), fn ($q) => $q->where('shift_swaps.tenant_id', TenantContext::id()))
+                ->first(),
+            'Yêu cầu đổi ca đã bị từ chối'
+        );
+    }
+
     /**
      * POST /attendances/{id}/verify {decision: approve|reject, note?}
      * Admin xác minh một lượt chấm công bị đánh dấu "cần xem xét".

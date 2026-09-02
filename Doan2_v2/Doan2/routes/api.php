@@ -293,6 +293,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/shift-roster/generate', [ShiftRosterController::class, 'generate']);
         Route::post('/shift-swaps', [AttendanceController::class, 'requestShiftSwap']);
         Route::post('/shift-swaps/{id}/approve', [AttendanceController::class, 'approveShiftSwap'])->whereNumber('id');
+        Route::post('/shift-swaps/{id}/reject', [AttendanceController::class, 'rejectShiftSwap'])->whereNumber('id');
 
         // Phủ ca khi vắng đột xuất (coverage / điều người tăng ca + chuỗi giao ca)
         Route::get('/shift-coverage-requests', [ShiftCoverageController::class, 'index']);
