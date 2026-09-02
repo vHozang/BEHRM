@@ -114,6 +114,17 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                 </svg>
               </button>
+              <button
+                v-if="orgLens && item.status === 'pending'"
+                @click="rejectRequest(item)"
+                class="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900 text-red-600 dark:text-red-400"
+                title="Từ chối"
+                :disabled="processing"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
           </template>
         </BaseTable>
@@ -381,6 +392,22 @@ const approveRequest = async (request) => {
   } catch (err) {
     console.error('Error approving shift swap:', err);
     alert(err.response?.data?.error || err.response?.data?.message || 'Có lỗi xảy ra khi duyệt');
+  } finally {
+    processing.value = false;
+  }
+};
+
+const rejectRequest = async (request) => {
+  if (processing.value || !isAdmin.value) return;
+  if (!window.confirm('Bạn có chắc muốn từ chối yêu cầu đổi ca này?')) return;
+
+  try {
+    processing.value = true;
+    await workScheduleService.rejectSwap(request.id);
+    await loadRequests();
+  } catch (err) {
+    console.error('Error rejecting shift swap:', err);
+    alert(err.response?.data?.error || err.response?.data?.message || 'Có lỗi xảy ra khi từ chối');
   } finally {
     processing.value = false;
   }

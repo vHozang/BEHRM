@@ -74,6 +74,12 @@ export const workScheduleService = {
     return response.data;
   },
 
+  // Reject a shift swap request
+  rejectSwap: async (id) => {
+    const response = await axiosClient.post(`/shift-swaps/${id}/reject`);
+    return response.data;
+  },
+
   // Sinh lịch ca xoay theo tuần.
   generateRoster: async (payload) => {
     const response = await axiosClient.post('/shift-roster/generate', payload);
