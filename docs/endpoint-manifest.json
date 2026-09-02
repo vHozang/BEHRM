@@ -144,7 +144,7 @@
       "method": "GET",
       "path": "/api/v1/attendance-adjustments/evidence",
       "action": "App\\Http\\Controllers\\Api\\AttendanceRegularizationController@downloadEvidence",
-      "status": "UI_DIRECT"
+      "status": "UI_INDIRECT"
     },
     {
       "method": "POST",
