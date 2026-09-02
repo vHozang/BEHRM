@@ -820,7 +820,8 @@ const submitHireCandidate = async () => {
     await loadCandidates();
   } catch (err) {
     console.error('Error hiring candidate:', err);
-    toast.error('Lỗi khi tuyển dụng ứng viên');
+    const msg = err.response?.data?.message || 'Lỗi khi tuyển dụng ứng viên';
+    toast.error(msg);
   } finally {
     actionLoading.value = false;
   }
