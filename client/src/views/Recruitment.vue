@@ -441,6 +441,28 @@
           <BaseInput v-model="hireForm.start_date" type="date" label="Ngày bắt đầu làm việc" required />
           <BaseInput v-model="hireForm.arrival_time" type="time" label="Thời gian có mặt" required />
         </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-foreground mb-1">Phòng ban</label>
+            <ResourceSelect
+              v-model="hireForm.department_id"
+              resource="departments"
+              label-key="department_name"
+              code-key="department_code"
+              placeholder="-- Chọn phòng ban --"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-foreground mb-1">Chức danh</label>
+            <ResourceSelect
+              v-model="hireForm.position_id"
+              resource="positions"
+              label-key="position_name"
+              code-key="position_code"
+              placeholder="-- Chọn chức danh --"
+            />
+          </div>
+        </div>
         <BaseInput v-model="hireForm.work_location" label="Địa điểm làm việc" placeholder="Văn phòng / chi nhánh làm việc" />
         <div>
           <label class="block text-sm font-medium text-foreground mb-1">Ghi chú trong thư nhận việc</label>
@@ -546,6 +568,7 @@ import BaseCard from '../components/BaseCard.vue';
 import BaseModal from '../components/BaseModal.vue';
 import BaseInput from '../components/BaseInput.vue';
 import BaseBadge from '../components/BaseBadge.vue';
+import ResourceSelect from '../components/ResourceSelect.vue';
 import { recruitmentService } from '../services/recruitmentService';
 import { useToast } from '../composables/useToast';
 import { cvFilename, cvPreviewKind } from '../utils/cvPreview';
@@ -613,7 +636,9 @@ const hireForm = ref({
   start_date: '',
   arrival_time: '08:30',
   work_location: '',
-  offer_note: ''
+  offer_note: '',
+  department_id: '',
+  position_id: ''
 });
 
 const rejectForm = ref({ reason: '' });
@@ -752,11 +777,23 @@ const hireCandidate = () => {
   }
   const start = new Date();
   start.setDate(start.getDate() + 1);
+
+  let autoDepartmentId = '';
+  const candidatePositionId = selectedCandidate.value.recruitment_position_id;
+  if (candidatePositionId) {
+    const recruitmentPos = positions.value.find(p => p.id == candidatePositionId);
+    if (recruitmentPos?.department_id) {
+      autoDepartmentId = String(recruitmentPos.department_id);
+    }
+  }
+
   hireForm.value = {
     start_date: start.toISOString().slice(0, 10),
     arrival_time: '08:30',
     work_location: '',
-    offer_note: ''
+    offer_note: '',
+    department_id: autoDepartmentId,
+    position_id: ''
   };
   showHireModal.value = true;
 };
