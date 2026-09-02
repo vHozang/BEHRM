@@ -28,6 +28,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
@@ -1039,14 +1040,23 @@ class AttendanceController extends Controller
             }
         }
 
-        $columns = Schema::getColumnListing('shift_swaps');
-        $data = collect($request->all())->only($columns)->toArray();
-        // shift_swaps uses `approval_status`, not `status`.
-        $data['approval_status'] = 'PENDING';
-        $data['created_at'] = now();
-        $data['updated_at'] = now();
+        try {
+            $data = [
+                'requester_id' => $request->input('requester_id'),
+                'target_employee_id' => $request->input('target_employee_id'),
+                'swap_date' => $request->input('swap_date'),
+                'reason' => $request->input('reason'),
+                'approval_status' => 'PENDING',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
 
-        $swapId = DB::table('shift_swaps')->insertGetId(TenantContext::stamp($data));
+            $swapId = DB::table('shift_swaps')->insertGetId(TenantContext::stamp($data));
+        } catch (\Throwable $e) {
+            Log::error('Shift swap insert failed: '.$e->getMessage());
+
+            return response()->json(['status' => 500, 'error' => 'Không thể tạo yêu cầu đổi ca. Vui lòng thử lại.'], 500);
+        }
 
         $reqName = DB::table('employees')->where('id', $request->input('requester_id'))->value('full_name') ?: 'Đồng nghiệp';
         Notifier::notify(

@@ -242,17 +242,7 @@ class ResourceBusinessRules
                 ],
             ],
 
-            'job_families' => [
-                [
-                    'type' => 'has_related',
-                    'table' => 'positions',
-                    'foreign_key' => 'job_family_id',
-                    'conditions' => [
-                        ['column' => 'status', 'operator' => '!=', 'value' => 'DELETED'],
-                    ],
-                    'message' => 'Không thể xóa nhóm chức danh đang có chức danh liên quan',
-                ],
-            ],
+            'job_families' => [],
 
             // ─── Assets ──────────────────────────────────────────────
             'assets' => [
