@@ -16,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -358,6 +359,40 @@ class AttendanceRegularizationController extends Controller
         $adjustment->update(['status' => 'CANCELLED']);
 
         return $this->ok($adjustment->fresh(), 'Đơn điều chỉnh công đã được hủy');
+    }
+
+    public function uploadEvidence(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'max:10240', 'mimes:jpg,jpeg,png,gif,webp,pdf'],
+        ]);
+
+        $file = $request->file('file');
+        $path = $file->store('attendance-evidence');
+
+        $url = route('attendance-adjustments.evidence.download', ['path' => $path]);
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Đã tải lên bằng chứng',
+            'data' => [
+                'file_name' => $file->getClientOriginalName(),
+                'file_url' => $url,
+                'storage_path' => $path,
+                'mime_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
+            ],
+        ]);
+    }
+
+    public function downloadEvidence(Request $request)
+    {
+        $path = $request->query('path');
+        if (! $path || ! str_starts_with($path, 'attendance-evidence/') || ! Storage::exists($path)) {
+            return $this->notFound('Không tìm thấy tệp đính kèm');
+        }
+
+        return Storage::download($path);
     }
 
     // ── Shift Helpers (mirror AttendanceController) ──────────

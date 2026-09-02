@@ -315,6 +315,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/attendance-adjustments/{id}/approve', [AttendanceRegularizationController::class, 'approve'])->whereNumber('id');
         Route::post('/attendance-adjustments/{id}/reject', [AttendanceRegularizationController::class, 'reject'])->whereNumber('id');
         Route::post('/attendance-adjustments/{id}/cancel', [AttendanceRegularizationController::class, 'cancel'])->whereNumber('id');
+        Route::post('/attendance-adjustments/upload-evidence', [AttendanceRegularizationController::class, 'uploadEvidence']);
+        Route::get('/attendance-adjustments/evidence', [AttendanceRegularizationController::class, 'downloadEvidence'])->name('attendance-adjustments.evidence.download');
 
         // Profile change requests (đơn đề nghị thay đổi thông tin cá nhân)
         Route::get('/profile-change-requests/fields', [ProfileChangeRequestController::class, 'fields']);

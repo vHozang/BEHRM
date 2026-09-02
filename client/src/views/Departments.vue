@@ -432,7 +432,7 @@ const managerOptions = computed(() => [
   { label: 'Chưa gán', value: '' },
   ...allEmployees.value
     .filter(employee => !formLegalEntityId.value || Number(employee.legal_entity_id) === Number(formLegalEntityId.value))
-    .filter(employee => ['active', 'probation'].includes(employee.employment_status))
+    .filter(employee => ['active', 'probation', 'on_leave'].includes(employee.employment_status))
     .map((e) => ({ label: `${e.full_name}${e.employee_code ? ` (${e.employee_code})` : ''}`, value: String(e.id) }))
 ]);
 
@@ -958,14 +958,18 @@ const handleSubmit = async () => {
       notificationStore.addSuccess(`Đã thêm phòng ban "${form.value.name}"`);
     }
     
+    const wasEditing = isEditing.value;
+    const editedId = editingId.value;
+    const selectedId = selectedDept.value?.id;
+
     closeModal();
     await loadDepartments();
-    
-    if (isEditing.value && selectedDept.value?.id === editingId.value) {
-      const updatedDept = departments.value.find(d => d.id === editingId.value);
+
+    if (wasEditing && selectedId != null && Number(selectedId) === Number(editedId)) {
+      const updatedDept = departments.value.find(d => Number(d.id) === Number(editedId));
       if (updatedDept) {
-        selectedDept.value = { 
-          ...selectedDept.value, 
+        selectedDept.value = {
+          ...selectedDept.value,
           ...updatedDept,
           is_active: updatedDept.is_active === 1 || updatedDept.is_active === true || updatedDept.is_active === '1'
         };

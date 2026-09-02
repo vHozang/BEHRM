@@ -43,6 +43,16 @@ export const regularizationService = {
   cancel: async (id) => {
     const response = await axiosClient.post(`/attendance-adjustments/${id}/cancel`);
     return response.data;
+  },
+
+  // POST /attendance-adjustments/upload-evidence (multipart file upload)
+  uploadEvidence: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await axiosClient.post('/attendance-adjustments/upload-evidence', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
   }
 };
 
