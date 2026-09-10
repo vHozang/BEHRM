@@ -1,8 +1,8 @@
 # Production Sync and Delivery Design
 
-**Date:** 2026-09-10  
-**Status:** Approved in conversation; awaiting written-spec review  
-**Target branch:** `production`  
+**Date:** 2026-09-10
+**Status:** Approved in conversation; awaiting written-spec review
+**Target branch:** `production`
 **Repository:** `https://github.com/vHozang/BEHRM.git`
 
 ## 1. Objective
