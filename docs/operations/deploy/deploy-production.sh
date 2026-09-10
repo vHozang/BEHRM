@@ -5,6 +5,8 @@ APP_DIR="${DEPLOY_PATH:-/opt/hrm}"
 BACKEND_DIR="$APP_DIR/BE"
 FRONTEND_DIR="$APP_DIR/FE/dist"
 
+bash "$APP_DIR/docs/operations/deploy/migrate-runtime-layout.sh" "$APP_DIR"
+
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required on the VPS" >&2
   exit 1

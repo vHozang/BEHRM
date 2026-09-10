@@ -17,7 +17,7 @@ from pathlib import Path
 
 BASE = "https://devtapcode.io.vn"
 API = f"{BASE}/api/v1"
-ROOT = Path("/mnt/d/HRM/docs/test-cases")
+ROOT = Path(__file__).resolve().parent
 CASES_PATH = ROOT / "testcases_export.json"
 RESULTS_PATH = ROOT / "production_results.json"
 EVIDENCE_PATH = ROOT / "production_api_evidence.json"

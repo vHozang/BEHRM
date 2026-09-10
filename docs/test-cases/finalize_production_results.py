@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 
 
-ROOT = Path("/mnt/d/HRM/docs/test-cases")
+ROOT = Path(__file__).resolve().parent
 RESULTS = ROOT / "production_results.json"
 UI = ROOT / "production_ui_evidence" / "interactive-summary.json"
 API = "https://devtapcode.io.vn/api/v1"

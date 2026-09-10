@@ -1,6 +1,6 @@
 param(
-    [string]$WorkbookPath = 'D:\HRM\docs	est-cases\TestCase_HRM_System.xlsx',
-    [string]$OutputPath = 'D:\HRM\docs	est-cases\testcases_export.json'
+    [string]$WorkbookPath = (Join-Path $PSScriptRoot 'TestCase_HRM_System.xlsx'),
+    [string]$OutputPath = (Join-Path $PSScriptRoot 'testcases_export.json')
 )
 
 $ErrorActionPreference = 'Stop'

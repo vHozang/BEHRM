@@ -4,7 +4,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $edge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-$outputDir = 'D:\HRM\docs	est-cases\production_ui_evidence'
+$outputDir = Join-Path $PSScriptRoot 'production_ui_evidence'
 New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 
 function Invoke-EdgeProbe {

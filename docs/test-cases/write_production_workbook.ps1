@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
-$sourcePath = 'D:\HRM\docs	est-cases\TestCase_HRM_System.xlsx'
-$outputPath = 'D:\HRM\docs	est-cases\TestCase_HRM_System_Production.xlsx'
-$resultsPath = 'D:\HRM\docs	est-cases\production_results.json'
+$sourcePath = Join-Path $PSScriptRoot 'TestCase_HRM_System.xlsx'
+$outputPath = Join-Path $PSScriptRoot 'TestCase_HRM_System_Production.xlsx'
+$resultsPath = Join-Path $PSScriptRoot 'production_results.json'
 $runUrl = 'https://github.com/vHozang/BEHRM/actions/runs/30552435520'
 $commitSha = '77a8833b7e00922a75cde2caf8963cb794741f59'
 

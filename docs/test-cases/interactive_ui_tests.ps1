@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $edge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-$outputDir = 'D:\HRM\docs	est-cases\production_ui_evidence'
+$outputDir = Join-Path $PSScriptRoot 'production_ui_evidence'
 $profile = Join-Path $outputDir 'interactive-profile'
 $outputPath = Join-Path $outputDir 'interactive-summary.json'
 $debugPort = 9231

@@ -120,8 +120,12 @@ jobs:
           MINERU_URL: ''
         run: python -m unittest discover -s tests -p 'test_*.py'
 
-      - name: Validate MinerU skill scripts
-        run: bash -n ../docs/resume/mineru-resume-local/scripts/*.sh
+      - name: Validate operational scripts and portable paths
+        run: |
+          bash -n ../docs/operations/deploy/*.sh
+          bash -n ../docs/resume/mineru-resume-local/scripts/*.sh
+          bash ../docs/operations/deploy/tests/runtime-layout-migration.test.sh
+          python -m unittest ../docs/test-cases/test_source_paths.py
 
       - name: Validate resume compose
         run: docker compose config --quiet

@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$path = 'D:\HRM\docs	est-cases\TestCase_HRM_System_Production.xlsx'
+$path = Join-Path $PSScriptRoot 'TestCase_HRM_System_Production.xlsx'
 $excel = New-Object -ComObject Excel.Application
 $excel.Visible = $false
 $excel.DisplayAlerts = $false
