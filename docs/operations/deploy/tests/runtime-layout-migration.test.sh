@@ -32,7 +32,12 @@ printf 'new-upload\n' > "$new/storage/app/private/existing.txt"
 "$MIGRATION_SCRIPT" "$FIXTURE_ROOT"
 
 cmp "$old/.env" "$new/.env"
-test "$(stat -f '%Lp' "$new/.env" 2>/dev/null || stat -c '%a' "$new/.env")" = 600
+if env_mode="$(stat -c '%a' "$new/.env" 2>/dev/null)"; then
+  :
+else
+  env_mode="$(stat -f '%Lp' "$new/.env")"
+fi
+test "$env_mode" = 600
 grep -qx 'new-certificate' "$new/docker/certbot/conf/live/example/fullchain.pem"
 test ! -L "$new/docker/certbot/conf/live/example/fullchain.pem"
 test -f "$new/docker/certbot/conf/archive/example/fullchain1.pem"
