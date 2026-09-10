@@ -14,6 +14,9 @@ mkdir -p "$BACKEND_DIR"
 if [ -f "$LEGACY_BACKEND_DIR/.env" ] && [ ! -e "$BACKEND_DIR/.env" ]; then
   cp -p "$LEGACY_BACKEND_DIR/.env" "$BACKEND_DIR/.env"
   chmod 0600 "$BACKEND_DIR/.env"
+  if [ -n "${MIGRATION_TARGET_UID:-}" ] && [ -n "${MIGRATION_TARGET_GID:-}" ]; then
+    chown "$MIGRATION_TARGET_UID:$MIGRATION_TARGET_GID" "$BACKEND_DIR/.env"
+  fi
 fi
 
 copy_missing_tree() {

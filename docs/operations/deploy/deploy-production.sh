@@ -5,8 +5,6 @@ APP_DIR="${DEPLOY_PATH:-/opt/hrm}"
 BACKEND_DIR="$APP_DIR/BE"
 FRONTEND_DIR="$APP_DIR/FE/dist"
 
-bash "$APP_DIR/docs/operations/deploy/migrate-runtime-layout.sh" "$APP_DIR"
-
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required on the VPS" >&2
   exit 1
@@ -16,6 +14,24 @@ if ! docker compose version >/dev/null 2>&1; then
   echo "Docker Compose v2 is required on the VPS" >&2
   exit 1
 fi
+
+if [ ! -s "$FRONTEND_DIR/index.html" ]; then
+  echo "Missing frontend build at $FRONTEND_DIR/index.html" >&2
+  exit 1
+fi
+
+cd "$BACKEND_DIR"
+docker compose build
+# Certbot archives on an existing VPS can be root-owned. Retry the same
+# copy-only migration inside the freshly built PHP image without changing host
+# permissions, deleting legacy files, or overwriting the new layout.
+# runtime-layout-root-migration
+docker compose run --rm --no-deps --user root \
+  -e MIGRATION_TARGET_UID="$(id -u)" \
+  -e MIGRATION_TARGET_GID="$(id -g)" \
+  -v "$APP_DIR:/opt/hrm" \
+  -w /opt/hrm \
+  php bash /opt/hrm/docs/operations/deploy/migrate-runtime-layout.sh /opt/hrm
 
 if [ ! -f "$BACKEND_DIR/.env" ]; then
   echo "Missing $BACKEND_DIR/.env; create production secrets on the VPS first" >&2
@@ -88,21 +104,6 @@ restore_background_services() {
 }
 trap restore_background_services EXIT
 
-if [ ! -s "$FRONTEND_DIR/index.html" ]; then
-  echo "Missing frontend build at $FRONTEND_DIR/index.html" >&2
-  exit 1
-fi
-
-cd "$BACKEND_DIR"
-docker compose build
-# Certbot archives on an existing VPS can be root-owned. Retry the same
-# copy-only migration inside the freshly built PHP image without changing host
-# permissions, deleting legacy files, or overwriting the new layout.
-# runtime-layout-root-migration
-docker compose run --rm --no-deps --user root \
-  -v "$APP_DIR:/opt/hrm" \
-  -w /opt/hrm \
-  php bash /opt/hrm/docs/operations/deploy/migrate-runtime-layout.sh /opt/hrm
 docker compose up -d postgres redis
 docker compose run --rm --no-deps --user root php composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
