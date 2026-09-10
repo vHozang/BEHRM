@@ -1,0 +1,3187 @@
+[
+  {
+    "id": "TC001",
+    "actual": "GET /health HTTP 200 trong 94 ms; app/database/cache/queue đều có giá trị.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API"
+  },
+  {
+    "id": "TC002",
+    "actual": "GET /api/v1 trả HTTP 200; version=v1; endpoint health/login/me được công bố.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API"
+  },
+  {
+    "id": "TC003",
+    "actual": "Trang / và /careers trả 200 (79/80 ms); 2 JS/CSS production đều tải HTTP 200.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "HTTPS + Edge/headless evidence"
+  },
+  {
+    "id": "TC004",
+    "actual": "CORS preflight HTTP 204; Access-Control-Allow-Origin=https://devtapcode.io.vn. Cùng origin GET API hoạt động.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production preflight"
+  },
+  {
+    "id": "TC005",
+    "actual": "Với phiên hợp lệ, endpoint không tồn tại trả HTTP 404, JSON chuẩn và không lộ stack trace/secret.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production authenticated negative API"
+  },
+  {
+    "id": "TC006",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC007",
+    "actual": "Tài khoản demo Admin nhận bearer token và GET /auth/me trả đúng phiên; token không ghi vào báo cáo.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production authentication"
+  },
+  {
+    "id": "TC008",
+    "actual": "Edge bấm nút demo Employee: chuyển đến https://devtapcode.io.vn/employee-portal; menu quản trị employees hiển thị=False.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Interactive Edge production"
+  },
+  {
+    "id": "TC009",
+    "actual": "4 nút demo production (Admin, Trưởng phòng, HR, Nhân viên) đều đăng nhập API=thành công, nhưng test case yêu cầu thêm Payroll/Kế toán và UI hiện không có nút này.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Edge DOM + production login API"
+  },
+  {
+    "id": "TC010",
+    "actual": "Đăng nhập sai mật khẩu: HTTP 401. Invalid credentials",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production authentication negative"
+  },
+  {
+    "id": "TC011",
+    "actual": "Submit thông tin đăng nhập trống: HTTP 422. The company email field is required. (and 1 more error)",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "API validation + HTML required fields"
+  },
+  {
+    "id": "TC012",
+    "actual": "Đăng nhập tài khoản không tồn tại: HTTP 401. Invalid credentials",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production authentication negative"
+  },
+  {
+    "id": "TC013",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC014",
+    "actual": "GET /auth/me HTTP 200; response có employee, access/modules và tenant_id.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production authentication"
+  },
+  {
+    "id": "TC015",
+    "actual": "POST /auth/refresh HTTP 200; token mới dùng được cho /auth/me.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production authentication"
+  },
+  {
+    "id": "TC016",
+    "actual": "Không token/giả mạo trả lần lượt HTTP 401/401; không trả dữ liệu bảo vệ.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production authentication negative"
+  },
+  {
+    "id": "TC017",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC018",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC019",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC020",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC021",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC022",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC023",
+    "actual": "Danh sách vai trò: HTTP 200.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC024",
+    "actual": "Chi tiết QA roles: HTTP 200 trong 140 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC025",
+    "actual": "Tạo roles HTTP 201; QA id=6, dữ liệu sẽ được xóa sau test.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC026",
+    "actual": "POST role thiếu tên trả 201, tạo role rỗng id=8; DELETE /roles/8 trả 500 nên bản ghi vẫn còn.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production validation + cleanup defect"
+  },
+  {
+    "id": "TC027",
+    "actual": "Tạo role trùng mã/tên trả 201, tạo id=7; DELETE /roles/7 trả 500 nên bản ghi vẫn còn.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production uniqueness + cleanup defect"
+  },
+  {
+    "id": "TC028",
+    "actual": "Cập nhật QA roles: HTTP 200. Roles updated",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC029",
+    "actual": "Vai trò: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC030",
+    "actual": "DELETE các role QA id=6,7,8 đều trả HTTP 500. Ba bản ghi QA chưa thể cleanup qua API production.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Cần sửa DELETE role hoặc xóa thủ công DB trên VPS"
+  },
+  {
+    "id": "TC031",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC032",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC033",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC034",
+    "actual": "Employee gọi trực tiếp module payroll: HTTP 403. Bạn không có quyền truy cập chức năng này",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production RBAC"
+  },
+  {
+    "id": "TC035",
+    "actual": "Employee thử ghi module nhân viên: HTTP 403. Bạn không có quyền truy cập chức năng này",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production RBAC"
+  },
+  {
+    "id": "TC036",
+    "actual": "Employee được đọc danh bạ nhưng response đã loại trường nhạy cảm.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production RBAC/security"
+  },
+  {
+    "id": "TC037",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC038",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC039",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC040",
+    "actual": "Admin tenant thường gọi /platform/tenants trả HTTP 403 (đúng kỳ vọng chặn 403); chưa có tài khoản super admin để kiểm tra nửa còn lại.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Production RBAC partial"
+  },
+  {
+    "id": "TC041",
+    "actual": "GET /dashboard/stats HTTP 200 trong 707 ms; trả KPI/biểu đồ.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production dashboard"
+  },
+  {
+    "id": "TC042",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC043",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC044",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC045",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC046",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC047",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC048",
+    "actual": "Employee Portal production hiển thị đúng hồ sơ cá nhân, trạng thái chấm công hôm nay, số dư phép, lịch sử công và các tác vụ nhanh.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Interactive Edge production"
+  },
+  {
+    "id": "TC049",
+    "actual": "Employee truy cập profile nhân viên ID khác trả HTTP 200; response chứa các trường nhạy cảm: ['base_salary', 'health_insurance_number', 'profile', 'social_insurance_number', 'tax_code']. Self-scope chưa chặn đúng.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production authorization/security"
+  },
+  {
+    "id": "TC050",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC051",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC052",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC053",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC054",
+    "actual": "Danh sách nhân viên: HTTP 200, nhận 3 bản ghi trong 172 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC055",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC056",
+    "actual": "Thiếu họ tên nhân viên: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC057",
+    "actual": "Thiếu email nhân viên: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC058",
+    "actual": "Email nhân viên sai định dạng: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC059",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC060",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC061",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC062",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC063",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC064",
+    "actual": "Lookup nhân viên (268 ms): HTTP 200. Employee lookup",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC065",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC066",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC067",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC068",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC069",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC070",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC071",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC072",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC073",
+    "actual": "Sơ đồ tổ chức (185 ms): HTTP 200. Organization Chart",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC074",
+    "actual": "Danh sách phòng ban: HTTP 200, nhận 3 bản ghi trong 161 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC075",
+    "actual": "Chi tiết QA departments: HTTP 200 trong 176 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC076",
+    "actual": "Tạo departments HTTP 201; QA id=26, dữ liệu sẽ được xóa sau test.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC077",
+    "actual": "Phòng ban thiếu tên: HTTP 422.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC078",
+    "actual": "Tạo trùng departments trả HTTP 422.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC079",
+    "actual": "Cập nhật QA departments: HTTP 200. Departments updated",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC080",
+    "actual": "Phòng ban: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC081",
+    "actual": "Xóa QA departments: HTTP 200. Departments deleted",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD cleanup"
+  },
+  {
+    "id": "TC082",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC083",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC084",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC085",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC086",
+    "actual": "Chi phí phòng ban (138 ms): HTTP 200. Department cost summary",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC087",
+    "actual": "Danh sách chức danh: HTTP 200, nhận 3 bản ghi trong 170 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC088",
+    "actual": "Chi tiết QA positions: HTTP 200 trong 161 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC089",
+    "actual": "Tạo positions HTTP 201; QA id=17, dữ liệu sẽ được xóa sau test.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC090",
+    "actual": "Chức danh thiếu tên: HTTP 422.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC091",
+    "actual": "Tạo trùng positions trả HTTP 422.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC092",
+    "actual": "Cập nhật QA positions: HTTP 200. Positions updated",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC093",
+    "actual": "Chức danh: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC094",
+    "actual": "Xóa QA positions: HTTP 200. Positions deleted",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD cleanup"
+  },
+  {
+    "id": "TC095",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC096",
+    "actual": "Danh sách nhóm chức danh: HTTP 200, nhận 3 bản ghi trong 158 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC097",
+    "actual": "Chi tiết QA job-families: HTTP 200 trong 149 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC098",
+    "actual": "Tạo job-families HTTP 201; QA id=6, dữ liệu sẽ được xóa sau test.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC099",
+    "actual": "Nhóm chức danh thiếu mã/tên: HTTP 422.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC100",
+    "actual": "Tạo trùng job-families trả HTTP 422.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC101",
+    "actual": "Cập nhật QA job-families: HTTP 200. Job Families updated",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC102",
+    "actual": "Nhóm chức danh: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC103",
+    "actual": "Xóa QA job-families: HTTP 200. Job Families deleted",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD cleanup"
+  },
+  {
+    "id": "TC104",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC105",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC106",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC107",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC108",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC109",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC110",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC111",
+    "actual": "Danh sách người phụ thuộc: HTTP 200, nhận 3 bản ghi trong 158 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC112",
+    "actual": "Chi tiết Người phụ thuộc: HTTP 200 trong 154 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC113",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC114",
+    "actual": "Người phụ thuộc thiếu tên/quan hệ: HTTP 201, kỳ vọng 422.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC115",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC116",
+    "actual": "Người phụ thuộc: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC117",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC118",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC119",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC120",
+    "actual": "Quyết định nhân sự thiếu trường: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC121",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC122",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC123",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC124",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC125",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC126",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC127",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC128",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC129",
+    "actual": "Đổi trường profile bị cấm: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC130",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC131",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC132",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC133",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC134",
+    "actual": "Lookup hợp đồng (165 ms): HTTP 200. Contract lookup",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC135",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC136",
+    "actual": "Hợp đồng thiếu employee_id: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC137",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC138",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC139",
+    "actual": "Chi tiết Hợp đồng: HTTP 200 trong 160 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC140",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC141",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC142",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC143",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC144",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC145",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC146",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC147",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC148",
+    "actual": "Danh sách mẫu hợp đồng: HTTP 200, nhận 4 bản ghi trong 141 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC149",
+    "actual": "Chi tiết QA contract-templates: HTTP 200 trong 145 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC150",
+    "actual": "Tạo contract-templates HTTP 201; QA id=5, dữ liệu sẽ được xóa sau test.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC151",
+    "actual": "Mẫu hợp đồng thiếu tên/nội dung: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC152",
+    "actual": "Cập nhật QA contract-templates: HTTP 200. Đã cập nhật mẫu hợp đồng",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC153",
+    "actual": "Mẫu hợp đồng: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC154",
+    "actual": "Xóa QA contract-templates: HTTP 200. Đã xóa mẫu hợp đồng",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD cleanup"
+  },
+  {
+    "id": "TC155",
+    "actual": "Placeholder hợp đồng (138 ms): HTTP 200. Placeholders",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC156",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC157",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC158",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC159",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC160",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC161",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC162",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC163",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC164",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC165",
+    "actual": "POST check-out khi thiếu bản công/employee hợp lệ trả HTTP 422; không tạo dữ liệu chấm công sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production attendance negative API"
+  },
+  {
+    "id": "TC166",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC167",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC168",
+    "actual": "Danh sách chấm công: HTTP 200, nhận 3 bản ghi trong 218 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC169",
+    "actual": "Chi tiết Bản công: HTTP 200 trong 146 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC170",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC171",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC172",
+    "actual": "Đã xác nhận endpoint từ chối ID không tồn tại, nhưng chưa sửa một bản công QA thật để kiểm tra giờ ra trước giờ vào.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần fixture QA/staging đúng nghiệp vụ"
+  },
+  {
+    "id": "TC173",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC174",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC175",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC176",
+    "actual": "Danh sách máy chấm công: HTTP 200, nhận 3 bản ghi trong 134 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC177",
+    "actual": "GET /attendance-devices/{id} trả HTTP 404; route chi tiết đang thiếu.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production API route coverage"
+  },
+  {
+    "id": "TC178",
+    "actual": "Tạo máy chấm công QA HTTP 201, id=4; token không ghi vào báo cáo.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC179",
+    "actual": "Máy chấm công thiếu tên: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC180",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC181",
+    "actual": "Cập nhật máy chấm công QA: HTTP 200. Đã cập nhật thiết bị",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC182",
+    "actual": "Máy chấm công: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC183",
+    "actual": "Xóa máy chấm công QA: HTTP 200. Đã xoá thiết bị",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD cleanup"
+  },
+  {
+    "id": "TC184",
+    "actual": "Rotate token HTTP 200; token mới khác token cũ; giá trị token đã được che.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production device registry"
+  },
+  {
+    "id": "TC185",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC186",
+    "actual": "Token thiết bị cũ sau rotate trả HTTP 403; không ghi punch.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production device security"
+  },
+  {
+    "id": "TC187",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC188",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC189",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC190",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC191",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC192",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC193",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC194",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC195",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC196",
+    "actual": "Điều chỉnh công thiếu dữ liệu: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC197",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC198",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC199",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC200",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC201",
+    "actual": "Bảng công tháng (1877 ms): HTTP 200. Bảng công tháng 2026-07",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC202",
+    "actual": "Timesheet tháng sai định dạng: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC203",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC204",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC205",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC206",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC207",
+    "actual": "Danh sách đơn nghỉ: HTTP 200, nhận 3 bản ghi trong 157 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC208",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC209",
+    "actual": "Ngày nghỉ kết thúc trước bắt đầu: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC210",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC211",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC212",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC213",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC214",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC215",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC216",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC217",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC218",
+    "actual": "Danh sách loại phép: HTTP 200, nhận 3 bản ghi trong 163 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC219",
+    "actual": "Chi tiết QA leave-types: HTTP 200 trong 151 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC220",
+    "actual": "Tạo leave-types HTTP 201; QA id=12, dữ liệu sẽ được xóa sau test.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC221",
+    "actual": "Loại phép thiếu mã/tên: HTTP 201, kỳ vọng 422.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC222",
+    "actual": "Tạo trùng leave-types trả HTTP 201, kỳ vọng 422.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC223",
+    "actual": "Cập nhật QA leave-types: HTTP 200. Leave Types updated",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC224",
+    "actual": "Loại phép: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC225",
+    "actual": "Xóa QA leave-types: HTTP 200. Leave Types deleted",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD cleanup"
+  },
+  {
+    "id": "TC226",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC227",
+    "actual": "Preview ngày lễ VN (139 ms): HTTP 200. Lịch nghỉ lễ chuẩn Việt Nam",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC228",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC229",
+    "actual": "Danh sách loại ca: HTTP 200, nhận 3 bản ghi trong 162 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC230",
+    "actual": "Chi tiết QA shift-types: HTTP 200 trong 136 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC231",
+    "actual": "Tạo shift-types HTTP 201; QA id=6, dữ liệu sẽ được xóa sau test.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC232",
+    "actual": "Loại ca thiếu tên/giờ: HTTP 201, kỳ vọng 422.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC233",
+    "actual": "Tạo trùng shift-types trả HTTP 201, kỳ vọng 422.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC234",
+    "actual": "Cập nhật QA shift-types: HTTP 200. Shift Types updated",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC235",
+    "actual": "Loại ca: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC236",
+    "actual": "Xóa QA shift-types: HTTP 200. Shift Types deleted",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD cleanup"
+  },
+  {
+    "id": "TC237",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC238",
+    "actual": "Danh sách phân ca: HTTP 200, nhận 3 bản ghi trong 166 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC239",
+    "actual": "Chi tiết Phân ca: HTTP 200 trong 161 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC240",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC241",
+    "actual": "Phân ca thiếu nhân viên/ca/ngày: HTTP 201, kỳ vọng validation 4xx. Shift Assignments created",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC242",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC243",
+    "actual": "Phân ca: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC244",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC245",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC246",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC247",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC248",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC249",
+    "actual": "Danh sách tăng ca: HTTP 200, nhận 3 bản ghi trong 151 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC250",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC251",
+    "actual": "Tăng ca thiếu dữ liệu: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC252",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC253",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC254",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC255",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC256",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC257",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC258",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC259",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC260",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC261",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC262",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC263",
+    "actual": "Danh sách kỳ lương: HTTP 200, nhận 3 bản ghi trong 166 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC264",
+    "actual": "Tạo kỳ lương QA HTTP 201, id=44; không chạy tính/chốt lương.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC265",
+    "actual": "Tạo kỳ lương trùng mã: HTTP 422. Dá»¯ liá»‡u khÃ´ng há»£p lá»‡",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC266",
+    "actual": "Kỳ lương OPEN QA cập nhật và xóa đều HTTP 200; cleanup hoàn tất.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC267",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC268",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC269",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC270",
+    "actual": "GET /payroll/run-status yêu cầu salary_period_id; chưa chạy payroll trên production nên không có run an toàn để theo dõi.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần fixture QA/staging đúng nghiệp vụ"
+  },
+  {
+    "id": "TC271",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC272",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC273",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC274",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC275",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC276",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC277",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC278",
+    "actual": "Danh sách thành phần lương: HTTP 200, nhận 3 bản ghi trong 170 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC279",
+    "actual": "Chi tiết QA salary-components: HTTP 200 trong 146 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC280",
+    "actual": "Tạo salary-components HTTP 201; QA id=11, dữ liệu sẽ được xóa sau test.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC281",
+    "actual": "Thành phần lương thiếu trường: HTTP 409; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC282",
+    "actual": "Tạo trùng salary-components trả HTTP 409, kỳ vọng 422.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC283",
+    "actual": "Cập nhật QA salary-components: HTTP 200. Salary Components updated",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC284",
+    "actual": "Thành phần lương: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC285",
+    "actual": "Xóa QA salary-components: HTTP 200. Salary Components deleted",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD cleanup"
+  },
+  {
+    "id": "TC286",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC287",
+    "actual": "Salary detail thiếu dữ liệu: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC288",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC289",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC290",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC291",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC292",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC293",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC294",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC295",
+    "actual": "Công khoán số âm: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC296",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC297",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC298",
+    "actual": "Danh sách tin tuyển dụng nội bộ: HTTP 200, nhận 3 bản ghi trong 158 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC299",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC300",
+    "actual": "Tin tuyển dụng thiếu tiêu đề/JD: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC301",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC302",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC303",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC304",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC305",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC306",
+    "actual": "GET public recruitment posts HTTP 200; trả 3 tin published để landing hiển thị.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production public API + Edge"
+  },
+  {
+    "id": "TC307",
+    "actual": "Edge bấm 'Chi tiết': popup role=dialog mở, có JD/yêu cầu/kỹ năng/quyền lợi, có nút đóng và vùng cuộn.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Interactive Edge production"
+  },
+  {
+    "id": "TC308",
+    "actual": "Slug thật/sai trả HTTP 200/404.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production public API"
+  },
+  {
+    "id": "TC309",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC310",
+    "actual": "Submit JSON thiếu CV trả HTTP 201 và có thể tạo ứng viên qua legacy route; kỳ vọng 422.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production public API negative"
+  },
+  {
+    "id": "TC311",
+    "actual": "Nộp file CV sai định dạng: HTTP 422. Dữ liệu không hợp lệ",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production public API negative"
+  },
+  {
+    "id": "TC312",
+    "actual": "Nộp CV vào slug không tồn tại: HTTP 404. Tin tuyển dụng không tồn tại hoặc đã đóng",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production public API negative"
+  },
+  {
+    "id": "TC313",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC314",
+    "actual": "Form ứng tuyển production mở và nhận .pdf/.doc/.docx=True; chưa mô phỏng kéo-thả/thay file bằng browser automation.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Interactive Edge partial evidence"
+  },
+  {
+    "id": "TC315",
+    "actual": "Edge mobile 320px: viewport=320, document scrollWidth=320, hiển thị 3 tin; không tràn ngang.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Interactive Edge production"
+  },
+  {
+    "id": "TC316",
+    "actual": "Danh sách ứng viên/Kanban: HTTP 200, nhận 3 bản ghi trong 169 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC317",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC318",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC319",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC320",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC321",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC322",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC323",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC324",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC325",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC326",
+    "actual": "Đã xác nhận candidate ID không tồn tại trả 404, nhưng chưa có ứng viên QA an toàn để kiểm tra manager score <0/>100.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần fixture QA/staging đúng nghiệp vụ"
+  },
+  {
+    "id": "TC327",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC328",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC329",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC330",
+    "actual": "Thống kê feedback AI (20218 ms): HTTP 200. Không thể lấy thống kê feedback AI",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC331",
+    "actual": "Cả 2 địa chỉ resume-backend Tailscale không trả /health trong timeout 5 giây từ máy kiểm thử; chưa thể xác nhận VPS kết nối được.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Bounded local reachability"
+  },
+  {
+    "id": "TC332",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC333",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC334",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC335",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC336",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC337",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC338",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC339",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC340",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC341",
+    "actual": "Danh sách phỏng vấn: HTTP 200, nhận 0 bản ghi trong 160 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC342",
+    "actual": "Không có bản ghi production để kiểm tra chi tiết Lịch phỏng vấn mà không tạo dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Production read-only"
+  },
+  {
+    "id": "TC343",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC344",
+    "actual": "Phỏng vấn thiếu ứng viên/thời gian: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC345",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC346",
+    "actual": "Phỏng vấn: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC347",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC348",
+    "actual": "Payload bị chặn bởi candidate_id không tồn tại trước khi kiểm tra quy tắc lịch phỏng vấn ở quá khứ.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần fixture QA/staging đúng nghiệp vụ"
+  },
+  {
+    "id": "TC349",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC350",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC351",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC352",
+    "actual": "Danh sách onboarding: HTTP 200, nhận 0 bản ghi trong 151 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC353",
+    "actual": "Checklist thiếu employee_id: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC354",
+    "actual": "Checklist ID không tồn tại trả 404 trước khi kiểm tra validation title của task.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần fixture QA/staging đúng nghiệp vụ"
+  },
+  {
+    "id": "TC355",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC356",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC357",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC358",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC359",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC360",
+    "actual": "Danh sách tài sản: HTTP 200, nhận 3 bản ghi trong 177 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC361",
+    "actual": "Chi tiết QA assets: HTTP 200 trong 167 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC362",
+    "actual": "Tạo assets HTTP 201; QA id=10, dữ liệu sẽ được xóa sau test.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC363",
+    "actual": "Tài sản thiếu mã/tên: HTTP 201, kỳ vọng 422.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC364",
+    "actual": "Tạo trùng assets trả HTTP 201, kỳ vọng 422.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC365",
+    "actual": "Cập nhật QA assets: HTTP 200. Assets updated",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC366",
+    "actual": "Tài sản: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC367",
+    "actual": "Xóa QA assets: HTTP 200. Assets deleted",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD cleanup"
+  },
+  {
+    "id": "TC368",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC369",
+    "actual": "Danh sách bàn giao: HTTP 200, nhận 3 bản ghi trong 201 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC370",
+    "actual": "Chi tiết Bàn giao tài sản: HTTP 200 trong 147 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC371",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC372",
+    "actual": "Bàn giao thiếu trường: HTTP 201, kỳ vọng validation 4xx. Asset Assignments created",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC373",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC374",
+    "actual": "Bàn giao: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC375",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC376",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC377",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC378",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC379",
+    "actual": "Danh sách tin tức: HTTP 200, nhận 3 bản ghi trong 160 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC380",
+    "actual": "Chi tiết QA news: HTTP 200 trong 155 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC381",
+    "actual": "Tạo news HTTP 201; QA id=8, dữ liệu sẽ được xóa sau test.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC382",
+    "actual": "Tin tức thiếu tiêu đề/nội dung: HTTP 201, kỳ vọng 422.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC383",
+    "actual": "Cập nhật QA news: HTTP 200. News updated",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC384",
+    "actual": "Tin tức: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC385",
+    "actual": "Xóa QA news: HTTP 200. News deleted",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD cleanup"
+  },
+  {
+    "id": "TC386",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC387",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC388",
+    "actual": "Danh sách chính sách: HTTP 200, nhận 3 bản ghi trong 156 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC389",
+    "actual": "Chi tiết QA policies: HTTP 200 trong 147 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC390",
+    "actual": "Tạo policies HTTP 201; QA id=6, dữ liệu sẽ được xóa sau test.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC391",
+    "actual": "Chính sách thiếu tiêu đề/nội dung: HTTP 201, kỳ vọng 422.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC392",
+    "actual": "Cập nhật QA policies: HTTP 200. Policies updated",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC393",
+    "actual": "Chính sách: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC394",
+    "actual": "Xóa QA policies: HTTP 200. Policies deleted",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD cleanup"
+  },
+  {
+    "id": "TC395",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC396",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC397",
+    "actual": "Danh sách thông báo: HTTP 200, nhận 2 bản ghi trong 154 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC398",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC399",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC400",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC401",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC402",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC403",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC404",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC405",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC406",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC407",
+    "actual": "Danh sách yêu cầu: HTTP 200, nhận 3 bản ghi trong 164 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC408",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC409",
+    "actual": "Yêu cầu sai loại: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC410",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC411",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC412",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC413",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC414",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC415",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC416",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC417",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC418",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC419",
+    "actual": "Sinh báo cáo headcount HTTP 200; trả 16 dòng.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production report; history cleanup"
+  },
+  {
+    "id": "TC420",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC421",
+    "actual": "Report type/payload bất thường: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC422",
+    "actual": "POST /ai/ask HTTP 200; response có cấu trúc answer/configured, configured=False. Nội dung không ghi vào báo cáo.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production AI endpoint"
+  },
+  {
+    "id": "TC423",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC424",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC425",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC426",
+    "actual": "Catalog cấu hình (209 ms): HTTP 200. Settings catalog",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC427",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC428",
+    "actual": "Payload cấu hình sai kiểu trả HTTP 200 thay vì 422; saved=[]. Không có key nào được lưu trong lần kiểm tra này.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative configuration API"
+  },
+  {
+    "id": "TC429",
+    "actual": "Cài đặt general (148 ms): HTTP 200. Settings list",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC430",
+    "actual": "Activity log (132 ms): HTTP 200. Activity logs list",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC431",
+    "actual": "Audit log (138 ms): HTTP 200. Audit logs list",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC432",
+    "actual": "Employee xem audit log: HTTP 403. Bạn không có quyền truy cập chức năng này",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production RBAC"
+  },
+  {
+    "id": "TC433",
+    "actual": "Danh sách pháp nhân: HTTP 200, nhận 3 bản ghi trong 166 ms.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC434",
+    "actual": "Chi tiết QA legal-entities: HTTP 200 trong 150 ms, trả dữ liệu chi tiết.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production API read-only"
+  },
+  {
+    "id": "TC435",
+    "actual": "Tạo legal-entities HTTP 201; QA id=4, dữ liệu sẽ được xóa sau test.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC436",
+    "actual": "Pháp nhân thiếu tên: HTTP 422; không tạo/cập nhật dữ liệu sai.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC437",
+    "actual": "Tạo trùng legal-entities trả HTTP 409, kỳ vọng 422.",
+    "test_date": "2026-07-30",
+    "result": "Fail",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC438",
+    "actual": "Cập nhật QA legal-entities: HTTP 200. Công ty/pháp nhân đã được cập nhật",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD"
+  },
+  {
+    "id": "TC439",
+    "actual": "Pháp nhân: GET/PATCH ID không tồn tại trả [404, 404], không lộ dữ liệu.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production negative API"
+  },
+  {
+    "id": "TC440",
+    "actual": "Xóa QA legal-entities: HTTP 200. Công ty/pháp nhân đã được xóa",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production reversible CRUD cleanup"
+  },
+  {
+    "id": "TC441",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC442",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC443",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC444",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC445",
+    "actual": "Admin tenant thường gọi Platform API trả HTTP 403.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Production RBAC"
+  },
+  {
+    "id": "TC446",
+    "actual": "Employee ở viewport 390px được chuyển đến https://devtapcode.io.vn/m (đúng); chưa kiểm tra nhánh Admin giữ desktop trong cùng phiên.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Interactive Edge partial"
+  },
+  {
+    "id": "TC447",
+    "actual": "Sau khi đặt prefer_desktop ở viewport 390px, URL=https://devtapcode.io.vn/employee-portal, scrollWidth/width=390/390.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Interactive Edge production"
+  },
+  {
+    "id": "TC448",
+    "actual": "Trang /m tải ở 390px, textLength=261, scrollWidth/width=390/390.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Interactive Edge production"
+  },
+  {
+    "id": "TC449",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC450",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC451",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC452",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC453",
+    "actual": "Mở /m chưa đăng nhập chuyển đến https://devtapcode.io.vn/login và hiện form đăng nhập.",
+    "test_date": "2026-07-30",
+    "result": "Pass",
+    "note": "Interactive Edge production"
+  },
+  {
+    "id": "TC454",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  },
+  {
+    "id": "TC455",
+    "actual": "Chưa thực thi trực tiếp trên production: case cần dữ liệu fixture chuyên biệt, thao tác có thể ảnh hưởng dữ liệu thật, thiết bị/dịch vụ ngoài hệ thống, hoặc kiểm thử tải/đồng thời.",
+    "test_date": "2026-07-30",
+    "result": "Pending",
+    "note": "Cần chạy trên staging cô lập hoặc có thiết bị/tài khoản/fixture phù hợp."
+  }
+]

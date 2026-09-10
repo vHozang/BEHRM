@@ -13,6 +13,9 @@ jobs:
   frontend:
     name: Frontend checks
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FE
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,7 +25,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: FE/package-lock.json
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
@@ -59,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: Doan2_v2/Doan2
+        working-directory: BE
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -79,7 +82,7 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Audit frontend/backend endpoint contracts
-        run: node ../../scripts/audit-endpoints.mjs
+        run: node ../FE/scripts/audit-endpoints.mjs
 
       - name: Run Laravel tests
         env:
@@ -97,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: AutoRecruit-main
+        working-directory: ai
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -107,7 +110,7 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-          cache-dependency-path: AutoRecruit-main/app/requirements.txt
+          cache-dependency-path: ai/app/requirements.txt
 
       - name: Install dependencies
         run: pip install --disable-pip-version-check -r app/requirements.txt

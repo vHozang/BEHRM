@@ -1,0 +1,1859 @@
+[
+  {
+    "method": "GET",
+    "path": "/",
+    "status": 200,
+    "duration_ms": 180,
+    "message": "HRM API is running"
+  },
+  {
+    "method": "GET",
+    "path": "/health",
+    "status": 200,
+    "duration_ms": 94,
+    "message": "HRM API is healthy"
+  },
+  {
+    "method": "OPTIONS",
+    "path": "/health",
+    "status": 204,
+    "duration_ms": 88,
+    "message": ""
+  },
+  {
+    "method": "GET",
+    "path": "/endpoint-khong-ton-tai-codex",
+    "status": 401,
+    "duration_ms": 87,
+    "message": "Unauthenticated"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "status": 200,
+    "duration_ms": 462,
+    "message": "Login successful"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "status": 200,
+    "duration_ms": 142,
+    "message": "Authenticated employee"
+  },
+  {
+    "role_login": "admin",
+    "status": 200,
+    "token_stored": true
+  },
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "status": 200,
+    "duration_ms": 408,
+    "message": "Login successful"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "status": 200,
+    "duration_ms": 133,
+    "message": "Authenticated employee"
+  },
+  {
+    "role_login": "manager",
+    "status": 200,
+    "token_stored": true
+  },
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "status": 200,
+    "duration_ms": 495,
+    "message": "Login successful"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "status": 200,
+    "duration_ms": 133,
+    "message": "Authenticated employee"
+  },
+  {
+    "role_login": "hr",
+    "status": 200,
+    "token_stored": true
+  },
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "status": 200,
+    "duration_ms": 445,
+    "message": "Login successful"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "status": 200,
+    "duration_ms": 158,
+    "message": "Authenticated employee"
+  },
+  {
+    "role_login": "employee",
+    "status": 200,
+    "token_stored": true
+  },
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "status": 401,
+    "duration_ms": 409,
+    "message": "Invalid credentials"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "status": 422,
+    "duration_ms": 139,
+    "message": "The company email field is required. (and 1 more error)"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "status": 401,
+    "duration_ms": 127,
+    "message": "Invalid credentials"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "status": 200,
+    "duration_ms": 149,
+    "message": "Authenticated employee"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/refresh",
+    "status": 200,
+    "duration_ms": 160,
+    "message": "Token refreshed"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "status": 200,
+    "duration_ms": 141,
+    "message": "Authenticated employee"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "status": 401,
+    "duration_ms": 102,
+    "message": "Unauthenticated"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "status": 401,
+    "duration_ms": 121,
+    "message": "Invalid or expired token"
+  },
+  {
+    "method": "GET",
+    "path": "/roles?per_page=5",
+    "status": 200,
+    "duration_ms": 191,
+    "message": "Roles list"
+  },
+  {
+    "method": "GET",
+    "path": "/salary-periods?per_page=1",
+    "status": 403,
+    "duration_ms": 149,
+    "message": "Bạn không có quyền truy cập chức năng này"
+  },
+  {
+    "method": "POST",
+    "path": "/employees",
+    "status": 403,
+    "duration_ms": 149,
+    "message": "Bạn không có quyền truy cập chức năng này"
+  },
+  {
+    "method": "GET",
+    "path": "/employees?per_page=1",
+    "status": 200,
+    "duration_ms": 186,
+    "message": "Employees list"
+  },
+  {
+    "method": "GET",
+    "path": "/dashboard/stats",
+    "status": 200,
+    "duration_ms": 707,
+    "message": "Dashboard statistics"
+  },
+  {
+    "method": "GET",
+    "path": "/platform/tenants",
+    "status": 403,
+    "duration_ms": 148,
+    "message": "Forbidden — super admin only"
+  },
+  {
+    "method": "GET",
+    "path": "/employees?per_page=3",
+    "status": 200,
+    "duration_ms": 172,
+    "message": "Employees list"
+  },
+  {
+    "method": "GET",
+    "path": "/departments?per_page=3",
+    "status": 200,
+    "duration_ms": 161,
+    "message": "Departments list"
+  },
+  {
+    "method": "GET",
+    "path": "/positions?per_page=3",
+    "status": 200,
+    "duration_ms": 170,
+    "message": "Positions list"
+  },
+  {
+    "method": "GET",
+    "path": "/job-families?per_page=3",
+    "status": 200,
+    "duration_ms": 158,
+    "message": "Job Families list"
+  },
+  {
+    "method": "GET",
+    "path": "/dependents?per_page=3",
+    "status": 200,
+    "duration_ms": 158,
+    "message": "Dependents list"
+  },
+  {
+    "method": "GET",
+    "path": "/contracts?per_page=3",
+    "status": 200,
+    "duration_ms": 156,
+    "message": "Contracts list"
+  },
+  {
+    "method": "GET",
+    "path": "/contract-templates?per_page=3",
+    "status": 200,
+    "duration_ms": 141,
+    "message": "Contract templates"
+  },
+  {
+    "method": "GET",
+    "path": "/attendances?per_page=3",
+    "status": 200,
+    "duration_ms": 218,
+    "message": "Attendances list"
+  },
+  {
+    "method": "GET",
+    "path": "/attendance-devices?per_page=3",
+    "status": 200,
+    "duration_ms": 134,
+    "message": "Danh sách máy chấm công"
+  },
+  {
+    "method": "GET",
+    "path": "/leave-requests?per_page=3",
+    "status": 200,
+    "duration_ms": 157,
+    "message": "Leave requests list"
+  },
+  {
+    "method": "GET",
+    "path": "/leave-types?per_page=3",
+    "status": 200,
+    "duration_ms": 163,
+    "message": "Leave Types list"
+  },
+  {
+    "method": "GET",
+    "path": "/shift-types?per_page=3",
+    "status": 200,
+    "duration_ms": 162,
+    "message": "Shift Types list"
+  },
+  {
+    "method": "GET",
+    "path": "/shift-assignments?per_page=3",
+    "status": 200,
+    "duration_ms": 166,
+    "message": "Shift Assignments list"
+  },
+  {
+    "method": "GET",
+    "path": "/overtime-requests?per_page=3",
+    "status": 200,
+    "duration_ms": 151,
+    "message": "Overtime requests list"
+  },
+  {
+    "method": "GET",
+    "path": "/salary-periods?per_page=3",
+    "status": 200,
+    "duration_ms": 166,
+    "message": "Salary periods list"
+  },
+  {
+    "method": "GET",
+    "path": "/salary-components?per_page=3",
+    "status": 200,
+    "duration_ms": 170,
+    "message": "Salary Components list"
+  },
+  {
+    "method": "GET",
+    "path": "/recruitment-posts?per_page=3",
+    "status": 200,
+    "duration_ms": 158,
+    "message": "Danh sách bài đăng tuyển dụng"
+  },
+  {
+    "method": "GET",
+    "path": "/recruitment-candidates?per_page=3",
+    "status": 200,
+    "duration_ms": 169,
+    "message": "Recruitment candidates list"
+  },
+  {
+    "method": "GET",
+    "path": "/interviews?per_page=3",
+    "status": 200,
+    "duration_ms": 160,
+    "message": "Interview schedules list"
+  },
+  {
+    "method": "GET",
+    "path": "/onboarding-checklists?per_page=3",
+    "status": 200,
+    "duration_ms": 151,
+    "message": "Onboarding checklists list"
+  },
+  {
+    "method": "GET",
+    "path": "/assets?per_page=3",
+    "status": 200,
+    "duration_ms": 177,
+    "message": "Assets list"
+  },
+  {
+    "method": "GET",
+    "path": "/asset-assignments?per_page=3",
+    "status": 200,
+    "duration_ms": 201,
+    "message": "Asset Assignments list"
+  },
+  {
+    "method": "GET",
+    "path": "/news?per_page=3",
+    "status": 200,
+    "duration_ms": 160,
+    "message": "News list"
+  },
+  {
+    "method": "GET",
+    "path": "/policies?per_page=3",
+    "status": 200,
+    "duration_ms": 156,
+    "message": "Policies list"
+  },
+  {
+    "method": "GET",
+    "path": "/notifications?per_page=3",
+    "status": 200,
+    "duration_ms": 154,
+    "message": "Thông báo"
+  },
+  {
+    "method": "GET",
+    "path": "/requests?per_page=3",
+    "status": 200,
+    "duration_ms": 164,
+    "message": "Requests list"
+  },
+  {
+    "method": "GET",
+    "path": "/legal-entities?per_page=3",
+    "status": 200,
+    "duration_ms": 166,
+    "message": "Legal entities list"
+  },
+  {
+    "method": "GET",
+    "path": "/roles?per_page=1",
+    "status": 200,
+    "duration_ms": 169,
+    "message": "Roles list"
+  },
+  {
+    "method": "GET",
+    "path": "/roles/5",
+    "status": 200,
+    "duration_ms": 157,
+    "message": "Roles detail"
+  },
+  {
+    "method": "GET",
+    "path": "/departments/25",
+    "status": 200,
+    "duration_ms": 154,
+    "message": "Departments detail"
+  },
+  {
+    "method": "GET",
+    "path": "/positions/16",
+    "status": 200,
+    "duration_ms": 143,
+    "message": "Positions detail"
+  },
+  {
+    "method": "GET",
+    "path": "/job-families/5",
+    "status": 200,
+    "duration_ms": 143,
+    "message": "Job Families detail"
+  },
+  {
+    "method": "GET",
+    "path": "/dependents/1956",
+    "status": 200,
+    "duration_ms": 154,
+    "message": "Dependents detail"
+  },
+  {
+    "method": "GET",
+    "path": "/contracts/1229",
+    "status": 200,
+    "duration_ms": 160,
+    "message": "Contract detail"
+  },
+  {
+    "method": "GET",
+    "path": "/contract-templates/4",
+    "status": 200,
+    "duration_ms": 138,
+    "message": "Template"
+  },
+  {
+    "method": "GET",
+    "path": "/attendances/432097",
+    "status": 200,
+    "duration_ms": 146,
+    "message": "Attendance detail"
+  },
+  {
+    "method": "GET",
+    "path": "/leave-types/10",
+    "status": 200,
+    "duration_ms": 162,
+    "message": "Leave Types detail"
+  },
+  {
+    "method": "GET",
+    "path": "/shift-types/4",
+    "status": 200,
+    "duration_ms": 177,
+    "message": "Shift Types detail"
+  },
+  {
+    "method": "GET",
+    "path": "/shift-assignments/1222",
+    "status": 200,
+    "duration_ms": 161,
+    "message": "Shift Assignments detail"
+  },
+  {
+    "method": "GET",
+    "path": "/salary-components/9",
+    "status": 200,
+    "duration_ms": 159,
+    "message": "Salary Components detail"
+  },
+  {
+    "method": "GET",
+    "path": "/interviews?per_page=1",
+    "status": 200,
+    "duration_ms": 135,
+    "message": "Interview schedules list"
+  },
+  {
+    "method": "GET",
+    "path": "/assets/8",
+    "status": 200,
+    "duration_ms": 153,
+    "message": "Assets detail"
+  },
+  {
+    "method": "GET",
+    "path": "/asset-assignments/5",
+    "status": 200,
+    "duration_ms": 147,
+    "message": "Asset Assignments detail"
+  },
+  {
+    "method": "GET",
+    "path": "/news/6",
+    "status": 200,
+    "duration_ms": 149,
+    "message": "News detail"
+  },
+  {
+    "method": "GET",
+    "path": "/policies/4",
+    "status": 200,
+    "duration_ms": 157,
+    "message": "Policies detail"
+  },
+  {
+    "method": "GET",
+    "path": "/legal-entities/3",
+    "status": 200,
+    "duration_ms": 146,
+    "message": "Legal entity detail"
+  },
+  {
+    "method": "GET",
+    "path": "/roles/999999999",
+    "status": 404,
+    "duration_ms": 151,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/roles/999999999",
+    "status": 404,
+    "duration_ms": 155,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/departments/999999999",
+    "status": 404,
+    "duration_ms": 152,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/departments/999999999",
+    "status": 404,
+    "duration_ms": 161,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/positions/999999999",
+    "status": 404,
+    "duration_ms": 154,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/positions/999999999",
+    "status": 404,
+    "duration_ms": 172,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/job-families/999999999",
+    "status": 404,
+    "duration_ms": 146,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/job-families/999999999",
+    "status": 404,
+    "duration_ms": 189,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/dependents/999999999",
+    "status": 404,
+    "duration_ms": 150,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/dependents/999999999",
+    "status": 404,
+    "duration_ms": 169,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/contract-templates/999999999",
+    "status": 404,
+    "duration_ms": 126,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/contract-templates/999999999",
+    "status": 404,
+    "duration_ms": 131,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/attendance-devices/999999999",
+    "status": 404,
+    "duration_ms": 138,
+    "message": "Resource not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/attendance-devices/999999999",
+    "status": 404,
+    "duration_ms": 134,
+    "message": "Không tìm thấy thiết bị"
+  },
+  {
+    "method": "GET",
+    "path": "/leave-types/999999999",
+    "status": 404,
+    "duration_ms": 150,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/leave-types/999999999",
+    "status": 404,
+    "duration_ms": 161,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/shift-types/999999999",
+    "status": 404,
+    "duration_ms": 157,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/shift-types/999999999",
+    "status": 404,
+    "duration_ms": 168,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/shift-assignments/999999999",
+    "status": 404,
+    "duration_ms": 147,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/shift-assignments/999999999",
+    "status": 404,
+    "duration_ms": 261,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/salary-components/999999999",
+    "status": 404,
+    "duration_ms": 137,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/salary-components/999999999",
+    "status": 404,
+    "duration_ms": 1182,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/interviews/999999999",
+    "status": 404,
+    "duration_ms": 129,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/interviews/999999999",
+    "status": 404,
+    "duration_ms": 137,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/assets/999999999",
+    "status": 404,
+    "duration_ms": 141,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/assets/999999999",
+    "status": 404,
+    "duration_ms": 154,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/asset-assignments/999999999",
+    "status": 404,
+    "duration_ms": 139,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/asset-assignments/999999999",
+    "status": 404,
+    "duration_ms": 156,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/news/999999999",
+    "status": 404,
+    "duration_ms": 155,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/news/999999999",
+    "status": 404,
+    "duration_ms": 149,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/policies/999999999",
+    "status": 404,
+    "duration_ms": 139,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/policies/999999999",
+    "status": 404,
+    "duration_ms": 153,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/legal-entities/999999999",
+    "status": 404,
+    "duration_ms": 139,
+    "message": "Record not found"
+  },
+  {
+    "method": "PATCH",
+    "path": "/legal-entities/999999999",
+    "status": 404,
+    "duration_ms": 170,
+    "message": "Record not found"
+  },
+  {
+    "method": "GET",
+    "path": "/attendance-devices/3",
+    "status": 404,
+    "duration_ms": 131,
+    "message": "Resource not found"
+  },
+  {
+    "method": "GET",
+    "path": "/employees/lookup?search=CODEX_QA_1785423826_778433",
+    "status": 200,
+    "duration_ms": 268,
+    "message": "Employee lookup"
+  },
+  {
+    "method": "GET",
+    "path": "/employees/org-chart",
+    "status": 200,
+    "duration_ms": 185,
+    "message": "Organization Chart"
+  },
+  {
+    "method": "GET",
+    "path": "/departments/cost-summary",
+    "status": 200,
+    "duration_ms": 138,
+    "message": "Department cost summary"
+  },
+  {
+    "method": "GET",
+    "path": "/contracts/lookup",
+    "status": 200,
+    "duration_ms": 165,
+    "message": "Contract lookup"
+  },
+  {
+    "method": "GET",
+    "path": "/contract-templates/placeholders",
+    "status": 200,
+    "duration_ms": 138,
+    "message": "Placeholders"
+  },
+  {
+    "method": "GET",
+    "path": "/attendance/timesheet?month=2026-07",
+    "status": 200,
+    "duration_ms": 1877,
+    "message": "Bảng công tháng 2026-07"
+  },
+  {
+    "method": "GET",
+    "path": "/holidays/statutory-preview?year=2026",
+    "status": 200,
+    "duration_ms": 139,
+    "message": "Lịch nghỉ lễ chuẩn Việt Nam"
+  },
+  {
+    "method": "GET",
+    "path": "/payroll/run-status",
+    "status": 422,
+    "duration_ms": 132,
+    "message": "Dá»¯ liá»‡u khÃ´ng há»£p lá»‡"
+  },
+  {
+    "method": "GET",
+    "path": "/recruitment-ai/feedback-stats",
+    "status": 200,
+    "duration_ms": 20218,
+    "message": "Không thể lấy thống kê feedback AI"
+  },
+  {
+    "method": "GET",
+    "path": "/settings/catalog",
+    "status": 200,
+    "duration_ms": 209,
+    "message": "Settings catalog"
+  },
+  {
+    "method": "GET",
+    "path": "/settings/general",
+    "status": 200,
+    "duration_ms": 148,
+    "message": "Settings list"
+  },
+  {
+    "method": "GET",
+    "path": "/activity-logs?per_page=5",
+    "status": 200,
+    "duration_ms": 132,
+    "message": "Activity logs list"
+  },
+  {
+    "method": "GET",
+    "path": "/audit-logs?per_page=5",
+    "status": 200,
+    "duration_ms": 138,
+    "message": "Audit logs list"
+  },
+  {
+    "method": "GET",
+    "path": "/audit-logs?per_page=1",
+    "status": 403,
+    "duration_ms": 140,
+    "message": "Bạn không có quyền truy cập chức năng này"
+  },
+  {
+    "method": "POST",
+    "path": "/employees",
+    "status": 422,
+    "duration_ms": 148,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/employees",
+    "status": 422,
+    "duration_ms": 137,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/employees",
+    "status": 422,
+    "duration_ms": 136,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/personnel-decisions",
+    "status": 422,
+    "duration_ms": 133,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/profile-change-requests",
+    "status": 422,
+    "duration_ms": 140,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/contracts",
+    "status": 422,
+    "duration_ms": 147,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/contract-templates",
+    "status": 422,
+    "duration_ms": 135,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "PATCH",
+    "path": "/attendances/check-out",
+    "status": 405,
+    "duration_ms": 100,
+    "message": "The PATCH method is not supported for route api/v1/attendances/check-out. Supported methods: POST."
+  },
+  {
+    "method": "PATCH",
+    "path": "/attendances/999999999",
+    "status": 404,
+    "duration_ms": 140,
+    "message": "Record not found"
+  },
+  {
+    "method": "POST",
+    "path": "/attendance-devices",
+    "status": 422,
+    "duration_ms": 141,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/internal/attendance/device-punch",
+    "status": 403,
+    "duration_ms": 88,
+    "message": "Thiếu device token hoặc internal token hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/attendance-adjustments",
+    "status": 422,
+    "duration_ms": 160,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "GET",
+    "path": "/attendance/timesheet?month=bad-month",
+    "status": 422,
+    "duration_ms": 142,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/leave-requests",
+    "status": 422,
+    "duration_ms": 144,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/shift-assignments",
+    "status": 201,
+    "duration_ms": 163,
+    "message": "Shift Assignments created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/shift-assignments/1223",
+    "status": 200,
+    "duration_ms": 152,
+    "message": "Shift Assignments deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/overtime-requests",
+    "status": 422,
+    "duration_ms": 137,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/salary-periods",
+    "status": 422,
+    "duration_ms": 133,
+    "message": "Dá»¯ liá»‡u khÃ´ng há»£p lá»‡"
+  },
+  {
+    "method": "POST",
+    "path": "/salary-components",
+    "status": 409,
+    "duration_ms": 151,
+    "message": "Dữ liệu vi phạm ràng buộc (trùng lặp hoặc liên kết không hợp lệ)"
+  },
+  {
+    "method": "POST",
+    "path": "/salary-details",
+    "status": 422,
+    "duration_ms": 137,
+    "message": "Dá»¯ liá»‡u khÃ´ng há»£p lá»‡"
+  },
+  {
+    "method": "POST",
+    "path": "/piece-rate-entries",
+    "status": 422,
+    "duration_ms": 131,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/recruitment-posts",
+    "status": 422,
+    "duration_ms": 145,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "PATCH",
+    "path": "/recruitment-candidates/999999999/manager-review",
+    "status": 404,
+    "duration_ms": 137,
+    "message": "Record not found"
+  },
+  {
+    "method": "POST",
+    "path": "/interviews",
+    "status": 422,
+    "duration_ms": 132,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/interviews",
+    "status": 422,
+    "duration_ms": 134,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/onboarding-checklists",
+    "status": 422,
+    "duration_ms": 129,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/onboarding-checklists/999999999/tasks",
+    "status": 404,
+    "duration_ms": 190,
+    "message": "Record not found"
+  },
+  {
+    "method": "POST",
+    "path": "/asset-assignments",
+    "status": 201,
+    "duration_ms": 154,
+    "message": "Asset Assignments created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/asset-assignments/6",
+    "status": 200,
+    "duration_ms": 153,
+    "message": "Asset Assignments deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/requests",
+    "status": 422,
+    "duration_ms": 142,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/reports/generate",
+    "status": 422,
+    "duration_ms": 127,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/settings/save",
+    "status": 200,
+    "duration_ms": 130,
+    "message": "Đã lưu cấu hình"
+  },
+  {
+    "method": "POST",
+    "path": "/legal-entities",
+    "status": 422,
+    "duration_ms": 133,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/roles",
+    "status": 201,
+    "duration_ms": 179,
+    "message": "Roles created"
+  },
+  {
+    "method": "GET",
+    "path": "/roles/6",
+    "status": 200,
+    "duration_ms": 140,
+    "message": "Roles detail"
+  },
+  {
+    "method": "PATCH",
+    "path": "/roles/6",
+    "status": 200,
+    "duration_ms": 149,
+    "message": "Roles updated"
+  },
+  {
+    "method": "POST",
+    "path": "/roles",
+    "status": 201,
+    "duration_ms": 176,
+    "message": "Roles created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/roles/7",
+    "status": 500,
+    "duration_ms": 167,
+    "message": "Server Error"
+  },
+  {
+    "method": "DELETE",
+    "path": "/roles/6",
+    "status": 500,
+    "duration_ms": 155,
+    "message": "Server Error"
+  },
+  {
+    "method": "POST",
+    "path": "/roles",
+    "status": 201,
+    "duration_ms": 161,
+    "message": "Roles created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/roles/8",
+    "status": 500,
+    "duration_ms": 157,
+    "message": "Server Error"
+  },
+  {
+    "method": "POST",
+    "path": "/departments",
+    "status": 422,
+    "duration_ms": 154,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/positions",
+    "status": 422,
+    "duration_ms": 154,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/job-families",
+    "status": 422,
+    "duration_ms": 147,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/dependents",
+    "status": 201,
+    "duration_ms": 160,
+    "message": "Dependents created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/dependents/1957",
+    "status": 200,
+    "duration_ms": 170,
+    "message": "Dependents deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/leave-types",
+    "status": 201,
+    "duration_ms": 180,
+    "message": "Leave Types created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/leave-types/11",
+    "status": 200,
+    "duration_ms": 172,
+    "message": "Leave Types deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/shift-types",
+    "status": 201,
+    "duration_ms": 174,
+    "message": "Shift Types created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/shift-types/5",
+    "status": 200,
+    "duration_ms": 176,
+    "message": "Shift Types deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/assets",
+    "status": 201,
+    "duration_ms": 162,
+    "message": "Assets created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/assets/9",
+    "status": 200,
+    "duration_ms": 187,
+    "message": "Assets deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/news",
+    "status": 201,
+    "duration_ms": 174,
+    "message": "News created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/news/7",
+    "status": 200,
+    "duration_ms": 162,
+    "message": "News deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/policies",
+    "status": 201,
+    "duration_ms": 153,
+    "message": "Policies created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/policies/5",
+    "status": 200,
+    "duration_ms": 173,
+    "message": "Policies deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/departments",
+    "status": 201,
+    "duration_ms": 179,
+    "message": "Departments created"
+  },
+  {
+    "method": "GET",
+    "path": "/departments/26",
+    "status": 200,
+    "duration_ms": 176,
+    "message": "Departments detail"
+  },
+  {
+    "method": "PATCH",
+    "path": "/departments/26",
+    "status": 200,
+    "duration_ms": 179,
+    "message": "Departments updated"
+  },
+  {
+    "method": "POST",
+    "path": "/departments",
+    "status": 422,
+    "duration_ms": 163,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "DELETE",
+    "path": "/departments/26",
+    "status": 200,
+    "duration_ms": 191,
+    "message": "Departments deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/job-families",
+    "status": 201,
+    "duration_ms": 171,
+    "message": "Job Families created"
+  },
+  {
+    "method": "GET",
+    "path": "/job-families/6",
+    "status": 200,
+    "duration_ms": 149,
+    "message": "Job Families detail"
+  },
+  {
+    "method": "PATCH",
+    "path": "/job-families/6",
+    "status": 200,
+    "duration_ms": 177,
+    "message": "Job Families updated"
+  },
+  {
+    "method": "POST",
+    "path": "/job-families",
+    "status": 422,
+    "duration_ms": 148,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "DELETE",
+    "path": "/job-families/6",
+    "status": 200,
+    "duration_ms": 165,
+    "message": "Job Families deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/positions",
+    "status": 201,
+    "duration_ms": 175,
+    "message": "Positions created"
+  },
+  {
+    "method": "GET",
+    "path": "/positions/17",
+    "status": 200,
+    "duration_ms": 161,
+    "message": "Positions detail"
+  },
+  {
+    "method": "PATCH",
+    "path": "/positions/17",
+    "status": 200,
+    "duration_ms": 169,
+    "message": "Positions updated"
+  },
+  {
+    "method": "POST",
+    "path": "/positions",
+    "status": 422,
+    "duration_ms": 155,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "DELETE",
+    "path": "/positions/17",
+    "status": 200,
+    "duration_ms": 167,
+    "message": "Positions deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/contract-templates",
+    "status": 201,
+    "duration_ms": 177,
+    "message": "Đã tạo mẫu hợp đồng"
+  },
+  {
+    "method": "GET",
+    "path": "/contract-templates/5",
+    "status": 200,
+    "duration_ms": 145,
+    "message": "Template"
+  },
+  {
+    "method": "PATCH",
+    "path": "/contract-templates/5",
+    "status": 200,
+    "duration_ms": 179,
+    "message": "Đã cập nhật mẫu hợp đồng"
+  },
+  {
+    "method": "DELETE",
+    "path": "/contract-templates/5",
+    "status": 200,
+    "duration_ms": 1160,
+    "message": "Đã xóa mẫu hợp đồng"
+  },
+  {
+    "method": "POST",
+    "path": "/leave-types",
+    "status": 201,
+    "duration_ms": 179,
+    "message": "Leave Types created"
+  },
+  {
+    "method": "GET",
+    "path": "/leave-types/12",
+    "status": 200,
+    "duration_ms": 151,
+    "message": "Leave Types detail"
+  },
+  {
+    "method": "PATCH",
+    "path": "/leave-types/12",
+    "status": 200,
+    "duration_ms": 160,
+    "message": "Leave Types updated"
+  },
+  {
+    "method": "POST",
+    "path": "/leave-types",
+    "status": 201,
+    "duration_ms": 173,
+    "message": "Leave Types created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/leave-types/13",
+    "status": 200,
+    "duration_ms": 178,
+    "message": "Leave Types deleted"
+  },
+  {
+    "method": "DELETE",
+    "path": "/leave-types/12",
+    "status": 200,
+    "duration_ms": 178,
+    "message": "Leave Types deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/shift-types",
+    "status": 201,
+    "duration_ms": 211,
+    "message": "Shift Types created"
+  },
+  {
+    "method": "GET",
+    "path": "/shift-types/6",
+    "status": 200,
+    "duration_ms": 136,
+    "message": "Shift Types detail"
+  },
+  {
+    "method": "PATCH",
+    "path": "/shift-types/6",
+    "status": 200,
+    "duration_ms": 160,
+    "message": "Shift Types updated"
+  },
+  {
+    "method": "POST",
+    "path": "/shift-types",
+    "status": 201,
+    "duration_ms": 181,
+    "message": "Shift Types created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/shift-types/7",
+    "status": 200,
+    "duration_ms": 176,
+    "message": "Shift Types deleted"
+  },
+  {
+    "method": "DELETE",
+    "path": "/shift-types/6",
+    "status": 200,
+    "duration_ms": 160,
+    "message": "Shift Types deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/salary-components",
+    "status": 201,
+    "duration_ms": 171,
+    "message": "Salary Components created"
+  },
+  {
+    "method": "GET",
+    "path": "/salary-components/11",
+    "status": 200,
+    "duration_ms": 146,
+    "message": "Salary Components detail"
+  },
+  {
+    "method": "PATCH",
+    "path": "/salary-components/11",
+    "status": 200,
+    "duration_ms": 162,
+    "message": "Salary Components updated"
+  },
+  {
+    "method": "POST",
+    "path": "/salary-components",
+    "status": 409,
+    "duration_ms": 172,
+    "message": "Dữ liệu vi phạm ràng buộc (trùng lặp hoặc liên kết không hợp lệ)"
+  },
+  {
+    "method": "DELETE",
+    "path": "/salary-components/11",
+    "status": 200,
+    "duration_ms": 153,
+    "message": "Salary Components deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/assets",
+    "status": 201,
+    "duration_ms": 190,
+    "message": "Assets created"
+  },
+  {
+    "method": "GET",
+    "path": "/assets/10",
+    "status": 200,
+    "duration_ms": 167,
+    "message": "Assets detail"
+  },
+  {
+    "method": "PATCH",
+    "path": "/assets/10",
+    "status": 200,
+    "duration_ms": 185,
+    "message": "Assets updated"
+  },
+  {
+    "method": "POST",
+    "path": "/assets",
+    "status": 201,
+    "duration_ms": 188,
+    "message": "Assets created"
+  },
+  {
+    "method": "DELETE",
+    "path": "/assets/11",
+    "status": 200,
+    "duration_ms": 196,
+    "message": "Assets deleted"
+  },
+  {
+    "method": "DELETE",
+    "path": "/assets/10",
+    "status": 200,
+    "duration_ms": 209,
+    "message": "Assets deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/news",
+    "status": 201,
+    "duration_ms": 180,
+    "message": "News created"
+  },
+  {
+    "method": "GET",
+    "path": "/news/8",
+    "status": 200,
+    "duration_ms": 155,
+    "message": "News detail"
+  },
+  {
+    "method": "PATCH",
+    "path": "/news/8",
+    "status": 200,
+    "duration_ms": 183,
+    "message": "News updated"
+  },
+  {
+    "method": "DELETE",
+    "path": "/news/8",
+    "status": 200,
+    "duration_ms": 154,
+    "message": "News deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/policies",
+    "status": 201,
+    "duration_ms": 187,
+    "message": "Policies created"
+  },
+  {
+    "method": "GET",
+    "path": "/policies/6",
+    "status": 200,
+    "duration_ms": 147,
+    "message": "Policies detail"
+  },
+  {
+    "method": "PATCH",
+    "path": "/policies/6",
+    "status": 200,
+    "duration_ms": 167,
+    "message": "Policies updated"
+  },
+  {
+    "method": "DELETE",
+    "path": "/policies/6",
+    "status": 200,
+    "duration_ms": 169,
+    "message": "Policies deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/legal-entities",
+    "status": 201,
+    "duration_ms": 174,
+    "message": "Công ty/pháp nhân đã được tạo"
+  },
+  {
+    "method": "GET",
+    "path": "/legal-entities/4",
+    "status": 200,
+    "duration_ms": 150,
+    "message": "Legal entity detail"
+  },
+  {
+    "method": "PATCH",
+    "path": "/legal-entities/4",
+    "status": 200,
+    "duration_ms": 172,
+    "message": "Công ty/pháp nhân đã được cập nhật"
+  },
+  {
+    "method": "POST",
+    "path": "/legal-entities",
+    "status": 409,
+    "duration_ms": 159,
+    "message": "Dữ liệu vi phạm ràng buộc (trùng lặp hoặc liên kết không hợp lệ)"
+  },
+  {
+    "method": "DELETE",
+    "path": "/legal-entities/4",
+    "status": 200,
+    "duration_ms": 402,
+    "message": "Công ty/pháp nhân đã được xóa"
+  },
+  {
+    "method": "POST",
+    "path": "/attendance-devices",
+    "status": 201,
+    "duration_ms": 149,
+    "message": "Đã đăng ký máy chấm công"
+  },
+  {
+    "method": "PATCH",
+    "path": "/attendance-devices/4",
+    "status": 200,
+    "duration_ms": 138,
+    "message": "Đã cập nhật thiết bị"
+  },
+  {
+    "method": "POST",
+    "path": "/attendance-devices/4/rotate-token",
+    "status": 200,
+    "duration_ms": 143,
+    "message": "Đã cấp lại token thiết bị"
+  },
+  {
+    "method": "POST",
+    "path": "/internal/attendance/device-punch",
+    "status": 403,
+    "duration_ms": 127,
+    "message": "Device token không hợp lệ"
+  },
+  {
+    "method": "DELETE",
+    "path": "/attendance-devices/4",
+    "status": 200,
+    "duration_ms": 143,
+    "message": "Đã xoá thiết bị"
+  },
+  {
+    "method": "POST",
+    "path": "/salary-periods",
+    "status": 201,
+    "duration_ms": 174,
+    "message": "Ká»³ lÆ°Æ¡ng Ä‘Ã£ Ä‘Æ°á»£c táº¡o"
+  },
+  {
+    "method": "POST",
+    "path": "/salary-periods",
+    "status": 422,
+    "duration_ms": 138,
+    "message": "Dá»¯ liá»‡u khÃ´ng há»£p lá»‡"
+  },
+  {
+    "method": "PATCH",
+    "path": "/salary-periods/44",
+    "status": 200,
+    "duration_ms": 179,
+    "message": "Ká»³ lÆ°Æ¡ng Ä‘Ã£ Ä‘Æ°á»£c cáº­p nháº­t"
+  },
+  {
+    "method": "DELETE",
+    "path": "/salary-periods/44",
+    "status": 200,
+    "duration_ms": 164,
+    "message": "Ká»³ lÆ°Æ¡ng Ä‘Ã£ Ä‘Æ°á»£c xÃ³a"
+  },
+  {
+    "method": "GET",
+    "path": "/public/recruitment-posts",
+    "status": 200,
+    "duration_ms": 97,
+    "message": "Danh sách tin tuyển dụng"
+  },
+  {
+    "method": "GET",
+    "path": "/public/recruitment-posts/ai-hr-analyst",
+    "status": 200,
+    "duration_ms": 95,
+    "message": "Chi tiết tin tuyển dụng"
+  },
+  {
+    "method": "GET",
+    "path": "/public/recruitment-posts/codex_qa_1785423826_778433-missing",
+    "status": 404,
+    "duration_ms": 116,
+    "message": "Bài đăng tuyển dụng không tồn tại hoặc chưa được công bố"
+  },
+  {
+    "method": "POST",
+    "path": "/public/recruitment/applications",
+    "status": 404,
+    "duration_ms": 167,
+    "message": "Tin tuyển dụng không tồn tại hoặc đã đóng"
+  },
+  {
+    "method": "POST",
+    "path": "/public/recruitment/applications",
+    "status": 422,
+    "duration_ms": 138,
+    "message": "Dữ liệu không hợp lệ"
+  },
+  {
+    "method": "POST",
+    "path": "/public/recruitment/applications",
+    "status": 201,
+    "duration_ms": 162,
+    "message": "Ứng viên đã được tạo"
+  },
+  {
+    "method": "PATCH",
+    "path": "/recruitment-candidates/7",
+    "status": 200,
+    "duration_ms": 171,
+    "message": "Ứng viên đã được cập nhật"
+  },
+  {
+    "method": "DELETE",
+    "path": "/recruitment-candidates/7",
+    "status": 200,
+    "duration_ms": 159,
+    "message": "Ứng viên đã được xóa"
+  },
+  {
+    "method": "POST",
+    "path": "/reports/generate",
+    "status": 200,
+    "duration_ms": 160,
+    "message": "Report generated"
+  },
+  {
+    "method": "DELETE",
+    "path": "/report-histories/1",
+    "status": 200,
+    "duration_ms": 159,
+    "message": "Report Histories deleted"
+  },
+  {
+    "method": "POST",
+    "path": "/ai/ask",
+    "status": 200,
+    "duration_ms": 137,
+    "message": "AI chưa được cấu hình"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "status": 200,
+    "duration_ms": 133,
+    "message": "Authenticated employee"
+  },
+  {
+    "method": "GET",
+    "path": "/attendances?per_page=3",
+    "status": 403,
+    "duration_ms": 130,
+    "message": "Bạn không có quyền truy cập chức năng này"
+  },
+  {
+    "method": "GET",
+    "path": "/leave-requests?per_page=3",
+    "status": 403,
+    "duration_ms": 135,
+    "message": "Bạn không có quyền truy cập chức năng này"
+  },
+  {
+    "method": "GET",
+    "path": "/notifications?per_page=3",
+    "status": 200,
+    "duration_ms": 151,
+    "message": "Thông báo"
+  },
+  {
+    "method": "GET",
+    "path": "/salary-details?per_page=3",
+    "status": 403,
+    "duration_ms": 125,
+    "message": "Bạn không có quyền truy cập chức năng này"
+  },
+  {
+    "method": "GET",
+    "path": "/employees/1/profile",
+    "status": 200,
+    "duration_ms": 165,
+    "message": "Employee profile"
+  },
+  {
+    "method": "GET",
+    "path": "/settings/catalog",
+    "status": 200,
+    "duration_ms": 175,
+    "message": "Settings catalog"
+  },
+  {
+    "method": "GET",
+    "path": "http://100.95.129.101:8000/health",
+    "status": 0,
+    "duration_ms": 5020,
+    "error": "URLError"
+  },
+  {
+    "resume_health_ip": "100.95.129.101",
+    "status": 0,
+    "duration_ms": 5020
+  },
+  {
+    "method": "GET",
+    "path": "http://100.105.84.89:8000/health",
+    "status": 0,
+    "duration_ms": 5026,
+    "error": "URLError"
+  },
+  {
+    "resume_health_ip": "100.105.84.89",
+    "status": 0,
+    "duration_ms": 5026
+  }
+]

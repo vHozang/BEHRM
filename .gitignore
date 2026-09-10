@@ -44,10 +44,10 @@ venv/
 *.sqlite
 
 # Let's Encrypt runtime certificates and challenge files
-Doan2_v2/Doan2/docker/certbot/conf/*
-!Doan2_v2/Doan2/docker/certbot/conf/.gitkeep
-Doan2_v2/Doan2/docker/certbot/www/*
-!Doan2_v2/Doan2/docker/certbot/www/.gitkeep
+BE/docker/certbot/conf/*
+!BE/docker/certbot/conf/.gitkeep
+BE/docker/certbot/www/*
+!BE/docker/certbot/www/.gitkeep
 
 # Office lock files and local backups
 ~$*.docx
@@ -55,14 +55,21 @@ Doan2_v2/Doan2/docker/certbot/www/*
 ~$*.pptx
 backups/
 
-# Ad-hoc Laravel debug scripts; automated tests live under tests/Feature
-Doan2_v2/Doan2/test_*.php
+# Ad-hoc Laravel debug scripts; automated tests live under BE/tests/Feature
+BE/test_*.php
 
 # Runtime uploads and temporary report exports
-Doan2_v2/Doan2/storage/app/candidate-cvs/
-Doan2_v2/Doan2/storage/app/request-attachments/
+BE/storage/app/candidate-cvs/
+BE/storage/app/request-attachments/
 *.csv.tmp
 qa*.pdf
 
-Api.md
-Doan.md
+# Browser test profiles and caches
+docs/test-cases/production_ui_evidence/*profile*/
+docs/test-cases/production_ui_evidence/**/*profile*/
+docs/test-cases/production_ui_evidence/**/component_crx_cache/
+docs/test-cases/production_ui_evidence/**/*.pma
+docs/test-cases/production_ui_evidence/**/*.dll
+docs/test-cases/production_ui_evidence/**/*.ort
+docs/test-cases/production_ui_evidence/**/*.ftz
+

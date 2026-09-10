@@ -5,21 +5,21 @@ description: Build, run, diagnose, and verify the HRM MinerU document parser and
 
 # MinerU Resume Local
 
-Use MinerU only as the document/OCR layer. Keep CV normalization, JD rubric generation, scoring, human review, and model calibration in `AutoRecruit-main`.
+Use MinerU only as the document/OCR layer. Keep CV normalization, JD rubric generation, scoring, human review, and model calibration in `ai`.
 
 ## Workflow
 
 1. Locate the BEHRM repository and read:
-   - `AutoRecruit-main/mineru-local/Dockerfile`
-   - `AutoRecruit-main/app/modules/resume_parser.py`
-   - `Doan2_v2/Doan2/docker-compose.yml`
+   - `ai/mineru-local/Dockerfile`
+   - `ai/app/modules/resume_parser.py`
+   - `BE/docker-compose.yml`
 2. On Apple Silicon, read [references/macos-m3.md](references/macos-m3.md) and run:
 
    ```bash
    bash docs/resume/mineru-resume-local/scripts/check-macos-docker.sh
    ```
 
-3. Build the native CPU image from `Doan2_v2/Doan2`:
+3. Build the native CPU image from `BE`:
 
    ```bash
    docker compose --profile mineru build mineru

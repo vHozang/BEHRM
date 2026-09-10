@@ -1,0 +1,327 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3000" height="1810" viewBox="0 0 3000 1810">
+<defs>
+<filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#18323F" flood-opacity="0.14"/></filter>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#6F8089"/></marker>
+<marker id="arrow-teal" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#0F766E"/></marker>
+</defs>
+<rect width="3000" height="1810" fill="#F5F1E8"/>
+<title>Sơ đồ Use Case theo tác nhân - Hệ thống quản lý nhân sự HRM</title>
+<text x="60" y="58" font-family="Segoe UI, Arial, sans-serif" font-size="34" font-weight="750" fill="#173F5F" text-anchor="start">
+<tspan x="60" dy="0">SƠ ĐỒ USE CASE THEO TÁC NHÂN</tspan>
+</text>
+<text x="60" y="92" font-family="Segoe UI, Arial, sans-serif" font-size="17" font-weight="400" fill="#60717A" text-anchor="start">
+<tspan x="60" dy="0">Mỗi tác nhân có một làn kết nối riêng; mũi tên dừng tại viền nghiệp vụ và không đi xuyên qua ellipse.</tspan>
+</text>
+<line x1="60" y1="112" x2="2940" y2="112" stroke="#D3CBBE" stroke-width="2" opacity="1"/>
+<rect x="60" y="135" width="2880" height="1580" rx="24" fill="#FBFAF7" stroke="#173F5F" stroke-width="2.4" opacity="1"/>
+<rect x="970" y="137" width="1060" height="52" rx="18" fill="#173F5F" stroke="none" stroke-width="1" opacity="1"/>
+<text x="1500" y="171" font-family="Segoe UI, Arial, sans-serif" font-size="23" font-weight="750" fill="#FFFFFF" text-anchor="middle">
+<tspan x="1500" dy="0">HỆ THỐNG QUẢN LÝ NHÂN SỰ</tspan>
+</text>
+<rect x="105" y="215" width="675" height="830" rx="20" fill="#FFFFFF" stroke="#D6D0C4" stroke-width="1.6" opacity="1" filter="url(#shadow)"/>
+<rect x="105" y="215" width="675" height="66" rx="20" fill="#6B5B95" stroke="none" stroke-width="1" opacity="1"/>
+<rect x="105" y="260" width="675" height="21" rx="0" fill="#6B5B95" stroke="none" stroke-width="1" opacity="1"/>
+<text x="442.5" y="258" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="750" fill="#FFFFFF" text-anchor="middle">
+<tspan x="442.5" dy="0">ỨNG VIÊN</tspan>
+</text>
+<circle cx="196" cy="358" r="14" fill="#FFFFFF" stroke="#6B5B95" stroke-width="3"/>
+<line x1="196" y1="372" x2="196" y2="416" stroke="#6B5B95" stroke-width="3" opacity="1"/>
+<line x1="173" y1="391" x2="227" y2="391" stroke="#6B5B95" stroke-width="3" opacity="1"/>
+<line x1="196" y1="416" x2="174" y2="447" stroke="#6B5B95" stroke-width="3" opacity="1"/>
+<line x1="196" y1="416" x2="218" y2="447" stroke="#6B5B95" stroke-width="3" opacity="1"/>
+<line x1="227" y1="391" x2="301" y2="391" stroke="#6B5B95" stroke-width="2.2" opacity="1"/>
+<line x1="301" y1="337" x2="301" y2="401" stroke="#6B5B95" stroke-width="2.2" opacity="1"/>
+<line x1="301" y1="337" x2="350" y2="337" stroke="#6B5B95" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="547.5" cy="337" rx="197.5" ry="24" fill="#FFFEFC" stroke="#6B5B95" stroke-width="2.3"/>
+<text x="547.5" y="342" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="547.5" dy="0">Xem tin tuyển dụng &amp; JD</tspan>
+</text>
+<line x1="301" y1="401" x2="350" y2="401" stroke="#6B5B95" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="547.5" cy="401" rx="197.5" ry="24" fill="#FFFEFC" stroke="#6B5B95" stroke-width="2.3"/>
+<text x="547.5" y="406" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="547.5" dy="0">Nộp CV ứng tuyển</tspan>
+</text>
+<rect x="810" y="215" width="675" height="830" rx="20" fill="#FFFFFF" stroke="#D6D0C4" stroke-width="1.6" opacity="1" filter="url(#shadow)"/>
+<rect x="810" y="215" width="675" height="66" rx="20" fill="#0F766E" stroke="none" stroke-width="1" opacity="1"/>
+<rect x="810" y="260" width="675" height="21" rx="0" fill="#0F766E" stroke="none" stroke-width="1" opacity="1"/>
+<text x="1147.5" y="258" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="750" fill="#FFFFFF" text-anchor="middle">
+<tspan x="1147.5" dy="0">NHÂN VIÊN</tspan>
+</text>
+<circle cx="901" cy="358" r="14" fill="#FFFFFF" stroke="#0F766E" stroke-width="3"/>
+<line x1="901" y1="372" x2="901" y2="416" stroke="#0F766E" stroke-width="3" opacity="1"/>
+<line x1="878" y1="391" x2="932" y2="391" stroke="#0F766E" stroke-width="3" opacity="1"/>
+<line x1="901" y1="416" x2="879" y2="447" stroke="#0F766E" stroke-width="3" opacity="1"/>
+<line x1="901" y1="416" x2="923" y2="447" stroke="#0F766E" stroke-width="3" opacity="1"/>
+<line x1="932" y1="391" x2="1006" y2="391" stroke="#0F766E" stroke-width="2.2" opacity="1"/>
+<line x1="1006" y1="337" x2="1006" y2="721" stroke="#0F766E" stroke-width="2.2" opacity="1"/>
+<line x1="1006" y1="337" x2="1055" y2="337" stroke="#0F766E" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1252.5" cy="337" rx="197.5" ry="24" fill="#FFFEFC" stroke="#0F766E" stroke-width="2.3"/>
+<text x="1252.5" y="342" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1252.5" dy="0">Quản lý hồ sơ nhân viên</tspan>
+</text>
+<line x1="1006" y1="401" x2="1055" y2="401" stroke="#0F766E" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1252.5" cy="401" rx="197.5" ry="24" fill="#FFFEFC" stroke="#2563A6" stroke-width="2.3"/>
+<text x="1252.5" y="406" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1252.5" dy="0">Check-in / Check-out</tspan>
+</text>
+<line x1="1006" y1="465" x2="1055" y2="465" stroke="#0F766E" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1252.5" cy="465" rx="197.5" ry="24" fill="#FFFEFC" stroke="#2563A6" stroke-width="2.3"/>
+<text x="1252.5" y="470" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1252.5" dy="0">Đăng ký nghỉ phép</tspan>
+</text>
+<line x1="1006" y1="529" x2="1055" y2="529" stroke="#0F766E" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1252.5" cy="529" rx="197.5" ry="24" fill="#FFFEFC" stroke="#2563A6" stroke-width="2.3"/>
+<text x="1252.5" y="534" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1252.5" dy="0">Đăng ký tăng ca / đổi ca</tspan>
+</text>
+<line x1="1006" y1="593" x2="1055" y2="593" stroke="#0F766E" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1252.5" cy="593" rx="197.5" ry="24" fill="#FFFEFC" stroke="#D97706" stroke-width="2.3"/>
+<text x="1252.5" y="598" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1252.5" dy="0">Xem phiếu lương</tspan>
+</text>
+<line x1="1006" y1="657" x2="1055" y2="657" stroke="#0F766E" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1252.5" cy="657" rx="197.5" ry="24" fill="#FFFEFC" stroke="#0F766E" stroke-width="2.3"/>
+<text x="1252.5" y="662" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1252.5" dy="0">Portal &amp; hồ sơ cá nhân</tspan>
+</text>
+<line x1="1006" y1="721" x2="1055" y2="721" stroke="#0F766E" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1252.5" cy="721" rx="197.5" ry="24" fill="#FFFEFC" stroke="#173F5F" stroke-width="2.3"/>
+<text x="1252.5" y="726" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1252.5" dy="0">Yêu cầu, thông báo &amp; chính sách</tspan>
+</text>
+<rect x="1515" y="215" width="675" height="830" rx="20" fill="#FFFFFF" stroke="#D6D0C4" stroke-width="1.6" opacity="1" filter="url(#shadow)"/>
+<rect x="1515" y="215" width="675" height="66" rx="20" fill="#2563A6" stroke="none" stroke-width="1" opacity="1"/>
+<rect x="1515" y="260" width="675" height="21" rx="0" fill="#2563A6" stroke="none" stroke-width="1" opacity="1"/>
+<text x="1852.5" y="258" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="750" fill="#FFFFFF" text-anchor="middle">
+<tspan x="1852.5" dy="0">QUẢN LÝ BỘ PHẬN</tspan>
+</text>
+<circle cx="1606" cy="358" r="14" fill="#FFFFFF" stroke="#2563A6" stroke-width="3"/>
+<line x1="1606" y1="372" x2="1606" y2="416" stroke="#2563A6" stroke-width="3" opacity="1"/>
+<line x1="1583" y1="391" x2="1637" y2="391" stroke="#2563A6" stroke-width="3" opacity="1"/>
+<line x1="1606" y1="416" x2="1584" y2="447" stroke="#2563A6" stroke-width="3" opacity="1"/>
+<line x1="1606" y1="416" x2="1628" y2="447" stroke="#2563A6" stroke-width="3" opacity="1"/>
+<line x1="1637" y1="391" x2="1711" y2="391" stroke="#2563A6" stroke-width="2.2" opacity="1"/>
+<line x1="1711" y1="337" x2="1711" y2="593" stroke="#2563A6" stroke-width="2.2" opacity="1"/>
+<line x1="1711" y1="337" x2="1760" y2="337" stroke="#2563A6" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1957.5" cy="337" rx="197.5" ry="24" fill="#FFFEFC" stroke="#2563A6" stroke-width="2.3"/>
+<text x="1957.5" y="342" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1957.5" dy="0">Duyệt nghỉ phép</tspan>
+</text>
+<line x1="1711" y1="401" x2="1760" y2="401" stroke="#2563A6" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1957.5" cy="401" rx="197.5" ry="24" fill="#FFFEFC" stroke="#2563A6" stroke-width="2.3"/>
+<text x="1957.5" y="406" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1957.5" dy="0">Duyệt tăng ca / đổi ca</tspan>
+</text>
+<line x1="1711" y1="465" x2="1760" y2="465" stroke="#2563A6" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1957.5" cy="465" rx="197.5" ry="24" fill="#FFFEFC" stroke="#2563A6" stroke-width="2.3"/>
+<text x="1957.5" y="470" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1957.5" dy="0">Điều chỉnh &amp; xác minh bảng công</tspan>
+</text>
+<line x1="1711" y1="529" x2="1760" y2="529" stroke="#2563A6" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1957.5" cy="529" rx="197.5" ry="24" fill="#FFFEFC" stroke="#2563A6" stroke-width="2.3"/>
+<text x="1957.5" y="534" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1957.5" dy="0">Xem bảng công tháng</tspan>
+</text>
+<line x1="1711" y1="593" x2="1760" y2="593" stroke="#2563A6" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1957.5" cy="593" rx="197.5" ry="24" fill="#FFFEFC" stroke="#173F5F" stroke-width="2.3"/>
+<text x="1957.5" y="598" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1957.5" dy="0">Yêu cầu, thông báo &amp; chính sách</tspan>
+</text>
+<rect x="2220" y="215" width="675" height="830" rx="20" fill="#FFFFFF" stroke="#D6D0C4" stroke-width="1.6" opacity="1" filter="url(#shadow)"/>
+<rect x="2220" y="215" width="675" height="66" rx="20" fill="#173F5F" stroke="none" stroke-width="1" opacity="1"/>
+<rect x="2220" y="260" width="675" height="21" rx="0" fill="#173F5F" stroke="none" stroke-width="1" opacity="1"/>
+<text x="2557.5" y="258" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="750" fill="#FFFFFF" text-anchor="middle">
+<tspan x="2557.5" dy="0">HR / ADMIN</tspan>
+</text>
+<circle cx="2311" cy="358" r="14" fill="#FFFFFF" stroke="#173F5F" stroke-width="3"/>
+<line x1="2311" y1="372" x2="2311" y2="416" stroke="#173F5F" stroke-width="3" opacity="1"/>
+<line x1="2288" y1="391" x2="2342" y2="391" stroke="#173F5F" stroke-width="3" opacity="1"/>
+<line x1="2311" y1="416" x2="2289" y2="447" stroke="#173F5F" stroke-width="3" opacity="1"/>
+<line x1="2311" y1="416" x2="2333" y2="447" stroke="#173F5F" stroke-width="3" opacity="1"/>
+<line x1="2342" y1="391" x2="2416" y2="391" stroke="#173F5F" stroke-width="2.2" opacity="1"/>
+<line x1="2416" y1="337" x2="2416" y2="977" stroke="#173F5F" stroke-width="2.2" opacity="1"/>
+<line x1="2416" y1="337" x2="2465" y2="337" stroke="#173F5F" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="2662.5" cy="337" rx="197.5" ry="24" fill="#FFFEFC" stroke="#0F766E" stroke-width="2.3"/>
+<text x="2662.5" y="342" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="2662.5" dy="0">Quản lý hồ sơ nhân viên</tspan>
+</text>
+<line x1="2416" y1="401" x2="2465" y2="401" stroke="#173F5F" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="2662.5" cy="401" rx="197.5" ry="24" fill="#FFFEFC" stroke="#0F766E" stroke-width="2.3"/>
+<text x="2662.5" y="406" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="2662.5" dy="0">Phòng ban, chức danh &amp; sơ đồ tổ chức</tspan>
+</text>
+<line x1="2416" y1="465" x2="2465" y2="465" stroke="#173F5F" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="2662.5" cy="465" rx="197.5" ry="24" fill="#FFFEFC" stroke="#0F766E" stroke-width="2.3"/>
+<text x="2662.5" y="470" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="2662.5" dy="0">Hợp đồng &amp; ký OTP</tspan>
+</text>
+<line x1="2416" y1="529" x2="2465" y2="529" stroke="#173F5F" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="2662.5" cy="529" rx="197.5" ry="24" fill="#FFFEFC" stroke="#0F766E" stroke-width="2.3"/>
+<text x="2662.5" y="534" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="2662.5" dy="0">Onboarding / Offboarding</tspan>
+</text>
+<line x1="2416" y1="593" x2="2465" y2="593" stroke="#173F5F" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="2662.5" cy="593" rx="197.5" ry="24" fill="#FFFEFC" stroke="#0F766E" stroke-width="2.3"/>
+<text x="2662.5" y="598" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="2662.5" dy="0">Tài sản &amp; quyết định nhân sự</tspan>
+</text>
+<line x1="2416" y1="657" x2="2465" y2="657" stroke="#173F5F" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="2662.5" cy="657" rx="197.5" ry="24" fill="#FFFEFC" stroke="#2563A6" stroke-width="2.3"/>
+<text x="2662.5" y="662" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="2662.5" dy="0">Quản lý máy chấm công</tspan>
+</text>
+<line x1="2416" y1="721" x2="2465" y2="721" stroke="#173F5F" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="2662.5" cy="721" rx="197.5" ry="24" fill="#FFFEFC" stroke="#2563A6" stroke-width="2.3"/>
+<text x="2662.5" y="726" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="2662.5" dy="0">Quản lý nghỉ phép</tspan>
+</text>
+<line x1="2416" y1="785" x2="2465" y2="785" stroke="#173F5F" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="2662.5" cy="785" rx="197.5" ry="24" fill="#FFFEFC" stroke="#2563A6" stroke-width="2.3"/>
+<text x="2662.5" y="790" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="2662.5" dy="0">Điều chỉnh &amp; xác minh bảng công</tspan>
+</text>
+<line x1="2416" y1="849" x2="2465" y2="849" stroke="#173F5F" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="2662.5" cy="849" rx="197.5" ry="24" fill="#FFFEFC" stroke="#6B5B95" stroke-width="2.3"/>
+<text x="2662.5" y="854" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="2662.5" dy="0">Quản lý ứng viên Kanban</tspan>
+</text>
+<line x1="2416" y1="913" x2="2465" y2="913" stroke="#173F5F" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="2662.5" cy="913" rx="197.5" ry="24" fill="#FFFEFC" stroke="#6B5B95" stroke-width="2.3"/>
+<text x="2662.5" y="918" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="2662.5" dy="0">Phỏng vấn &amp; tuyển dụng</tspan>
+</text>
+<line x1="2416" y1="977" x2="2465" y2="977" stroke="#173F5F" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="2662.5" cy="977" rx="197.5" ry="24" fill="#FFFEFC" stroke="#173F5F" stroke-width="2.3"/>
+<text x="2662.5" y="982" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="2662.5" dy="0">Vai trò, phân quyền &amp; cấu hình</tspan>
+</text>
+<rect x="105" y="1080" width="675" height="570" rx="20" fill="#FFFFFF" stroke="#D6D0C4" stroke-width="1.6" opacity="1" filter="url(#shadow)"/>
+<rect x="105" y="1080" width="675" height="66" rx="20" fill="#D97706" stroke="none" stroke-width="1" opacity="1"/>
+<rect x="105" y="1125" width="675" height="21" rx="0" fill="#D97706" stroke="none" stroke-width="1" opacity="1"/>
+<text x="442.5" y="1123" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="750" fill="#FFFFFF" text-anchor="middle">
+<tspan x="442.5" dy="0">KẾ TOÁN TIỀN LƯƠNG</tspan>
+</text>
+<circle cx="196" cy="1223" r="14" fill="#FFFFFF" stroke="#D97706" stroke-width="3"/>
+<line x1="196" y1="1237" x2="196" y2="1281" stroke="#D97706" stroke-width="3" opacity="1"/>
+<line x1="173" y1="1256" x2="227" y2="1256" stroke="#D97706" stroke-width="3" opacity="1"/>
+<line x1="196" y1="1281" x2="174" y2="1312" stroke="#D97706" stroke-width="3" opacity="1"/>
+<line x1="196" y1="1281" x2="218" y2="1312" stroke="#D97706" stroke-width="3" opacity="1"/>
+<line x1="227" y1="1256" x2="301" y2="1256" stroke="#D97706" stroke-width="2.2" opacity="1"/>
+<line x1="301" y1="1202" x2="301" y2="1458" stroke="#D97706" stroke-width="2.2" opacity="1"/>
+<line x1="301" y1="1202" x2="350" y2="1202" stroke="#D97706" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="547.5" cy="1202" rx="197.5" ry="24" fill="#FFFEFC" stroke="#D97706" stroke-width="2.3"/>
+<text x="547.5" y="1207" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="547.5" dy="0">Tạo / đóng kỳ lương</tspan>
+</text>
+<line x1="301" y1="1266" x2="350" y2="1266" stroke="#D97706" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="547.5" cy="1266" rx="197.5" ry="24" fill="#FFFEFC" stroke="#D97706" stroke-width="2.3"/>
+<text x="547.5" y="1271" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="547.5" dy="0">Tổng hợp công &amp; chạy lương</tspan>
+</text>
+<line x1="301" y1="1330" x2="350" y2="1330" stroke="#D97706" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="547.5" cy="1330" rx="197.5" ry="24" fill="#FFFEFC" stroke="#D97706" stroke-width="2.3"/>
+<text x="547.5" y="1335" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="547.5" dy="0">Công khoán &amp; thưởng</tspan>
+</text>
+<line x1="301" y1="1394" x2="350" y2="1394" stroke="#D97706" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="547.5" cy="1394" rx="197.5" ry="24" fill="#FFFEFC" stroke="#D97706" stroke-width="2.3"/>
+<text x="547.5" y="1399" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="547.5" dy="0">Xem phiếu lương</tspan>
+</text>
+<line x1="301" y1="1458" x2="350" y2="1458" stroke="#D97706" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="547.5" cy="1458" rx="197.5" ry="24" fill="#FFFEFC" stroke="#D97706" stroke-width="2.3"/>
+<text x="547.5" y="1463" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="547.5" dy="0">Báo cáo nhân sự &amp; lương</tspan>
+</text>
+<rect x="810" y="1080" width="675" height="570" rx="20" fill="#FFFFFF" stroke="#D6D0C4" stroke-width="1.6" opacity="1" filter="url(#shadow)"/>
+<rect x="810" y="1080" width="675" height="66" rx="20" fill="#6B5B95" stroke="none" stroke-width="1" opacity="1"/>
+<rect x="810" y="1125" width="675" height="21" rx="0" fill="#6B5B95" stroke="none" stroke-width="1" opacity="1"/>
+<text x="1147.5" y="1123" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="750" fill="#FFFFFF" text-anchor="middle">
+<tspan x="1147.5" dy="0">SUPER ADMIN</tspan>
+</text>
+<circle cx="901" cy="1223" r="14" fill="#FFFFFF" stroke="#6B5B95" stroke-width="3"/>
+<line x1="901" y1="1237" x2="901" y2="1281" stroke="#6B5B95" stroke-width="3" opacity="1"/>
+<line x1="878" y1="1256" x2="932" y2="1256" stroke="#6B5B95" stroke-width="3" opacity="1"/>
+<line x1="901" y1="1281" x2="879" y2="1312" stroke="#6B5B95" stroke-width="3" opacity="1"/>
+<line x1="901" y1="1281" x2="923" y2="1312" stroke="#6B5B95" stroke-width="3" opacity="1"/>
+<line x1="932" y1="1256" x2="1006" y2="1256" stroke="#6B5B95" stroke-width="2.2" opacity="1"/>
+<line x1="1006" y1="1202" x2="1006" y2="1330" stroke="#6B5B95" stroke-width="2.2" opacity="1"/>
+<line x1="1006" y1="1202" x2="1055" y2="1202" stroke="#6B5B95" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1252.5" cy="1202" rx="197.5" ry="24" fill="#FFFEFC" stroke="#173F5F" stroke-width="2.3"/>
+<text x="1252.5" y="1207" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1252.5" dy="0">Vai trò, phân quyền &amp; cấu hình</tspan>
+</text>
+<line x1="1006" y1="1266" x2="1055" y2="1266" stroke="#6B5B95" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1252.5" cy="1266" rx="197.5" ry="24" fill="#FFFEFC" stroke="#6B5B95" stroke-width="2.3"/>
+<text x="1252.5" y="1271" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1252.5" dy="0">Tenant, pháp nhân &amp; audit log</tspan>
+</text>
+<line x1="1006" y1="1330" x2="1055" y2="1330" stroke="#6B5B95" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1252.5" cy="1330" rx="197.5" ry="24" fill="#FFFEFC" stroke="#B94A48" stroke-width="2.3"/>
+<text x="1252.5" y="1335" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1252.5" dy="0">Đăng nhập, đổi / quên mật khẩu</tspan>
+</text>
+<rect x="1515" y="1080" width="675" height="570" rx="20" fill="#FFFFFF" stroke="#D6D0C4" stroke-width="1.6" opacity="1" filter="url(#shadow)"/>
+<rect x="1515" y="1080" width="675" height="66" rx="20" fill="#2563A6" stroke="none" stroke-width="1" opacity="1"/>
+<rect x="1515" y="1125" width="675" height="21" rx="0" fill="#2563A6" stroke="none" stroke-width="1" opacity="1"/>
+<text x="1852.5" y="1123" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="750" fill="#FFFFFF" text-anchor="middle">
+<tspan x="1852.5" dy="0">MÁY CHẤM CÔNG</tspan>
+</text>
+<circle cx="1606" cy="1223" r="14" fill="#FFFFFF" stroke="#2563A6" stroke-width="3"/>
+<line x1="1606" y1="1237" x2="1606" y2="1281" stroke="#2563A6" stroke-width="3" opacity="1"/>
+<line x1="1583" y1="1256" x2="1637" y2="1256" stroke="#2563A6" stroke-width="3" opacity="1"/>
+<line x1="1606" y1="1281" x2="1584" y2="1312" stroke="#2563A6" stroke-width="3" opacity="1"/>
+<line x1="1606" y1="1281" x2="1628" y2="1312" stroke="#2563A6" stroke-width="3" opacity="1"/>
+<line x1="1637" y1="1256" x2="1711" y2="1256" stroke="#2563A6" stroke-width="2.2" opacity="1"/>
+<line x1="1711" y1="1202" x2="1711" y2="1256" stroke="#2563A6" stroke-width="2.2" opacity="1"/>
+<line x1="1711" y1="1202" x2="1760" y2="1202" stroke="#2563A6" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="1957.5" cy="1202" rx="197.5" ry="24" fill="#FFFEFC" stroke="#2563A6" stroke-width="2.3"/>
+<text x="1957.5" y="1207" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="1957.5" dy="0">Đồng bộ dữ liệu chấm công</tspan>
+</text>
+<rect x="2220" y="1080" width="675" height="570" rx="20" fill="#FFFFFF" stroke="#D6D0C4" stroke-width="1.6" opacity="1" filter="url(#shadow)"/>
+<rect x="2220" y="1080" width="675" height="66" rx="20" fill="#6B5B95" stroke="none" stroke-width="1" opacity="1"/>
+<rect x="2220" y="1125" width="675" height="21" rx="0" fill="#6B5B95" stroke="none" stroke-width="1" opacity="1"/>
+<text x="2557.5" y="1123" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="750" fill="#FFFFFF" text-anchor="middle">
+<tspan x="2557.5" dy="0">RESUME AI</tspan>
+</text>
+<circle cx="2311" cy="1223" r="14" fill="#FFFFFF" stroke="#6B5B95" stroke-width="3"/>
+<line x1="2311" y1="1237" x2="2311" y2="1281" stroke="#6B5B95" stroke-width="3" opacity="1"/>
+<line x1="2288" y1="1256" x2="2342" y2="1256" stroke="#6B5B95" stroke-width="3" opacity="1"/>
+<line x1="2311" y1="1281" x2="2289" y2="1312" stroke="#6B5B95" stroke-width="3" opacity="1"/>
+<line x1="2311" y1="1281" x2="2333" y2="1312" stroke="#6B5B95" stroke-width="3" opacity="1"/>
+<line x1="2342" y1="1256" x2="2416" y2="1256" stroke="#6B5B95" stroke-width="2.2" opacity="1"/>
+<line x1="2416" y1="1202" x2="2416" y2="1256" stroke="#6B5B95" stroke-width="2.2" opacity="1"/>
+<line x1="2416" y1="1202" x2="2465" y2="1202" stroke="#6B5B95" stroke-width="2.2" opacity="1" marker-end="url(#arrow)"/>
+<ellipse cx="2662.5" cy="1202" rx="197.5" ry="24" fill="#FFFEFC" stroke="#6B5B95" stroke-width="2.3"/>
+<text x="2662.5" y="1207" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="650" fill="#18323F" text-anchor="middle">
+<tspan x="2662.5" dy="0">Đọc, phân tích &amp; chấm điểm CV</tspan>
+</text>
+<circle cx="350" cy="1684" r="7" fill="#0F766E"/>
+<text x="366" y="1690" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" fill="#60717A" text-anchor="start">
+<tspan x="366" dy="0">Core HR</tspan>
+</text>
+<circle cx="740" cy="1684" r="7" fill="#2563A6"/>
+<text x="756" y="1690" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" fill="#60717A" text-anchor="start">
+<tspan x="756" dy="0">Thời gian &amp; chấm công</tspan>
+</text>
+<circle cx="1130" cy="1684" r="7" fill="#D97706"/>
+<text x="1146" y="1690" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" fill="#60717A" text-anchor="start">
+<tspan x="1146" dy="0">Tiền lương</tspan>
+</text>
+<circle cx="1520" cy="1684" r="7" fill="#6B5B95"/>
+<text x="1536" y="1690" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" fill="#60717A" text-anchor="start">
+<tspan x="1536" dy="0">Tuyển dụng / AI</tspan>
+</text>
+<circle cx="1910" cy="1684" r="7" fill="#173F5F"/>
+<text x="1926" y="1690" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" fill="#60717A" text-anchor="start">
+<tspan x="1926" dy="0">Dùng chung &amp; quản trị</tspan>
+</text>
+<circle cx="2300" cy="1684" r="7" fill="#B94A48"/>
+<text x="2316" y="1690" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="400" fill="#60717A" text-anchor="start">
+<tspan x="2316" dy="0">Bảo mật</tspan>
+</text>
+<text x="1500" y="1770" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="400" fill="#60717A" text-anchor="middle" font-style="italic">
+<tspan x="1500" dy="0">Nghiệp vụ dùng chung được lặp lại tại từng tác nhân để các đường kết nối luôn tách biệt và không che nội dung.</tspan>
+</text>
+</svg>

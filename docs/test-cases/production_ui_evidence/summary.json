@@ -1,0 +1,42 @@
+[
+    {
+        "name":  "home-desktop",
+        "url":  "https://devtapcode.io.vn/",
+        "exit_code":  null,
+        "dom_bytes":  6917,
+        "screenshot_bytes":  58415,
+        "stderr_bytes":  542
+    },
+    {
+        "name":  "login-desktop",
+        "url":  "https://devtapcode.io.vn/login",
+        "exit_code":  null,
+        "dom_bytes":  6917,
+        "screenshot_bytes":  58415,
+        "stderr_bytes":  545
+    },
+    {
+        "name":  "careers-desktop",
+        "url":  "https://devtapcode.io.vn/careers",
+        "exit_code":  null,
+        "dom_bytes":  12171,
+        "screenshot_bytes":  213797,
+        "stderr_bytes":  548
+    },
+    {
+        "name":  "careers-mobile-320",
+        "url":  "https://devtapcode.io.vn/careers",
+        "exit_code":  null,
+        "dom_bytes":  12171,
+        "screenshot_bytes":  100719,
+        "stderr_bytes":  551
+    },
+    {
+        "name":  "mobile-unauthenticated",
+        "url":  "https://devtapcode.io.vn/m",
+        "exit_code":  null,
+        "dom_bytes":  6917,
+        "screenshot_bytes":  24177,
+        "stderr_bytes":  552
+    }
+]

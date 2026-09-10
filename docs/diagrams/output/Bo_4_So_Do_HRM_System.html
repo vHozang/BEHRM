@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Bộ 4 sơ đồ HRM System</title>
+<style>
+  @page { size: A3 landscape; margin: 10mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: #18323f; font-family: "Segoe UI", Arial, sans-serif; background: #fff; }
+  .page { page-break-after: always; min-height: 270mm; display: flex; flex-direction: column; }
+  .page:last-child { page-break-after: auto; }
+  .cover { align-items: center; justify-content: center; text-align: center; background: #f5f1e8; border: 2px solid #173f5f; padding: 30mm; }
+  .cover h1 { font-size: 34pt; margin: 0 0 8mm; color: #173f5f; }
+  .cover h2 { font-size: 25pt; margin: 0 0 14mm; color: #0f766e; }
+  .cover p { font-size: 13pt; color: #60717a; max-width: 850px; }
+  h2 { margin: 0 0 2mm; color: #173f5f; font-size: 22pt; }
+  .lead { margin: 0 0 4mm; color: #60717a; font-size: 10.5pt; }
+  .diagram { display: block; margin: auto; max-width: 100%; max-height: 238mm; object-fit: contain; }
+  .detail { max-height: 232mm; }
+  .caption { margin: 2mm 0 0; text-align: center; color: #60717a; font-size: 9.5pt; font-style: italic; }
+</style>
+</head>
+<body>
+  <section class="page cover">
+    <h1>BỘ SƠ ĐỒ PHÂN TÍCH VÀ THIẾT KẾ</h1>
+    <h2>HỆ THỐNG QUẢN LÝ NHÂN SỰ HRM</h2>
+    <p>Xây dựng theo cấu trúc file mẫu <strong>nhóm 1 (4).docx</strong>. Nội dung được đối chiếu từ source Laravel/Vue và database PostgreSQL đang chạy của dự án BEHRM.</p>
+  </section>
+  <section class="page">
+    <h2>3.1. Sơ đồ Use Case</h2>
+    <p class="lead">Các tác nhân và nhóm nghiệp vụ chính được tổng hợp từ router frontend, API backend và các tích hợp máy chấm công / resume-backend.</p>
+    <img class="diagram" src="01-use-case.png" alt="Sơ đồ Use Case">
+    <p class="caption">Hình 1. Sơ đồ Use Case của hệ thống HRM</p>
+  </section>
+  <section class="page">
+    <h2>3.2. Các bảng chính cho sơ đồ ERD</h2>
+    <p class="lead">Các bảng nghiệp vụ được gom theo module. Bảng framework và các partition con của attendance_logs không đưa vào phạm vi báo cáo.</p>
+    <img class="diagram" src="02-main-tables.png" alt="Các bảng chính cho ERD">
+    <p class="caption">Hình 2. Các bảng chính cho sơ đồ ERD</p>
+  </section>
+  <section class="page">
+    <h2>3.3. Sơ đồ quan hệ ERD</h2>
+    <p class="lead">Sơ đồ mức khái niệm tập trung vào lực lượng 1:N, 1:1 và các liên kết nghiệp vụ giữa Core HR, chấm công, lương, tuyển dụng và tích hợp ngoài.</p>
+    <img class="diagram" src="03-erd-relations.png" alt="Sơ đồ quan hệ ERD">
+    <p class="caption">Hình 3. Sơ đồ quan hệ ERD của hệ thống HRM</p>
+  </section>
+  <section class="page">
+    <h2>3.4. Sơ đồ chi tiết thực thể</h2>
+    <p class="lead">Tên bảng, cột quan trọng, kiểu dữ liệu và ký hiệu PK/FK được lấy từ schema PostgreSQL hiện tại; các cột meta và timestamps được lược bớt để tăng khả năng đọc.</p>
+    <img class="diagram detail" src="04-detailed-erd.png" alt="Sơ đồ chi tiết thực thể">
+    <p class="caption">Hình 4. Sơ đồ chi tiết thực thể</p>
+  </section>
+</body>
+</html>

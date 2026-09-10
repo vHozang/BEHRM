@@ -1,0 +1,75 @@
+{
+    "careers_desktop":  {
+                            "href":  "https://devtapcode.io.vn/careers",
+                            "width":  1416,
+                            "scrollWidth":  1408,
+                            "title":  "Cơ hội nghề nghiệp | Hệ thống Quản lý Nhân sự",
+                            "jobs":  3,
+                            "detailButtons":  3,
+                            "applyButtons":  3
+                        },
+    "detail_modal":  {
+                         "opened":  true,
+                         "text":  "×\nJOB DESCRIPTION\nai-hr-analyst\nAI HR Analyst\n\nBiến dữ liệu nhân sự thành những quyết định rõ ràng, công bằng và có tác động.\n\n⌖ TP. Hồ Chí Minh / Hybrid\n◷ Toàn thời gian\n₫ 25 - 40 triệu VNĐ\nHạn 12/9/2026\n01\nVề vị trí\n\nBạn sẽ đồng hành cùng đội ngũ HR và sản phẩm để xây dựng báo cáo, mô hình phân tích và các trải nghiệm nhân sự tốt hơn. Đây là vị trí dành cho người thích đặt câu hỏi đúng trước khi tìm câu trả lời bằng dữ liệu.\n\n02\nChúng tôi tìm kiếm\nCó kinh nghiệm với HR analytics hoặc business intelligence\nSử dụng tốt SQL và các công cụ dashboard\nTư duy phân tích, giao tiếp rõ ràng với các bên liên quan\n03\nKỹ năng phù hợp\nHR analytics\nSQL\nDashboard\n04\nĐiều bạn nhận được\nMôi trường ưu tiên dữ liệu và tự chủ\nNgân sách học tập hằng năm\nLàm việc linh hoạt tại TP. Hồ Chí Minh\n\nBạn thấy mình trong vai trò này?\n\nỨng tuyển vị trí này\n→",
+                         "scrollable":  true,
+                         "closeButton":  true
+                     },
+    "application_modal":  {
+                              "opened":  true,
+                              "hasForm":  true,
+                              "hasName":  true,
+                              "hasEmail":  true,
+                              "hasFile":  true,
+                              "acceptedTypes":  ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                              "submitText":  "Gửi hồ sơ \u0026 nhận điểm AI\n→"
+                          },
+    "application_empty_validation":  {
+                                         "form":  true,
+                                         "valid":  false,
+                                         "invalid":  [
+                                                         "text",
+                                                         "email",
+                                                         "file"
+                                                     ]
+                                     },
+    "careers_mobile_320":  {
+                               "href":  "https://devtapcode.io.vn/careers",
+                               "width":  320,
+                               "scrollWidth":  320,
+                               "bodyScrollWidth":  320,
+                               "jobs":  3,
+                               "navVisible":  true
+                           },
+    "login":  {
+                  "href":  "https://devtapcode.io.vn/login",
+                  "title":  "HRM | Hệ thống Quản lý Nhân sự",
+                  "demoButtons":  [
+                                      "Admin",
+                                      "HR"
+                                  ],
+                  "emailRequired":  true,
+                  "passwordRequired":  true
+              },
+    "mobile_anonymous":  {
+                             "href":  "https://devtapcode.io.vn/login",
+                             "hasLoginForm":  true
+                         },
+    "employee_quick_login":  {
+                                 "clicked":  true,
+                                 "href":  "https://devtapcode.io.vn/employee-portal",
+                                 "hasEmployeePortal":  true,
+                                 "hasAdminNav":  false,
+                                 "bodyText":  "HR\nCODEDENNGU\nHRM WORKSPACE\nNHÂN VIÊN\nTổng quan Portal\nChấm công\nNghỉ phép\nLịch làm việc\nTRUYỀN THÔNG \u0026 TRỢ GIÚP\nTin tức nội bộ\nChính sách công ty\nHỗ trợ nội bộ\nWorkspace\n/\nHRM\n\nTổng quan Portal\n\nHỏi HR AI\nVI\n1\nPT\nCổng Nhân viên\n\nXem thông tin cá nhân, yêu cầu nghỉ phép và chấm công\n\nPT\nPhạm Thị Hương\n\nMã NV: NV0004\n\nPhó phòng | Công nghệ thông tin\n\nChấm công hôm nay\n\nChưa chấm công\n\nChấm công\n\nĐơn nghỉ đang chờ duyệt\n\n0\n\nPhép năm còn lại\n\n14 ngày\n\nChấm công\nLịch ca của tôi\nYêu cầu nghỉ phép\nLương\nThông tin cá nhân\nTổng quan Điểm danh\nChấm công ngay\nTiến độ tháng này\n\nBạn đã có mặt 23 ngày. Luôn giữ vững năng lượng nhé!\n\nĐúng giờ: 23\nĐi muộn: 0\nVắng mặt: 1\nTháng:\nTháng 7/2026\nTháng 6/2026\nTháng 5/2026\nTháng 4/2026\nTháng 3/2026\nTháng 2/2026\nTháng 1/2026\nTháng 12/2025\nTháng 11/2025\nTháng 10/2025\nTháng 9/2025\nTháng 8/2025\nLịch sử Chấm công\nNGÀY LÀM VIỆC\tVÀO - RA\tSỐ GIỜ LÀM\tTRẠNG THÁI\n\n28/7/2026\n\t\n07:54\n→\n17:10\n\t\n9.27h\n\t\nCó mặt\n\n\n27/7/2026\n\t\n07:56\n→\n17:01\n\t\n9.08h\n\t\nCó mặt\n\n\n25/7/2026\n\t\n07:54\n→\n17:05\n\t\n9.18h\n\t\nCó mặt\n\n\n24/7/2026\n\t\n07:59\n→\n17:18\n\t\n9.32h\n\t\nCó mặt\n\n\n23/7/2026\n\t\n07:53\n→\n17:07\n\t\n9.23h\n\t\nCó mặt\n\n\n22/7/2026\n\t\n08:00\n→\n17:06\n\t\n9.1h\n\t\nCó mặt\n\n\n21/7/2026\n\t\n07:57\n→\n17:09\n\t\n9.2h\n\t\nC"
+                             },
+    "employee_mobile_redirect":  {
+                                     "href":  "https://devtapcode.io.vn/m",
+                                     "width":  390,
+                                     "scrollWidth":  390,
+                                     "textLength":  261
+                                 },
+    "employee_prefer_desktop":  {
+                                    "href":  "https://devtapcode.io.vn/employee-portal",
+                                    "width":  390,
+                                    "scrollWidth":  390
+                                }
+}

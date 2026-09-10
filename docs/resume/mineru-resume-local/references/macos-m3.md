@@ -22,7 +22,7 @@ The pinned CPU wheels have Linux ARM64 builds:
 
 ```bash
 git clone --branch production --single-branch https://github.com/vHozang/BEHRM.git
-cd BEHRM/Doan2_v2/Doan2
+cd BEHRM/BE
 
 bash ../../docs/resume/mineru-resume-local/scripts/check-macos-docker.sh
 docker compose --profile mineru build mineru

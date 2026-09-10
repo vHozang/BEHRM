@@ -1,0 +1,41 @@
+{
+    "login":  {
+                  "clicked":  true,
+                  "href":  "https://devtapcode.io.vn/",
+                  "hasToken":  true
+              },
+    "recruitment_board":  {
+                              "href":  "https://devtapcode.io.vn/recruitment",
+                              "candidateVisible":  true,
+                              "scoreVisible":  true,
+                              "positionVisible":  true,
+                              "cardMissingCvIndicator":  true,
+                              "cardText":  "Vũ Ngọc Hoàng\nAI: 59.9000%\n\nBackend Developer (PHP/Laravel)\n\nvhozang2808+hrm-e2e-20260731@gmail.com\nThiếu CV",
+                              "bodyPreview":  "HR\nCODEDENNGU\nHRM WORKSPACE\nDashboard\nNHÂN SỰ \u0026 HỢP ĐỒNG\nNhân viên\nSơ đồ tổ chức\nHợp đồng lao động\nHội nhập \u0026 Nghỉ việc\nPhòng ban\nĐơn đổi thông tin\nQuyết định nhân sự\nTUYỂN DỤNG \u0026 AI\nỨng viên (Kanban)\nTin tuyển dụng\nLịch phỏng vấn\nCÔNG \u0026 LỊCH\nChấm công\nBảng công tháng\nCa làm việc \u0026 Xếp ca\nĐơn điều chỉnh công\nNghỉ phép\nLịch nghỉ lễ\nĐăng ký tăng ca\nYêu cầu đổi ca\nPhủ ca khi vắng\nYêu cầu phê duyệt\nTRUYỀN THÔNG\nWorkspace\n/\nHRM\n\nỨng viên (Kanban)\n\nHỏi HR AI\nVI\n4\nTT\nỨng viên Tuyển dụng\n\nQuản lý quy trình ứng tuyển và đánh giá CV bằng AI\n\n+ Thêm ứng viên\nTìm kiếm tên/email\nVị trí ứng tuyển\n-- Tất cả vị trí --\nXóa bộ lọc\nPhân tích AI CV\n\n7 / 7\n\nhồ sơ đã chấm điểm AI\n\nNộp hồ sơ\n1\nNguyễn Minh Anh\nAI: 72.0000%\n\nAI HR Analyst\n\nminh.anh.demo@example.com\nCV\nDuyệt hồ sơ\n1\nTrần Quốc Bảo\nAI: 81.0000%\n\nAI HR Analyst\n\nquoc.bao.demo@example.com\nCV\nPhỏng vấn\n2\nVũ Ngọc Hoàng\nAI: 59.9000%\n\nBackend Developer (PHP/Laravel)\n\nvhozang2808+hrm-e2e-20260731@gmail.com\nThiếu CV\nLê Thu Hà\nAI: 88.0000%\n\nTalent Acquisition Specialist\n\nthu.ha.demo@example.com\nCV\nĐề nghị nhận việc\n1\nPhạm Gia Huy\nAI: 76.0000%\n\nTalent Acquisition Specialist\n\ngia.huy.demo@example.com\nCV\nTừ chối / Đóng\n1\nVũ Nhật Nam\nAI: 54.0000%\n\nPayroll Operations Executive\n\nnhat.nam.demo@example.com\nCV"
+                          },
+    "candidate_detail":  {
+                             "opened":  true,
+                             "hasCandidate":  true,
+                             "phoneVisible":  false,
+                             "missingCvIndicator":  true,
+                             "scoreVisible":  true,
+                             "text":  "Chi tiết ứng viên\nHồ sơ cá nhân\nHọ tên ứng viên\n\nVũ Ngọc Hoàng\n\nEmail\n\nvhozang2808+hrm-e2e-20260731@gmail.com\n\nSố điện thoại\n\n-\n\nVị trí ứng tuyển\n\nBackend Developer (PHP/Laravel)\n\nTrạng thái tuyển dụng\nNộp hồ sơ\nDuyệt hồ sơ\nPhỏng vấn\nĐề nghị nhận việc\nTừ chối / Đóng\nHồ sơ CV (PDF)\nChưa có tệp CV nào được tải lên.\nTải lên CV\nTrợ lý AI Đánh Giá CV\nChạy lại AI\n59.9000%\n\nMức độ tương thích giữa CV ứng viên và mô tả công việc (JD)\n\nChuyển giai đoạn\nĐánh giá quản lý\nTuyển\nTừ chối\n✓ Điểm mạnh phù hợp:\n\nỨng viên có kỹ năng phù hợp tốt với các yêu cầu cốt lõi. Kinh nghiệm thực tế đáp ứng JD.\n\n⚠ Điểm cần lưu ý:\n\nThiếu một số chứng chỉ chuyên môn nâng cao liên quan trực tiếp.\n\nĐóng\nXóa hồ sơ"
+                         },
+    "interviews":  {
+                       "href":  "https://devtapcode.io.vn/interviews",
+                       "candidateVisible":  true,
+                       "intendedDateVisible":  false,
+                       "shiftedDateVisible":  true,
+                       "timeVisible":  true,
+                       "meetLinks":  [
+
+                                     ],
+                       "rowText":  "Vũ Ngọc Hoàng\nBackend Developer (PHP/Laravel)\n\t\n09:30 02/08/2026\n\t\nTrần Thị Mai (HR) - KIỂM THỬ E2E\n\t\nPhỏng vấn trực tuyến - kiểm thử hệ thống\n\t\nChờ phỏng vấn\n\t\nSửa / Đánh giá\nDuyệt quản lý\nXóa",
+                       "bodyPreview":  "HR\nCODEDENNGU\nHRM WORKSPACE\nDashboard\nNHÂN SỰ \u0026 HỢP ĐỒNG\nNhân viên\nSơ đồ tổ chức\nHợp đồng lao động\nHội nhập \u0026 Nghỉ việc\nPhòng ban\nĐơn đổi thông tin\nQuyết định nhân sự\nTUYỂN DỤNG \u0026 AI\nỨng viên (Kanban)\nTin tuyển dụng\nLịch phỏng vấn\nCÔNG \u0026 LỊCH\nChấm công\nBảng công tháng\nCa làm việc \u0026 Xếp ca\nĐơn điều chỉnh công\nNghỉ phép\nLịch nghỉ lễ\nĐăng ký tăng ca\nYêu cầu đổi ca\nPhủ ca khi vắng\nYêu cầu phê duyệt\nTRUYỀN THÔNG\nWorkspace\n/\nHRM\n\nLịch phỏng vấn\n\nHỏi HR AI\nVI\n4\nTT\nLịch Phỏng Vấn\n\nQuản lý các buổi phỏng vấn và đánh giá năng lực ứng viên\n\n+ Lên lịch phỏng vấn\nỨNG VIÊN\tTHỜI GIAN\tHỘI ĐỒNG PHỎNG VẤN\tĐỊA ĐIỂM / LINK\tĐÁNH GIÁ / TRẠNG THÁI\t\nTHAO TÁC\n\n\nVũ Ngọc Hoàng\nBackend Developer (PHP/Laravel)\n\t\n09:30 02/08/2026\n\t\nTrần Thị Mai (HR) - KIỂM THỬ E2E\n\t\nPhỏng vấn trực tuyến - kiểm thử hệ thống\n\t\nChờ phỏng vấn\n\t\nSửa / Đánh giá\nDuyệt quản lý\nXóa"
+                   },
+    "recruitment_posts":  {
+                              "href":  "https://devtapcode.io.vn/recruitment-positions",
+                              "backendPostVisible":  false,
+                              "text":  "HR\nCODEDENNGU\nHRM WORKSPACE\nDashboard\nNHÂN SỰ \u0026 HỢP ĐỒNG\nNhân viên\nSơ đồ tổ chức\nHợp đồng lao động\nHội nhập \u0026 Nghỉ việc\nPhòng ban\nĐơn đổi thông tin\nQuyết định nhân sự\nTUYỂN DỤNG \u0026 AI\nỨng viên (Kanban)\nTin tuyển dụng\nLịch phỏng vấn\nCÔNG \u0026 LỊCH\nChấm công\nBảng công tháng\nCa làm việc \u0026 Xếp ca\nĐơn điều chỉnh công\nNghỉ phép\nLịch nghỉ lễ\nĐăng ký tăng ca\nYêu cầu đổi ca\nPhủ ca khi vắng\nYêu cầu phê duyệt\nTRUYỀN THÔNG\nWorkspace\n/\nHRM\n\nTin tuyển dụng\n\nHỏi HR AI\nVI\n4\nTT\nTin Tuyển Dụng (JD)\n\nTin ở trạng thái “Đăng công khai” sẽ xuất hiện ngay trên landing page.\n\nXem landing page ↗\n+ Đăng tin mới\nTÊN VỊ TRÍ / CHỨC DANH\tSỐ LƯỢNG\tMỨC LƯƠNG (VNĐ)\tHẠN NỘP HỒ SƠ\tHIỂN THỊ\t\nTHAO TÁC\n\nKhông có dữ liệu"
+                          }
+}

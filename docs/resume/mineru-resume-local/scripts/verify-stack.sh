@@ -3,7 +3,7 @@ set -euo pipefail
 
 skill_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 hrm_repo_root="$(cd "$skill_script_dir/../../../.." && pwd)"
-compose_dir="${1:-$hrm_repo_root/Doan2_v2/Doan2}"
+compose_dir="${1:-$hrm_repo_root/BE}"
 mac_tailscale_ip="${HRM_MAC_TAILSCALE_IP:-100.105.84.89}"
 
 command -v docker >/dev/null
