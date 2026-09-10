@@ -95,6 +95,14 @@ fi
 
 cd "$BACKEND_DIR"
 docker compose build
+# Certbot archives on an existing VPS can be root-owned. Retry the same
+# copy-only migration inside the freshly built PHP image without changing host
+# permissions, deleting legacy files, or overwriting the new layout.
+# runtime-layout-root-migration
+docker compose run --rm --no-deps --user root \
+  -v "$APP_DIR:/opt/hrm" \
+  -w /opt/hrm \
+  php bash /opt/hrm/docs/operations/deploy/migrate-runtime-layout.sh /opt/hrm
 docker compose up -d postgres redis
 docker compose run --rm --no-deps --user root php composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 

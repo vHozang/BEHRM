@@ -62,4 +62,14 @@ test -f "$old/docker/certbot/conf/live/example/fullchain.pem"
 test -f "$old/docker/certbot/www/.well-known/token"
 test -f "$old/storage/app/private/legacy.txt"
 
+# Production must retry migration through Docker root after the image exists and
+# before Nginx starts, because Certbot files on the VPS are root-owned.
+deploy_script="$SCRIPT_DIR/../deploy-production.sh"
+build_line="$(grep -n '^docker compose build$' "$deploy_script" | cut -d: -f1)"
+root_migration_line="$(grep -n 'runtime-layout-root-migration' "$deploy_script" | cut -d: -f1)"
+nginx_start_line="$(grep -n '^docker compose up -d php reverb nginx$' "$deploy_script" | cut -d: -f1)"
+test -n "$build_line" && test -n "$root_migration_line" && test -n "$nginx_start_line"
+test "$build_line" -lt "$root_migration_line"
+test "$root_migration_line" -lt "$nginx_start_line"
+
 printf 'runtime layout migration test passed\n'
